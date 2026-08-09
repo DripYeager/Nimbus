@@ -11,11 +11,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from config.settings import get_settings
-from core.document_parser import parse_document
+from core.document_parser import extract_document_text
 from core.embedder import Embedder
 from core.exceptions import IndexingError, NimbusError
 from core.logger import get_logger
-from core.ocr_fallback import extract_text_with_ocr
 from core.text_chunker import chunk_text
 from core.vector_store import VectorStore
 from models.schema import IndexedChunk
@@ -40,7 +39,7 @@ class Indexer:
             logger.info("Skipping unchanged file", extra={"path": str(path)})
             return 0
 
-        text = self._extract_text(path)
+        text = extract_document_text(path)
         chunks = chunk_text(text, chunk_size=self._chunk_size, overlap=self._chunk_overlap)
         if not chunks:
             logger.warning("No text extracted, nothing to index", extra={"path": str(path)})
@@ -60,13 +59,6 @@ class Indexer:
             except NimbusError as e:
                 logger.error("Skipping file that failed to index", extra={"path": str(path), "error": str(e)})
         return total
-
-    def _extract_text(self, path: Path) -> str:
-        """Parses a file to text, escalating a thin-looking PDF to OCR."""
-        parsed = parse_document(path)
-        if parsed.needs_ocr and path.suffix.lower() == ".pdf":
-            return extract_text_with_ocr(path)
-        return parsed.markdown_text
 
 
 def _hash_file(path: Path) -> str:

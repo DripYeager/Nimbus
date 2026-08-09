@@ -5,8 +5,9 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from core.document_parser import parse_document
+from core.document_parser import extract_document_text, parse_document
 from core.exceptions import ParsingError
+from models.schema import ParsedDocument
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -63,3 +64,25 @@ def test_parse_document_flags_needs_ocr_for_a_thin_non_pdf_without_trying_doclin
 def test_parse_document_raises_parsing_error_for_a_missing_file() -> None:
     with pytest.raises(ParsingError):
         parse_document(FIXTURES / "does-not-exist.docx")
+
+
+def test_extract_document_text_returns_the_parsed_text_directly() -> None:
+    assert "Nimbus Test Document" in extract_document_text(FIXTURES / "sample.docx")
+
+
+def test_extract_document_text_escalates_a_thin_pdf_to_ocr(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True)
+    )
+    ocr_spy = mocker.patch("core.document_parser.extract_text_with_ocr", return_value="recovered text")
+    result = extract_document_text(Path("scan.pdf"))
+    ocr_spy.assert_called_once_with(Path("scan.pdf"))
+    assert result == "recovered text"
+
+
+def test_extract_document_text_does_not_ocr_a_thin_non_pdf(mocker: MockerFixture) -> None:
+    mocker.patch("core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True))
+    ocr_spy = mocker.patch("core.document_parser.extract_text_with_ocr")
+    result = extract_document_text(Path("note.txt"))
+    ocr_spy.assert_not_called()
+    assert result == ""

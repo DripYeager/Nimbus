@@ -21,6 +21,17 @@ class ParsedDocument:
     needs_ocr: bool
 
 
+@dataclass
+class FileMetadata:
+    """A file's size and timestamps, read straight from the filesystem — no index lookup involved."""
+
+    file_path: str
+    file_name: str
+    size_bytes: int
+    created_at: datetime
+    modified_at: datetime
+
+
 class Intent(Enum):
     """What the user is actually asking for, as decided by intent_router."""
 

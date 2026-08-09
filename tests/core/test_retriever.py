@@ -48,7 +48,7 @@ def test_retrieve_returns_whatever_the_store_returns(mocker: MockerFixture) -> N
 
 def test_retrieve_finds_the_most_relevant_chunk_end_to_end(tmp_path: Path, mocker: MockerFixture) -> None:
     mocker.patch(
-        "core.indexer.parse_document",
+        "core.document_parser.parse_document",
         side_effect=lambda path: ParsedDocument(
             markdown_text="The vendor contract requires thirty days notice for termination."
             if path.name == "contract.txt"

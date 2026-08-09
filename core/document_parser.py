@@ -22,6 +22,7 @@ from markitdown import MarkItDown  # noqa: E402
 
 from core.exceptions import ParsingError  # noqa: E402
 from core.logger import get_logger  # noqa: E402
+from core.ocr_fallback import extract_text_with_ocr  # noqa: E402
 from models.schema import ParsedDocument  # noqa: E402
 
 logger = get_logger(__name__)
@@ -35,6 +36,14 @@ def parse_document(path: Path) -> ParsedDocument:
     if path.suffix.lower() == ".pdf" and len(markdown_text) < MIN_TEXT_LENGTH:
         markdown_text = _parse_with_docling(path)
     return ParsedDocument(markdown_text=markdown_text, needs_ocr=len(markdown_text) < MIN_TEXT_LENGTH)
+
+
+def extract_document_text(path: Path) -> str:
+    """Parses a file to text, escalating to OCR too when even Docling's result is too thin."""
+    parsed = parse_document(path)
+    if parsed.needs_ocr and path.suffix.lower() == ".pdf":
+        return extract_text_with_ocr(path)
+    return parsed.markdown_text
 
 
 def _parse_with_markitdown(path: Path) -> str:

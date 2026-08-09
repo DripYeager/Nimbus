@@ -6,11 +6,17 @@ none of them match. Owns the routing decision only — does not execute any tool
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from config.settings import get_settings
 from llm.prompts import build_intent_classify_prompt
-from llm.provider import LLMProvider, get_provider
 from models.schema import Intent
+
+if TYPE_CHECKING:
+    # Deferred to a local import in _classify_with_llm: llm.provider pulls in every concrete
+    # provider module, one of which may import core.exceptions and so re-enter this package
+    # mid-load — a real circular import, not just a style preference. See that import for why.
+    from llm.provider import LLMProvider
 
 FILE_SEARCH_KEYWORDS = ["find", "where", "locate", "which file"]
 METADATA_KEYWORDS = ["when", "last modified", "how big", "created"]
@@ -53,7 +59,10 @@ def _is_downloads_today(lowered_text: str) -> bool:
 
 def _classify_with_llm(text: str, provider: LLMProvider | None) -> Intent:
     """Asks the configured LLM to pick an intent when no keyword rule matched."""
-    provider = provider or get_provider(get_settings())
+    if provider is None:
+        from llm.provider import get_provider
+
+        provider = get_provider(get_settings())
     answer = provider.complete(build_intent_classify_prompt(text)).strip().lower()
     for intent in Intent:
         if intent.value == answer:

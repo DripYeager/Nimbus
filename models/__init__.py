@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from models.schema import (
     AppEntry,
+    FileMetadata,
     IndexedChunk,
     IndexStatus,
     Intent,
+    ParsedDocument,
     QueryRequest,
     QueryResponse,
     SearchResult,
@@ -18,6 +20,8 @@ __all__ = [
     "SourceRef",
     "AppEntry",
     "IndexStatus",
+    "ParsedDocument",
+    "FileMetadata",
     "IndexedChunk",
     "SearchResult",
     "QueryRequest",

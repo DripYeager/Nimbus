@@ -56,7 +56,7 @@ def test_index_file_embeds_and_stores_a_new_files_chunks(
     tmp_path: Path, store: VectorStore, embedder: Embedder, mocker: MockerFixture
 ) -> None:
     mocker.patch(
-        "core.indexer.parse_document",
+        "core.document_parser.parse_document",
         return_value=ParsedDocument(markdown_text="one two three four five", needs_ocr=False),
     )
     path = tmp_path / "a.txt"
@@ -75,8 +75,8 @@ def test_index_file_embeds_and_stores_a_new_files_chunks(
 def test_index_file_falls_back_to_ocr_for_a_thin_pdf(
     tmp_path: Path, store: VectorStore, embedder: Embedder, mocker: MockerFixture
 ) -> None:
-    mocker.patch("core.indexer.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True))
-    ocr_spy = mocker.patch("core.indexer.extract_text_with_ocr", return_value="recovered scanned text here")
+    mocker.patch("core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True))
+    ocr_spy = mocker.patch("core.document_parser.extract_text_with_ocr", return_value="recovered scanned text here")
     path = tmp_path / "scan.pdf"
     path.write_bytes(b"%PDF-1.4 fake")
 
@@ -89,8 +89,8 @@ def test_index_file_falls_back_to_ocr_for_a_thin_pdf(
 def test_index_file_does_not_ocr_a_thin_non_pdf(
     tmp_path: Path, store: VectorStore, embedder: Embedder, mocker: MockerFixture
 ) -> None:
-    mocker.patch("core.indexer.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True))
-    ocr_spy = mocker.patch("core.indexer.extract_text_with_ocr")
+    mocker.patch("core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True))
+    ocr_spy = mocker.patch("core.document_parser.extract_text_with_ocr")
     path = tmp_path / "empty.txt"
     path.write_text("")
 
@@ -103,7 +103,7 @@ def test_index_file_does_not_ocr_a_thin_non_pdf(
 def test_index_file_returns_zero_when_no_text_is_extracted(
     tmp_path: Path, store: VectorStore, embedder: Embedder, mocker: MockerFixture
 ) -> None:
-    mocker.patch("core.indexer.parse_document", return_value=ParsedDocument(markdown_text="   ", needs_ocr=False))
+    mocker.patch("core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="   ", needs_ocr=False))
     path = tmp_path / "blank.txt"
     path.write_text(" ")
 
@@ -120,7 +120,7 @@ def test_index_directory_sums_chunks_across_files(
     tmp_path: Path, store: VectorStore, embedder: Embedder, mocker: MockerFixture
 ) -> None:
     mocker.patch(
-        "core.indexer.parse_document",
+        "core.document_parser.parse_document",
         side_effect=lambda path: ParsedDocument(markdown_text=f"text for {path.name} words here", needs_ocr=False),
     )
     (tmp_path / "a.txt").write_text("a")
@@ -140,7 +140,7 @@ def test_index_directory_skips_a_file_that_fails_and_keeps_going(
             raise ParsingError("simulated failure")
         return ParsedDocument(markdown_text="fine words here", needs_ocr=False)
 
-    mocker.patch("core.indexer.parse_document", side_effect=fake_parse)
+    mocker.patch("core.document_parser.parse_document", side_effect=fake_parse)
     (tmp_path / "broken.txt").write_text("x")
     (tmp_path / "fine.txt").write_text("y")
 
