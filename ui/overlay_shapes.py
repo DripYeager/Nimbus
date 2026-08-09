@@ -7,7 +7,7 @@ window-level state; overlay.py drives when the glyph bobs and where the card sit
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtGui import QColor, QPainter, QPaintEvent
 from PyQt6.QtWidgets import QWidget
 
 from ui.overlay_theme import ACCENT_GOLD, BACKGROUND_RGBA, BORDER_RGBA, CARD_RADIUS, GLYPH_SIZE
@@ -26,7 +26,7 @@ class CloudGlyph(QWidget):
         self._offset_y = offset
         self.update()
 
-    def paintEvent(self, event: object) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Draws a small flat gold cloud as three overlapping circles plus a base."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -47,7 +47,7 @@ class OverlayCard(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
 
-    def paintEvent(self, event: object) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Fills a rounded rect in the background token, stroked with the border token."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)

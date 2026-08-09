@@ -99,3 +99,29 @@ class QueryResponse(BaseModel):
     sources: list[SourceRef]
     used_llm: bool
     elapsed_ms: int
+
+
+class QueryStarted(BaseModel):
+    """Sent once routing resolves the intent and sources, before any answer tokens arrive."""
+
+    intent: Intent
+    sources: list[SourceRef]
+
+
+class QueryToken(BaseModel):
+    """One incremental slice of a streamed answer."""
+
+    text: str
+
+
+class QueryDone(BaseModel):
+    """Terminal event closing out a streamed query, once every token has been sent."""
+
+    used_llm: bool
+    elapsed_ms: int
+
+
+class QueryFailed(BaseModel):
+    """Sent instead of QueryDone if a tool or provider failed partway through the stream."""
+
+    message: str

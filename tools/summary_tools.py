@@ -6,6 +6,7 @@ beyond what document_parser already provides, and does not choose which provider
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime, time
 from pathlib import Path
 
@@ -23,34 +24,42 @@ SAFE_PROMPT_WORD_LIMIT = 4000
 NOTHING_TO_SUMMARIZE_MESSAGE = "Nothing to summarize — no text could be extracted."
 
 
-def summarize_document(path: Path, provider: LLMProvider) -> str:
-    """Summarizes one file, map-reducing it in parts first if its text is too large for one prompt."""
-    return _summarize_text(extract_document_text(path), provider)
+def stream_summarize_document(path: Path, provider: LLMProvider) -> Iterator[str]:
+    """Streams one file's summary, map-reducing it in parts first if its text is too large."""
+    yield from _stream_summary(extract_document_text(path), provider)
 
 
-def summarize_todays_downloads(provider: LLMProvider) -> str:
-    """Summarizes everything modified in the Downloads folder since midnight today, in one batch."""
+def stream_summarize_todays_downloads(provider: LLMProvider) -> Iterator[str]:
+    """Streams a digest of everything modified in Downloads since midnight, in one batch."""
     downloads_dir = _find_downloads_dir()
     if downloads_dir is None:
-        return "Downloads isn't one of the watched folders, so there's nothing to summarize."
+        yield "Downloads isn't one of the watched folders, so there's nothing to summarize."
+        return
 
     since_midnight = datetime.combine(datetime.now().date(), time.min)
     files = list_recent(downloads_dir, modified_after=since_midnight)
     if not files:
-        return "No files were downloaded today."
+        yield "No files were downloaded today."
+        return
 
-    return _summarize_text(_combine_files_for_summary(files), provider)
+    yield from _stream_summary(_combine_files_for_summary(files), provider)
 
 
-def _summarize_text(text: str, provider: LLMProvider) -> str:
-    """Summarizes text in one call if it's small enough, otherwise map-reduces it in parts."""
+def _stream_summary(text: str, provider: LLMProvider) -> Iterator[str]:
+    """Streams a summary in one call if text is small enough, otherwise map-reduces it first.
+
+    Map-reduce parts are never shown to the user, so only the single call or the final
+    reduce call — the part that's actually the answer — streams; the intermediate partial
+    summaries are plumbing and stay on the non-streaming complete()."""
     if not text.strip():
-        return NOTHING_TO_SUMMARIZE_MESSAGE
+        yield NOTHING_TO_SUMMARIZE_MESSAGE
+        return
     parts = chunk_text(text, chunk_size=SAFE_PROMPT_WORD_LIMIT, overlap=0)
     if len(parts) <= 1:
-        return provider.complete(build_summarize_prompt(text))
+        yield from provider.stream(build_summarize_prompt(text))
+        return
     partial_summaries = [provider.complete(build_summarize_prompt(part)) for part in parts]
-    return provider.complete(build_summarize_prompt("\n\n".join(partial_summaries)))
+    yield from provider.stream(build_summarize_prompt("\n\n".join(partial_summaries)))
 
 
 def _find_downloads_dir() -> Path | None:

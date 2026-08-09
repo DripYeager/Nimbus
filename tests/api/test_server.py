@@ -13,7 +13,7 @@ from core.exceptions import ProviderError
 from core.indexer import Indexer
 from core.query_engine import QueryEngine
 from core.vector_store import VectorStore
-from models.schema import Intent, ParsedDocument, QueryResponse
+from models.schema import Intent, ParsedDocument, QueryDone, QueryResponse, QueryStarted, QueryToken
 
 
 @pytest.fixture
@@ -53,27 +53,63 @@ def test_query_returns_json_when_stream_is_false(client: TestClient, mocker: Moc
     engine.handle_query.assert_called_once_with("hello")
 
 
+def _fake_stream(*tokens: str) -> list[QueryStarted | QueryToken | QueryDone]:
+    started = QueryStarted(intent=Intent.GENERAL_QA, sources=[])
+    return [started, *(QueryToken(text=t) for t in tokens), QueryDone(used_llm=True, elapsed_ms=12)]
+
+
 def test_query_returns_sse_when_stream_is_true(client: TestClient, mocker: MockerFixture) -> None:
     engine = mocker.Mock(spec=QueryEngine)
-    engine.handle_query.return_value = _fake_response(answer="streamed answer")
+    engine.stream_query.return_value = iter(_fake_stream("streamed answer"))
     app.dependency_overrides[get_query_engine] = lambda: engine
 
     response = client.post("/query", json={"text": "hello", "stream": True})
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
-    assert response.text.startswith("data: ")
+    assert "event: started" in response.text
+    assert "event: token" in response.text
+    assert "event: done" in response.text
     assert "streamed answer" in response.text
 
 
 def test_query_defaults_to_streaming_when_stream_is_omitted(client: TestClient, mocker: MockerFixture) -> None:
     engine = mocker.Mock(spec=QueryEngine)
-    engine.handle_query.return_value = _fake_response()
+    engine.stream_query.return_value = iter(_fake_stream("hi"))
     app.dependency_overrides[get_query_engine] = lambda: engine
 
     response = client.post("/query", json={"text": "hello"})
 
     assert response.headers["content-type"].startswith("text/event-stream")
+
+
+def test_query_stream_reports_sources_in_the_started_event(client: TestClient, mocker: MockerFixture) -> None:
+    engine = mocker.Mock(spec=QueryEngine)
+    started = QueryStarted(intent=Intent.FILE_SEARCH, sources=[{"file_name": "a.pdf", "file_path": "C:/a.pdf", "score": 0.9}])
+    engine.stream_query.return_value = iter([started, QueryDone(used_llm=False, elapsed_ms=1)])
+    app.dependency_overrides[get_query_engine] = lambda: engine
+
+    response = client.post("/query", json={"text": "hello", "stream": True})
+
+    assert "a.pdf" in response.text
+
+
+def test_query_stream_converts_a_mid_stream_nimbus_error_to_an_error_event(
+    client: TestClient, mocker: MockerFixture
+) -> None:
+    def _raising_stream(*_args: object, **_kwargs: object):
+        yield QueryStarted(intent=Intent.GENERAL_QA, sources=[])
+        raise ProviderError("Ollama died mid-stream")
+
+    engine = mocker.Mock(spec=QueryEngine)
+    engine.stream_query.side_effect = _raising_stream
+    app.dependency_overrides[get_query_engine] = lambda: engine
+
+    response = client.post("/query", json={"text": "hello", "stream": True})
+
+    assert response.status_code == 200
+    assert "event: error" in response.text
+    assert "Ollama died mid-stream" in response.text
 
 
 def test_query_converts_a_nimbus_error_to_the_documented_shape(client: TestClient, mocker: MockerFixture) -> None:

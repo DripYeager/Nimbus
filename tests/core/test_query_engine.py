@@ -13,7 +13,7 @@ from core.query_engine import APP_LAUNCH_NOT_AVAILABLE_MESSAGE, QueryEngine
 from core.retriever import Retriever
 from core.vector_store import VectorStore
 from llm.provider import LLMProvider
-from models.schema import FileMetadata, Intent, ParsedDocument, SearchResult, SourceRef
+from models.schema import FileMetadata, Intent, ParsedDocument, QueryDone, QueryStarted, QueryToken, SearchResult, SourceRef
 
 
 def _chunk(file_path: str, file_name: str, score: float = 0.1) -> SearchResult:
@@ -110,11 +110,11 @@ def test_app_launch_reports_not_available_with_no_llm(mocker: MockerFixture) -> 
 def test_downloads_today_used_llm_true_when_the_tool_calls_the_provider(mocker: MockerFixture) -> None:
     engine, _, _, _ = _engine(mocker)
 
-    def fake_summarize(tracked_provider: LLMProvider) -> str:
+    def fake_summarize(tracked_provider: LLMProvider):
         tracked_provider.complete("irrelevant prompt")
-        return "digest of downloads"
+        yield "digest of downloads"
 
-    mocker.patch("tools.summary_tools.summarize_todays_downloads", side_effect=fake_summarize)
+    mocker.patch("tools.summary_tools.stream_summarize_todays_downloads", side_effect=fake_summarize)
 
     response = engine.handle_query("what did I download today")
 
@@ -124,7 +124,9 @@ def test_downloads_today_used_llm_true_when_the_tool_calls_the_provider(mocker: 
 
 def test_downloads_today_used_llm_false_when_the_tool_short_circuits(mocker: MockerFixture) -> None:
     engine, provider, _, _ = _engine(mocker)
-    mocker.patch("tools.summary_tools.summarize_todays_downloads", return_value="No files were downloaded today.")
+    mocker.patch(
+        "tools.summary_tools.stream_summarize_todays_downloads", return_value=iter(["No files were downloaded today."])
+    )
 
     response = engine.handle_query("what did I download today")
 
@@ -136,11 +138,11 @@ def test_downloads_today_used_llm_false_when_the_tool_short_circuits(mocker: Moc
 def test_handle_downloads_today_used_llm_true_when_the_tool_calls_the_provider(mocker: MockerFixture) -> None:
     engine, _, _, _ = _engine(mocker)
 
-    def fake_summarize(tracked_provider: LLMProvider) -> str:
+    def fake_summarize(tracked_provider: LLMProvider):
         tracked_provider.complete("irrelevant prompt")
-        return "digest of downloads"
+        yield "digest of downloads"
 
-    mocker.patch("tools.summary_tools.summarize_todays_downloads", side_effect=fake_summarize)
+    mocker.patch("tools.summary_tools.stream_summarize_todays_downloads", side_effect=fake_summarize)
 
     response = engine.handle_downloads_today()
 
@@ -152,7 +154,9 @@ def test_handle_downloads_today_used_llm_true_when_the_tool_calls_the_provider(m
 
 def test_handle_downloads_today_used_llm_false_when_the_tool_short_circuits(mocker: MockerFixture) -> None:
     engine, provider, _, _ = _engine(mocker)
-    mocker.patch("tools.summary_tools.summarize_todays_downloads", return_value="No files were downloaded today.")
+    mocker.patch(
+        "tools.summary_tools.stream_summarize_todays_downloads", return_value=iter(["No files were downloaded today."])
+    )
 
     response = engine.handle_downloads_today()
 
@@ -164,7 +168,9 @@ def test_handle_downloads_today_used_llm_false_when_the_tool_short_circuits(mock
 def test_handle_downloads_today_skips_intent_classification(mocker: MockerFixture) -> None:
     """No text is ever classified — the intent is fixed by calling this entry point at all."""
     engine, provider, _, _ = _engine(mocker)
-    mocker.patch("tools.summary_tools.summarize_todays_downloads", return_value="No files were downloaded today.")
+    mocker.patch(
+        "tools.summary_tools.stream_summarize_todays_downloads", return_value=iter(["No files were downloaded today."])
+    )
     classify_spy = mocker.patch("core.query_engine.classify_intent")
 
     engine.handle_downloads_today()
@@ -179,11 +185,11 @@ def test_summarize_used_llm_true_when_a_matching_file_is_found(mocker: MockerFix
         "tools.file_tools.find_files", return_value=[SourceRef(file_name="q3.pdf", file_path="C:/q3.pdf", score=0.1)]
     )
 
-    def fake_summarize(path: Path, tracked_provider: LLMProvider) -> str:
+    def fake_summarize(path: Path, tracked_provider: LLMProvider):
         tracked_provider.complete("irrelevant prompt")
-        return "five bullet points"
+        yield "five bullet points"
 
-    mocker.patch("tools.summary_tools.summarize_document", side_effect=fake_summarize)
+    mocker.patch("tools.summary_tools.stream_summarize_document", side_effect=fake_summarize)
 
     response = engine.handle_query("summarize the Q3 report")
 
@@ -204,7 +210,7 @@ def test_summarize_used_llm_false_when_no_matching_file_is_found(mocker: MockerF
 
 def test_general_qa_used_llm_true_and_returns_the_synthesized_answer(mocker: MockerFixture) -> None:
     engine, provider, retriever, _ = _engine(mocker)
-    provider.complete.return_value = "Termination requires 30 days notice."
+    provider.stream.return_value = iter(["Termination requires 30 days notice."])
     retriever.retrieve.return_value = [_chunk("C:/contract.pdf", "contract.pdf")]
 
     response = engine.handle_query("what does the contract say about termination")
@@ -215,6 +221,16 @@ def test_general_qa_used_llm_true_and_returns_the_synthesized_answer(mocker: Moc
     assert response.sources[0].file_name == "contract.pdf"
 
 
+def test_general_qa_streams_multiple_tokens_in_order(mocker: MockerFixture) -> None:
+    engine, provider, retriever, _ = _engine(mocker)
+    provider.stream.return_value = iter(["Termination ", "requires ", "30 days."])
+    retriever.retrieve.return_value = [_chunk("C:/contract.pdf", "contract.pdf")]
+
+    response = engine.handle_query("what does the contract say about termination")
+
+    assert response.answer == "Termination requires 30 days."
+
+
 def test_general_qa_used_llm_false_when_nothing_is_retrieved(mocker: MockerFixture) -> None:
     engine, provider, retriever, _ = _engine(mocker)
     retriever.retrieve.return_value = []
@@ -222,7 +238,7 @@ def test_general_qa_used_llm_false_when_nothing_is_retrieved(mocker: MockerFixtu
     response = engine.handle_query("what does the contract say about termination")
 
     assert response.used_llm is False
-    provider.complete.assert_not_called()
+    provider.stream.assert_not_called()
 
 
 def test_used_llm_stays_false_when_only_intent_classification_needed_the_llm(mocker: MockerFixture) -> None:
@@ -277,3 +293,31 @@ def test_handle_query_works_end_to_end_with_real_retrieval(tmp_path: Path, mocke
     assert response.intent == Intent.FILE_SEARCH
     assert response.used_llm is False
     assert any(source.file_name == "contract.txt" for source in response.sources)
+
+
+def test_stream_query_yields_started_token_then_done_for_a_pure_lookup(mocker: MockerFixture) -> None:
+    engine, provider, _, _ = _engine(mocker)
+    mocker.patch(
+        "tools.file_tools.find_files", return_value=[SourceRef(file_name="a.txt", file_path="C:/a.txt", score=0.1)]
+    )
+
+    events = list(engine.stream_query("find a.txt"))
+
+    assert isinstance(events[0], QueryStarted)
+    assert events[0].intent == Intent.FILE_SEARCH
+    assert events[0].sources[0].file_name == "a.txt"
+    assert isinstance(events[1], QueryToken)
+    assert isinstance(events[-1], QueryDone)
+    assert events[-1].used_llm is False
+
+
+def test_stream_query_yields_one_token_event_per_streamed_chunk(mocker: MockerFixture) -> None:
+    engine, provider, retriever, _ = _engine(mocker)
+    provider.stream.return_value = iter(["Ter", "mination"])
+    retriever.retrieve.return_value = [_chunk("C:/contract.pdf", "contract.pdf")]
+
+    events = list(engine.stream_query("what does the contract say"))
+
+    tokens = [e.text for e in events if isinstance(e, QueryToken)]
+    assert tokens == ["Ter", "mination"]
+    assert events[-1].used_llm is True

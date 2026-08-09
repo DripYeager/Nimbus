@@ -24,7 +24,7 @@ from core.query_engine import QueryEngine
 from core.retriever import Retriever
 from core.vector_store import VectorStore
 from llm.provider import get_provider
-from models.schema import QueryRequest, QueryResponse
+from models.schema import QueryDone, QueryFailed, QueryRequest, QueryResponse, QueryStarted, QueryToken
 
 API_VERSION = "0.1.0"
 
@@ -75,14 +75,10 @@ def health() -> dict[str, str]:
 
 @app.post("/query", response_model=None)
 def query(body: QueryRequest, engine: QueryEngine = Depends(get_query_engine)) -> QueryResponse | StreamingResponse:
-    """Routes a request through QueryEngine; streams the answer as one SSE event if stream=true."""
-    response = engine.handle_query(body.text)
+    """Routes a request through QueryEngine; streams per-token SSE events if stream=true."""
     if not body.stream:
-        return response
-
-    # TODO(nimbus): stream real tokens via provider.stream() once the overlay (Phase 3) exists
-    # to render them live — for now this transports the already-complete answer as one event.
-    return StreamingResponse(_sse_event(response), media_type="text/event-stream")
+        return engine.handle_query(body.text)
+    return StreamingResponse(_stream_query_events(engine, body.text), media_type="text/event-stream")
 
 
 @app.get("/downloads/today")
@@ -124,6 +120,26 @@ def _run_rebuild(indexer: Indexer, paths: list[Path]) -> None:
         _rebuild_lock.release()
 
 
-def _sse_event(response: QueryResponse) -> Generator[str, None, None]:
-    """Yields the complete response as a single SSE 'message' event."""
-    yield f"data: {response.model_dump_json()}\n\n"
+_SSE_EVENT_NAMES: dict[type[BaseModel], str] = {
+    QueryStarted: "started",
+    QueryToken: "token",
+    QueryDone: "done",
+    QueryFailed: "error",
+}
+
+
+def _sse_event(event: QueryStarted | QueryToken | QueryDone | QueryFailed) -> str:
+    """Serializes one query-stream event as a named SSE frame."""
+    name = _SSE_EVENT_NAMES[type(event)]
+    return f"event: {name}\ndata: {event.model_dump_json()}\n\n"
+
+
+def _stream_query_events(engine: QueryEngine, text: str) -> Generator[str, None, None]:
+    """Runs the query stream, converting a mid-stream NimbusError into a graceful error event
+    instead of dropping the connection — the overlay's thinking indicator needs a real event to
+    stop on, not a silently closed stream."""
+    try:
+        for event in engine.stream_query(text):
+            yield _sse_event(event)
+    except NimbusError as e:
+        yield _sse_event(QueryFailed(message=str(e)))

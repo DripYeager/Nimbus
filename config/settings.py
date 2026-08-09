@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # host is not configurable on purpose — see api/server.py, it's always 127.0.0.1
     api_port: int = 8765
 
+    @property
+    def api_base_url(self) -> str:
+        """The loopback-only base URL every API client should call — never a raw host string."""
+        return f"http://127.0.0.1:{self.api_port}"
+
     @field_validator("watched_dirs", mode="before")
     @classmethod
     def _expand_watched_dirs(cls, value: list[str | Path]) -> list[Path]:
