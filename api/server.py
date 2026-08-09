@@ -24,7 +24,7 @@ from core.query_engine import QueryEngine
 from core.retriever import Retriever
 from core.vector_store import VectorStore
 from llm.provider import get_provider
-from models.schema import QueryDone, QueryFailed, QueryRequest, QueryResponse, QueryStarted, QueryToken
+from models.schema import IndexStatus, QueryDone, QueryFailed, QueryRequest, QueryResponse, QueryStarted, QueryToken
 
 API_VERSION = "0.1.0"
 
@@ -41,6 +41,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.store = store
     app.state.indexer = Indexer(store, embedder)
     app.state.query_engine = QueryEngine(Retriever(store, embedder), provider, store)
+    app.state.indexing_paused = False
     yield
 
 
@@ -97,6 +98,29 @@ def index_rebuild(
         raise HTTPException(status_code=409, detail="A rebuild is already running.")
     background_tasks.add_task(_run_rebuild, indexer, paths)
     return {"started": True}
+
+
+@app.post("/index/pause")
+def index_pause(request: Request) -> IndexStatus:
+    """Pauses background indexing. file_watcher.py will honor this flag once it exists to
+    actually skip events; for now this only tracks the state the tray reflects."""
+    request.app.state.indexing_paused = True
+    return _index_status(request)
+
+
+@app.post("/index/resume")
+def index_resume(request: Request) -> IndexStatus:
+    """Resumes background indexing previously paused via /index/pause."""
+    request.app.state.indexing_paused = False
+    return _index_status(request)
+
+
+def _index_status(request: Request) -> IndexStatus:
+    """Builds the current IndexStatus. File/pending counts become real once file_watcher.py
+    tracks a watch queue — until then they report zero rather than a guess."""
+    return IndexStatus(
+        total_files=0, indexed_files=0, pending=0, is_paused=request.app.state.indexing_paused, last_error=None
+    )
 
 
 def _resolve_and_validate_paths(raw_paths: list[str] | None) -> list[Path]:

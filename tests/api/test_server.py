@@ -136,6 +136,30 @@ def test_downloads_today_calls_handle_downloads_today_directly(client: TestClien
     engine.handle_query.assert_not_called()
 
 
+def test_index_pause_marks_indexing_paused(client: TestClient) -> None:
+    response = client.post("/index/pause")
+
+    assert response.status_code == 200
+    assert response.json()["is_paused"] is True
+
+
+def test_index_resume_marks_indexing_not_paused(client: TestClient) -> None:
+    client.post("/index/pause")
+
+    response = client.post("/index/resume")
+
+    assert response.status_code == 200
+    assert response.json()["is_paused"] is False
+
+
+def test_index_pause_state_persists_across_requests(client: TestClient) -> None:
+    client.post("/index/pause")
+
+    status = client.post("/index/resume").json()
+
+    assert status == {"total_files": 0, "indexed_files": 0, "pending": 0, "is_paused": False, "last_error": None}
+
+
 def test_index_rebuild_schedules_a_background_task(client: TestClient, mocker: MockerFixture) -> None:
     app.dependency_overrides[get_indexer] = lambda: mocker.Mock(spec=Indexer)
     run_spy = mocker.patch("api.server._run_rebuild")
