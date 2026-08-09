@@ -28,3 +28,7 @@ class ProviderError(NimbusError):
 
 class AppLaunchError(NimbusError):
     """A discovered app wouldn't launch."""
+
+
+class HotkeyError(NimbusError):
+    """The configured hotkey string is invalid, or the OS refused to register it."""

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from core.exceptions import (
     AppLaunchError,
+    HotkeyError,
     IndexingError,
     NimbusError,
     ParsingError,
@@ -28,6 +29,7 @@ __all__ = [
     "QueryError",
     "ProviderError",
     "AppLaunchError",
+    "HotkeyError",
     "get_logger",
     "VectorStore",
     "Embedder",
