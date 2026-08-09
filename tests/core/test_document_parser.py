@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from markitdown import UnsupportedFormatException
 from pytest_mock import MockerFixture
 
 from core.document_parser import extract_document_text, parse_document
-from core.exceptions import ParsingError
+from core.exceptions import ParsingError, UnsupportedFileTypeError
 from models.schema import ParsedDocument
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
@@ -56,7 +57,7 @@ def test_parse_document_flags_needs_ocr_when_docling_is_also_thin(mocker: Mocker
 def test_parse_document_flags_needs_ocr_for_a_thin_non_pdf_without_trying_docling(mocker: MockerFixture) -> None:
     mocker.patch("core.document_parser._parse_with_markitdown", return_value="short")
     docling_spy = mocker.patch("core.document_parser._parse_with_docling")
-    result = parse_document(Path("note.txt"))
+    result = parse_document(Path("note.rtf"))
     assert result.needs_ocr
     docling_spy.assert_not_called()
 
@@ -64,6 +65,45 @@ def test_parse_document_flags_needs_ocr_for_a_thin_non_pdf_without_trying_doclin
 def test_parse_document_raises_parsing_error_for_a_missing_file() -> None:
     with pytest.raises(ParsingError):
         parse_document(FIXTURES / "does-not-exist.docx")
+
+
+def test_parse_document_bypasses_markitdown_for_a_txt_file(tmp_path: Path, mocker: MockerFixture) -> None:
+    markitdown_spy = mocker.patch("core.document_parser._parse_with_markitdown")
+    txt_file = tmp_path / "note.txt"
+    txt_file.write_text("plain ascii text", encoding="utf-8")
+
+    result = parse_document(txt_file)
+
+    assert result.markdown_text == "plain ascii text"
+    markitdown_spy.assert_not_called()
+
+
+def test_parse_document_reads_a_markdown_file_with_non_ascii_characters_directly(tmp_path: Path) -> None:
+    md_file = tmp_path / "notes.md"
+    content = "Smart quotes: “Hello” — an em dash too. " * 5
+    md_file.write_text(content, encoding="utf-8")
+
+    result = parse_document(md_file)
+
+    assert "Hello" in result.markdown_text
+    assert "—" in result.markdown_text
+    assert not result.needs_ocr
+
+
+def test_parse_document_raises_parsing_error_for_a_missing_markdown_file(tmp_path: Path) -> None:
+    with pytest.raises(ParsingError):
+        parse_document(tmp_path / "does-not-exist.md")
+
+
+def test_parse_with_markitdown_raises_unsupported_file_type_error_for_an_unsupported_format(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch("core.document_parser.MarkItDown").return_value.convert.side_effect = UnsupportedFormatException(
+        "no converter found"
+    )
+
+    with pytest.raises(UnsupportedFileTypeError):
+        parse_document(Path("model.blend"))
 
 
 def test_extract_document_text_returns_the_parsed_text_directly() -> None:

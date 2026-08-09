@@ -7,7 +7,7 @@ from logging.handlers import RotatingFileHandler
 import pytest
 
 import core.logger as logger_module
-from core.logger import _ContextFormatter, get_logger
+from core.logger import LOG_FORMAT, _ContextFormatter, get_logger
 
 
 @pytest.fixture
@@ -48,6 +48,22 @@ def test_context_formatter_appends_extra_fields() -> None:
 def test_context_formatter_leaves_a_plain_message_unchanged() -> None:
     record = logging.LogRecord("nimbus.test", logging.INFO, __file__, 1, "Nimbus starting up", None, None)
     assert _ContextFormatter("%(message)s").format(record) == "Nimbus starting up"
+
+
+def test_context_formatter_does_not_leak_message_or_asctime_across_shared_handlers() -> None:
+    """Reproduces the real bug: two handlers on the same logger receive the SAME LogRecord.
+    The first handler's format() call bakes message/asctime into record.__dict__, and the
+    second handler's format() call must not misread those as extra fields."""
+    record = logging.LogRecord("nimbus.test", logging.INFO, __file__, 1, "Indexed file", None, None)
+    stdout_formatter = _ContextFormatter(LOG_FORMAT)
+    file_formatter = _ContextFormatter(LOG_FORMAT)
+
+    first_output = stdout_formatter.format(record)
+    second_output = file_formatter.format(record)
+
+    for output in (first_output, second_output):
+        assert "message=" not in output
+        assert "asctime=" not in output
 
 
 def test_configure_root_logger_creates_the_logs_directory(clean_logging_state) -> None:

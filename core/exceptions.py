@@ -18,6 +18,10 @@ class ParsingError(NimbusError):
     """A document couldn't be converted to text."""
 
 
+class UnsupportedFileTypeError(ParsingError):
+    """No converter exists for this file's type — expected for some files, not a real failure."""
+
+
 class QueryError(NimbusError):
     """A query couldn't be routed, retrieved, or answered."""
 

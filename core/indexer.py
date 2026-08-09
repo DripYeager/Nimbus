@@ -13,7 +13,7 @@ from uuid import uuid4
 from config.settings import get_settings
 from core.document_parser import extract_document_text
 from core.embedder import Embedder
-from core.exceptions import IndexingError, NimbusError
+from core.exceptions import IndexingError, NimbusError, UnsupportedFileTypeError
 from core.logger import get_logger
 from core.text_chunker import chunk_text
 from core.vector_store import VectorStore
@@ -56,6 +56,8 @@ class Indexer:
         for path in sorted(p for p in root.rglob("*") if p.is_file()):
             try:
                 total += self.index_file(path)
+            except UnsupportedFileTypeError as e:
+                logger.info("Skipping file with no available converter", extra={"path": str(path), "error": str(e)})
             except NimbusError as e:
                 logger.error("Skipping file that failed to index", extra={"path": str(path), "error": str(e)})
         return total

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from core.embedder import Embedder
-from core.exceptions import IndexingError, ParsingError
+from core.exceptions import IndexingError, ParsingError, UnsupportedFileTypeError
 from core.indexer import Indexer
 from core.vector_store import VectorStore
 from models.schema import IndexedChunk, ParsedDocument
@@ -130,6 +131,30 @@ def test_index_directory_sums_chunks_across_files(
 
     assert total == 2
     assert store.upsert_chunks.call_count == 2
+
+
+def test_index_directory_logs_an_unsupported_file_type_at_info_not_error(
+    tmp_path: Path,
+    store: VectorStore,
+    embedder: Embedder,
+    mocker: MockerFixture,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    mocker.patch(
+        "core.document_parser.parse_document",
+        side_effect=UnsupportedFileTypeError("no converter for .blend"),
+    )
+    (tmp_path / "model.blend").write_bytes(b"fake binary content")
+
+    with caplog.at_level(logging.INFO):
+        total = Indexer(store, embedder).index_directory(tmp_path)
+
+    assert total == 0
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+    blend_path = str(tmp_path / "model.blend")
+    assert any(
+        record.levelno == logging.INFO and getattr(record, "path", None) == blend_path for record in caplog.records
+    )
 
 
 def test_index_directory_skips_a_file_that_fails_and_keeps_going(

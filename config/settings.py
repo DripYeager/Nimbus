@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     lancedb_path: Path = Path("./data/index")
 
     hotkey: str = "<ctrl>+<space>"
+    # a hard safety backstop, not a typical-response expectation — err generous, since a cloud
+    # provider map-reducing over several documents can legitimately take a while to answer
+    thinking_timeout_seconds: int = 60
 
     # host is not configurable on purpose — see api/server.py, it's always 127.0.0.1
     api_port: int = 8765

@@ -15,7 +15,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from config.settings import get_settings
-from core.exceptions import NimbusError
+from core.exceptions import NimbusError, UnsupportedFileTypeError
 from core.indexer import Indexer
 from core.logger import get_logger
 from core.vector_store import VectorStore
@@ -141,6 +141,8 @@ class FileWatcher:
         try:
             self._indexer.index_file(path)
             self._state.mark_indexed(str(path))
+        except UnsupportedFileTypeError as e:
+            logger.info("Skipping file with no available converter", extra={"path": str(path), "error": str(e)})
         except NimbusError as e:
             logger.error("Failed to index changed file", extra={"path": str(path), "error": str(e)})
 

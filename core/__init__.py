@@ -10,6 +10,7 @@ from core.exceptions import (
     ParsingError,
     ProviderError,
     QueryError,
+    UnsupportedFileTypeError,
 )
 from core.document_parser import extract_document_text, parse_document
 from core.embedder import Embedder, get_embedder
@@ -26,6 +27,7 @@ __all__ = [
     "NimbusError",
     "IndexingError",
     "ParsingError",
+    "UnsupportedFileTypeError",
     "QueryError",
     "ProviderError",
     "AppLaunchError",

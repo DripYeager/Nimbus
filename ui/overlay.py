@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from config.settings import get_settings
 from core.logger import get_logger
 from models.schema import SourceRef
 from ui.overlay_shapes import CloudGlyph, OverlayCard
@@ -51,7 +52,6 @@ from ui.overlay_theme import (
     SHADOW_OFFSET_Y,
     SHADOW_RGBA,
     TEXT_PRIMARY,
-    THINKING_TIMEOUT_MS,
     TIMEOUT_MESSAGE,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
@@ -127,7 +127,7 @@ class OverlayWindow(QWidget):
         self._thinking = True
         self._glyph.show()
         self._start_bob_animation()
-        self._timeout_timer.start(THINKING_TIMEOUT_MS)
+        self._timeout_timer.start(get_settings().thinking_timeout_seconds * 1000)
 
     def append_answer_token(self, token: str) -> None:
         """Appends streamed text to the answer; the first token proves the provider answered."""

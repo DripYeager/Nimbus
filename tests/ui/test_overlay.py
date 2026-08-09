@@ -52,6 +52,14 @@ def test_start_thinking_sets_is_thinking_true_and_shows_glyph(window: OverlayWin
     assert not window._glyph.isHidden()
 
 
+def test_start_thinking_starts_the_timeout_timer_from_settings(window: OverlayWindow, mocker) -> None:
+    mocker.patch("ui.overlay.get_settings", return_value=mocker.Mock(thinking_timeout_seconds=90))
+
+    window.start_thinking()
+
+    assert window._timeout_timer.interval() == 90_000
+
+
 def test_append_answer_token_stops_thinking_on_first_token(window: OverlayWindow) -> None:
     window.start_thinking()
 

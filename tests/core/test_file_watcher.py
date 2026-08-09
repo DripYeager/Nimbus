@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
+import pytest
 from pytest_mock import MockerFixture
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileDeletedEvent, FileMovedEvent
 
-from core.exceptions import IndexingError
+from core.exceptions import IndexingError, UnsupportedFileTypeError
 from core.file_watcher import DEBOUNCE_SECONDS, FileWatcher, IndexingState, _WatchHandler
 from core.indexer import Indexer
 from core.vector_store import VectorStore
@@ -142,6 +144,21 @@ def test_handle_changed_logs_and_swallows_an_indexing_error(mocker: MockerFixtur
     time.sleep(SETTLE_SECONDS)
 
     assert state.indexed_files == 0
+
+
+def test_handle_changed_logs_an_unsupported_file_type_at_info_not_error(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+) -> None:
+    watcher, indexer, _, state = _watcher(mocker)
+    indexer.index_file.side_effect = UnsupportedFileTypeError("no converter for .blend")
+
+    with caplog.at_level(logging.INFO):
+        watcher.handle_changed(Path("C:/Downloads/model.blend"))
+        time.sleep(SETTLE_SECONDS)
+
+    assert state.indexed_files == 0
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+    assert any(record.levelno == logging.INFO for record in caplog.records)
 
 
 def test_handle_removed_deletes_immediately_with_no_debounce(mocker: MockerFixture) -> None:

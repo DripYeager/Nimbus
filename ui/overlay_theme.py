@@ -35,7 +35,6 @@ RISE_OFFSET_PX = 8
 GLYPH_SIZE = 20
 BOB_AMPLITUDE_PX = 3
 BOB_PERIOD_MS = 1200
-THINKING_TIMEOUT_MS = 15_000
 
 PLACEHOLDER_TEXT = "Where to?"
 TIMEOUT_MESSAGE = "Nimbus didn't hear back from the model in time."

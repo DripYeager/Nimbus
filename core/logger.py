@@ -20,7 +20,11 @@ LOG_FILE = LOG_DIR / "nimbus.log"
 MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
 
-_STANDARD_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__)
+# message/asctime are added to a record by Formatter.format() itself, not present on a fresh
+# record — but with two handlers sharing one record, the first handler's format() call bakes
+# them into record.__dict__ before the second handler's format() ever runs. Excluding them here
+# explicitly means correctness doesn't depend on which handler runs first.
+_STANDARD_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime"}
 _configured = False
 
 
@@ -28,7 +32,6 @@ class _ContextFormatter(logging.Formatter):
     """Appends any extra={...} fields from a log call — otherwise they're silently dropped."""
 
     def format(self, record: logging.LogRecord) -> str:
-        # Read extras before super().format() mutates the record with its own 'message'/'asctime'.
         extras = {k: v for k, v in record.__dict__.items() if k not in _STANDARD_RECORD_ATTRS}
         base = super().format(record)
         if not extras:
