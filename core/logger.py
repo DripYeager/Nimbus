@@ -1,15 +1,24 @@
 """
-Provides a single, centralized logging setup for the whole application.
-Does not decide what to log or at what level — callers request a logger and log at the level they choose.
+Provides a single, centralized logging setup for the whole application: an INFO-level stream
+to stdout and a size-capped rotating file under logs/ at the repo root, so a background daemon
+without a visible console still leaves a trail. Does not decide what to log or at what level —
+callers request a logger and log at the level they choose.
 """
 
 from __future__ import annotations
 
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 DEFAULT_LOG_LEVEL = logging.INFO
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+
+LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_FILE = LOG_DIR / "nimbus.log"
+MAX_LOG_BYTES = 5 * 1024 * 1024
+LOG_BACKUP_COUNT = 3
 
 _STANDARD_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__)
 _configured = False
@@ -28,16 +37,26 @@ class _ContextFormatter(logging.Formatter):
 
 
 def _configure_root_logger() -> None:
-    """Attaches a single stdout handler to the root logger, once per process."""
+    """Attaches a stdout handler and a rotating file handler to the root logger, once per process."""
     global _configured
     if _configured:
         return
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(_ContextFormatter(LOG_FORMAT))
+    formatter = _ContextFormatter(LOG_FORMAT)
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(formatter)
+    file_handler = _build_file_handler()
+    file_handler.setFormatter(formatter)
     root = logging.getLogger()
     root.setLevel(DEFAULT_LOG_LEVEL)
-    root.addHandler(handler)
+    root.addHandler(stdout_handler)
+    root.addHandler(file_handler)
     _configured = True
+
+
+def _build_file_handler() -> RotatingFileHandler:
+    """Creates logs/ if needed and returns a size-capped rotating file handler over nimbus.log."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    return RotatingFileHandler(LOG_FILE, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8")
 
 
 def get_logger(name: str) -> logging.Logger:

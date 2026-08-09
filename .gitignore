@@ -4,6 +4,9 @@
 # Vector store data
 data/index/
 
+# Logs
+logs/
+
 # Python
 __pycache__/
 *.pyc
