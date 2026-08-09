@@ -55,5 +55,7 @@ def test_get_provider_raises_for_an_unrecognized_provider() -> None:
         get_provider(_fake_settings("bogus"))
 
 
-def test_get_provider_defaults_to_the_real_settings_singleton() -> None:
-    assert isinstance(get_provider(), OllamaProvider)
+def test_get_provider_defaults_to_get_settings_when_none_is_given(mocker: MockerFixture) -> None:
+    """Omitting settings must fall back to the real get_settings() call, not silently do nothing."""
+    mocker.patch("llm.provider.get_settings", return_value=_fake_settings("openai"))
+    assert isinstance(get_provider(), OpenAIProvider)

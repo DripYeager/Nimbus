@@ -39,7 +39,26 @@ class QueryEngine:
         start = time.monotonic()
         intent = classify_intent(text, provider=self._provider)
         tool_provider = _UsageTrackingProvider(self._provider)
-        answer, sources = self._route(text, intent, tool_provider)
+        result = self._route(text, intent, tool_provider)
+        return self._build_response(intent, result, tool_provider, start)
+
+    def handle_downloads_today(self) -> QueryResponse:
+        """Summarizes today's downloads directly — the intent is fixed by this entry point, so
+        there's no free-text query to classify."""
+        start = time.monotonic()
+        tool_provider = _UsageTrackingProvider(self._provider)
+        result = self._handle_downloads_today(tool_provider)
+        return self._build_response(Intent.DOWNLOADS_TODAY, result, tool_provider, start)
+
+    def _build_response(
+        self,
+        intent: Intent,
+        result: tuple[str, list[SourceRef]],
+        tool_provider: _UsageTrackingProvider,
+        start: float,
+    ) -> QueryResponse:
+        """Shared response assembly for both handle_query and handle_downloads_today."""
+        answer, sources = result
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return QueryResponse(
             answer=answer, intent=intent, sources=sources, used_llm=tool_provider.was_used, elapsed_ms=elapsed_ms

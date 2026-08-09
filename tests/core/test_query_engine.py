@@ -133,6 +133,46 @@ def test_downloads_today_used_llm_false_when_the_tool_short_circuits(mocker: Moc
     provider.complete.assert_not_called()
 
 
+def test_handle_downloads_today_used_llm_true_when_the_tool_calls_the_provider(mocker: MockerFixture) -> None:
+    engine, _, _, _ = _engine(mocker)
+
+    def fake_summarize(tracked_provider: LLMProvider) -> str:
+        tracked_provider.complete("irrelevant prompt")
+        return "digest of downloads"
+
+    mocker.patch("tools.summary_tools.summarize_todays_downloads", side_effect=fake_summarize)
+
+    response = engine.handle_downloads_today()
+
+    assert response.intent == Intent.DOWNLOADS_TODAY
+    assert response.answer == "digest of downloads"
+    assert response.used_llm is True
+    assert response.sources == []
+
+
+def test_handle_downloads_today_used_llm_false_when_the_tool_short_circuits(mocker: MockerFixture) -> None:
+    engine, provider, _, _ = _engine(mocker)
+    mocker.patch("tools.summary_tools.summarize_todays_downloads", return_value="No files were downloaded today.")
+
+    response = engine.handle_downloads_today()
+
+    assert response.answer == "No files were downloaded today."
+    assert response.used_llm is False
+    provider.complete.assert_not_called()
+
+
+def test_handle_downloads_today_skips_intent_classification(mocker: MockerFixture) -> None:
+    """No text is ever classified — the intent is fixed by calling this entry point at all."""
+    engine, provider, _, _ = _engine(mocker)
+    mocker.patch("tools.summary_tools.summarize_todays_downloads", return_value="No files were downloaded today.")
+    classify_spy = mocker.patch("core.query_engine.classify_intent")
+
+    engine.handle_downloads_today()
+
+    classify_spy.assert_not_called()
+    provider.complete.assert_not_called()
+
+
 def test_summarize_used_llm_true_when_a_matching_file_is_found(mocker: MockerFixture) -> None:
     engine, _, _, _ = _engine(mocker)
     mocker.patch(
