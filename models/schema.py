@@ -5,11 +5,20 @@ Does not contain business logic — validation only.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel
+
+
+@dataclass
+class ParsedDocument:
+    """What document_parser hands to the indexer, before chunking or embedding happens."""
+
+    markdown_text: str
+    needs_ocr: bool
 
 
 class Intent(Enum):

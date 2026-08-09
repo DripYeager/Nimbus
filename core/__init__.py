@@ -10,7 +10,13 @@ from core.exceptions import (
     ProviderError,
     QueryError,
 )
+from core.document_parser import parse_document
+from core.embedder import Embedder, get_embedder
+from core.indexer import Indexer
 from core.logger import get_logger
+from core.ocr_fallback import extract_text_with_ocr
+from core.text_chunker import chunk_text
+from core.vector_store import VectorStore
 
 __all__ = [
     "NimbusError",
@@ -20,4 +26,11 @@ __all__ = [
     "ProviderError",
     "AppLaunchError",
     "get_logger",
+    "VectorStore",
+    "Embedder",
+    "get_embedder",
+    "chunk_text",
+    "parse_document",
+    "extract_text_with_ocr",
+    "Indexer",
 ]

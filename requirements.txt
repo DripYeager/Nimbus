@@ -9,12 +9,12 @@ uvicorn==0.52.1
 python-multipart==0.0.32
 
 # Document parsing
-markitdown==0.1.7
+markitdown[all]==0.1.7
 docling==2.118.1
 
-# OCR fallback
-pytesseract==0.3.13
-pdf2image==1.17.0
+# OCR fallback — pure Python/ONNX, no external binary like Tesseract or Poppler to install
+rapidocr==3.9.2
+pypdfium2==5.12.1
 
 # Embeddings & vector store
 sentence-transformers==5.7.0
