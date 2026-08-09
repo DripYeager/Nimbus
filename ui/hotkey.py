@@ -16,6 +16,7 @@ from core.logger import get_logger
 logger = get_logger(__name__)
 
 DEBOUNCE_SECONDS = 0.5
+STOP_JOIN_TIMEOUT_SECONDS = 2.0
 
 
 class HotkeyListener(QObject):
@@ -39,9 +40,11 @@ class HotkeyListener(QObject):
         logger.info("Hotkey listener started", extra={"hotkey": self._hotkey})
 
     def stop(self) -> None:
-        """Stops listening. Safe to call even if start() was never called."""
+        """Stops listening and waits for the background thread to actually exit. Safe to call
+        even if start() was never called."""
         if self._listener is not None:
             self._listener.stop()
+            self._listener.join(timeout=STOP_JOIN_TIMEOUT_SECONDS)
             self._listener = None
             logger.info("Hotkey listener stopped", extra={"hotkey": self._hotkey})
 

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from core.logger import get_logger
+import sys
 
-logger = get_logger(__name__)
+from core.app_runtime import AppRuntime
 
 
 def main() -> None:
-    """Just proves the entry point boots — app_runtime takes over later."""
-    logger.info("Nimbus starting up")
+    """Builds and runs the app, propagating its Qt exit code to the process exit code."""
+    sys.exit(AppRuntime().start())
 
 
 if __name__ == "__main__":

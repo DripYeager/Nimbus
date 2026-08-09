@@ -10,6 +10,7 @@ import api.server as server_module
 from api.server import app, get_indexer, get_query_engine
 from core.embedder import get_embedder
 from core.exceptions import ProviderError
+from core.file_watcher import IndexingState
 from core.indexer import Indexer
 from core.query_engine import QueryEngine
 from core.vector_store import VectorStore
@@ -19,6 +20,15 @@ from models.schema import Intent, ParsedDocument, QueryDone, QueryResponse, Quer
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture
+def indexing_state() -> IndexingState:
+    """Injects a fresh IndexingState directly, the same way app_runtime does in the real app —
+    avoids paying for the full lifespan (real VectorStore + embedder) just for these routes."""
+    state = IndexingState()
+    app.state.indexing_state = state
+    return state
 
 
 @pytest.fixture(autouse=True)
@@ -136,14 +146,15 @@ def test_downloads_today_calls_handle_downloads_today_directly(client: TestClien
     engine.handle_query.assert_not_called()
 
 
-def test_index_pause_marks_indexing_paused(client: TestClient) -> None:
+def test_index_pause_marks_indexing_paused(client: TestClient, indexing_state: IndexingState) -> None:
     response = client.post("/index/pause")
 
     assert response.status_code == 200
     assert response.json()["is_paused"] is True
+    assert indexing_state.is_paused is True
 
 
-def test_index_resume_marks_indexing_not_paused(client: TestClient) -> None:
+def test_index_resume_marks_indexing_not_paused(client: TestClient, indexing_state: IndexingState) -> None:
     client.post("/index/pause")
 
     response = client.post("/index/resume")
@@ -152,12 +163,16 @@ def test_index_resume_marks_indexing_not_paused(client: TestClient) -> None:
     assert response.json()["is_paused"] is False
 
 
-def test_index_pause_state_persists_across_requests(client: TestClient) -> None:
-    client.post("/index/pause")
+def test_index_status_reports_real_counts_from_indexing_state(
+    client: TestClient, indexing_state: IndexingState
+) -> None:
+    indexing_state.mark_indexed("a.txt")
+    indexing_state.mark_indexed("b.txt")
+    indexing_state.pending_files = 3
 
     status = client.post("/index/resume").json()
 
-    assert status == {"total_files": 0, "indexed_files": 0, "pending": 0, "is_paused": False, "last_error": None}
+    assert status == {"total_files": 5, "indexed_files": 2, "pending": 3, "is_paused": False, "last_error": None}
 
 
 def test_index_rebuild_schedules_a_background_task(client: TestClient, mocker: MockerFixture) -> None:

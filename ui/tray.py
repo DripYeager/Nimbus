@@ -44,6 +44,11 @@ class TrayIcon:
         """Shows the tray icon and blocks until stop() is called — must run on the main thread."""
         self._icon.run()
 
+    def run_detached(self) -> None:
+        """Shows the tray icon on its own thread and returns immediately — for a host process
+        (like Qt) that already needs the main thread for its own event loop."""
+        self._icon.run_detached()
+
     def stop(self) -> None:
         """Hides the tray icon and unblocks run()."""
         self._icon.stop()

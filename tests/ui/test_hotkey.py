@@ -44,6 +44,7 @@ def test_stop_stops_the_underlying_listener(mocker: MockerFixture) -> None:
     listener.stop()
 
     global_hotkeys_cls.return_value.stop.assert_called_once()
+    global_hotkeys_cls.return_value.join.assert_called_once()
 
 
 def test_activate_emits_summoned(mocker: MockerFixture) -> None:

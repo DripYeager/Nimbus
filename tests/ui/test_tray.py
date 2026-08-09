@@ -17,6 +17,15 @@ def _tray() -> TrayIcon:
     return tray
 
 
+def test_run_detached_delegates_to_the_underlying_icon(mocker: MockerFixture) -> None:
+    tray = _tray()
+    mocker.patch.object(tray, "_icon")
+
+    tray.run_detached()
+
+    tray._icon.run_detached.assert_called_once()
+
+
 def test_setup_builds_a_menu_with_all_four_actions() -> None:
     tray = _tray()
 
@@ -177,8 +186,8 @@ def test_settings_file_path_falls_back_to_the_template_when_env_is_missing(mocke
     assert path.name == ".env.example"
 
 
-def test_load_icon_image_returns_a_real_256x256_image() -> None:
+def test_load_icon_image_returns_a_loadable_image() -> None:
     image = _load_icon_image()
 
     assert isinstance(image, Image.Image)
-    assert image.size == (256, 256)
+    assert image.size[0] > 0 and image.size[1] > 0

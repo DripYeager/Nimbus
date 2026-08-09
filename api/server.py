@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from config.settings import get_settings
 from core.embedder import get_embedder
 from core.exceptions import NimbusError
+from core.file_watcher import IndexingState
 from core.indexer import Indexer
 from core.query_engine import QueryEngine
 from core.retriever import Retriever
@@ -33,7 +34,14 @@ _rebuild_lock = threading.Lock()
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Builds the shared store/retriever/provider/engine once per process, not once per request."""
+    """Builds the shared store/retriever/provider/engine/indexing-state once per process, reusing
+    anything app_runtime already attached to app.state before startup so the watcher and the API
+    share the same Indexer and IndexingState instead of independent copies."""
+    if not hasattr(app.state, "indexing_state"):
+        app.state.indexing_state = IndexingState()
+    if hasattr(app.state, "query_engine"):
+        yield
+        return
     store = VectorStore()
     store.connect()
     embedder = get_embedder()
@@ -41,7 +49,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.store = store
     app.state.indexer = Indexer(store, embedder)
     app.state.query_engine = QueryEngine(Retriever(store, embedder), provider, store)
-    app.state.indexing_paused = False
     yield
 
 
@@ -102,24 +109,27 @@ def index_rebuild(
 
 @app.post("/index/pause")
 def index_pause(request: Request) -> IndexStatus:
-    """Pauses background indexing. file_watcher.py will honor this flag once it exists to
-    actually skip events; for now this only tracks the state the tray reflects."""
-    request.app.state.indexing_paused = True
+    """Pauses background indexing — file_watcher.py checks this flag before processing any event."""
+    request.app.state.indexing_state.is_paused = True
     return _index_status(request)
 
 
 @app.post("/index/resume")
 def index_resume(request: Request) -> IndexStatus:
     """Resumes background indexing previously paused via /index/pause."""
-    request.app.state.indexing_paused = False
+    request.app.state.indexing_state.is_paused = False
     return _index_status(request)
 
 
 def _index_status(request: Request) -> IndexStatus:
-    """Builds the current IndexStatus. File/pending counts become real once file_watcher.py
-    tracks a watch queue — until then they report zero rather than a guess."""
+    """Builds the current IndexStatus from the shared IndexingState file_watcher.py maintains."""
+    state = request.app.state.indexing_state
     return IndexStatus(
-        total_files=0, indexed_files=0, pending=0, is_paused=request.app.state.indexing_paused, last_error=None
+        total_files=state.total_files,
+        indexed_files=state.indexed_files,
+        pending=state.pending_files,
+        is_paused=state.is_paused,
+        last_error=None,
     )
 
 
