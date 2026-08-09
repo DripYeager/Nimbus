@@ -25,9 +25,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # ollama runs fully local, so it's the only provider that never ships file contents off the machine
-    llm_provider: Literal["ollama", "anthropic", "openai"] = "ollama"
+    llm_provider: Literal["ollama", "deepinfra", "anthropic", "openai"] = "ollama"
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
+    deepinfra_api_key: str | None = None
+    deepinfra_model: str = "deepseek-ai/DeepSeek-V4-Flash-0731"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-3-5-haiku-latest"
     openai_api_key: str | None = None

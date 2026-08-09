@@ -5,6 +5,7 @@ Does not parse, chunk, or embed anything; it just persists and retrieves Indexed
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -53,14 +54,22 @@ class VectorStore:
         except Exception as e:
             raise IndexingError(f"Failed to write {len(chunks)} chunk(s) to the vector store: {e}") from e
 
-    def search(self, query_vector: list[float], top_k: int = 5, file_type: str | None = None) -> list[SearchResult]:
-        """Returns the top_k chunks nearest to query_vector, optionally restricted to one file_type."""
+    def search(
+        self,
+        query_vector: list[float],
+        top_k: int = 5,
+        file_type: str | None = None,
+        modified_after: datetime | None = None,
+    ) -> list[SearchResult]:
+        """Returns the top_k chunks nearest to query_vector, optionally filtered by file_type or recency."""
         if self._table is None:
             return []
         try:
             query = self._table.search(query_vector).limit(top_k)
             if file_type is not None:
                 query = query.where(f"file_type = '{_escape_sql(file_type)}'")
+            if modified_after is not None:
+                query = query.where(f"modified_at >= timestamp '{modified_after.isoformat()}'")
             rows = query.to_list()
         except Exception as e:
             raise QueryError(f"Vector search failed: {e}") from e
@@ -138,7 +147,11 @@ def _row_to_search_result(row: dict[str, Any]) -> SearchResult:
         file_path=row["file_path"],
         file_name=row["file_name"],
         score=float(row.get("_distance", 0.0)),
-        metadata={"file_type": row["file_type"], "chunk_index": row["chunk_index"]},
+        metadata={
+            "file_type": row["file_type"],
+            "chunk_index": row["chunk_index"],
+            "modified_at": row["modified_at"],
+        },
     )
 
 

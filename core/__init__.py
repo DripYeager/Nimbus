@@ -13,8 +13,10 @@ from core.exceptions import (
 from core.document_parser import parse_document
 from core.embedder import Embedder, get_embedder
 from core.indexer import Indexer
+from core.intent_router import classify_intent
 from core.logger import get_logger
 from core.ocr_fallback import extract_text_with_ocr
+from core.retriever import Retriever
 from core.text_chunker import chunk_text
 from core.vector_store import VectorStore
 
@@ -33,4 +35,6 @@ __all__ = [
     "parse_document",
     "extract_text_with_ocr",
     "Indexer",
+    "Retriever",
+    "classify_intent",
 ]

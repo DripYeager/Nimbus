@@ -10,8 +10,12 @@ from core.vector_store import VectorStore
 from models.schema import IndexedChunk
 
 
-def _make_chunk(file_path: str, chunk_index: int = 0, content_hash: str = "hash-a") -> IndexedChunk:
-    now = datetime(2026, 1, 1, 12, 0, 0)
+def _make_chunk(
+    file_path: str,
+    chunk_index: int = 0,
+    content_hash: str = "hash-a",
+    modified_at: datetime = datetime(2026, 1, 1, 12, 0, 0),
+) -> IndexedChunk:
     return IndexedChunk(
         id=f"{file_path}:{chunk_index}",
         file_path=file_path,
@@ -21,9 +25,9 @@ def _make_chunk(file_path: str, chunk_index: int = 0, content_hash: str = "hash-
         chunk_index=chunk_index,
         chunk_text=f"chunk {chunk_index} of {file_path}",
         vector=[0.1, 0.2, 0.3, 0.4],
-        created_at=now,
-        modified_at=now,
-        indexed_at=now,
+        created_at=modified_at,
+        modified_at=modified_at,
+        indexed_at=modified_at,
     )
 
 
@@ -70,6 +74,17 @@ def test_search_returns_the_nearest_chunks(store: VectorStore) -> None:
     results = store.search([0.1, 0.2, 0.3, 0.4], top_k=1)
     assert len(results) == 1
     assert results[0].file_name in {"a.txt", "b.txt"}
+
+
+def test_search_filters_out_chunks_older_than_modified_after(store: VectorStore) -> None:
+    store.upsert_chunks(
+        [
+            _make_chunk("C:/docs/old.txt", modified_at=datetime(2026, 1, 1)),
+            _make_chunk("C:/docs/new.txt", modified_at=datetime(2026, 8, 1)),
+        ]
+    )
+    results = store.search([0.1, 0.2, 0.3, 0.4], top_k=5, modified_after=datetime(2026, 6, 1))
+    assert [r.file_name for r in results] == ["new.txt"]
 
 
 def test_search_returns_empty_list_before_anything_is_indexed(store: VectorStore) -> None:
