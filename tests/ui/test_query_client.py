@@ -67,7 +67,7 @@ def test_sources_received_sets_the_overlays_sources(client: QueryClient, overlay
 
     client._sources_received.emit(sources)
 
-    assert overlay._sources_label.text() == "a.pdf"
+    assert "a.pdf" in overlay._sources_label.text()
 
 
 def test_failed_shows_the_error_on_the_overlay(client: QueryClient, overlay: OverlayWindow) -> None:

@@ -97,7 +97,7 @@ def test_handle_timeout_shows_the_timeout_message(window: OverlayWindow) -> None
     assert "didn't hear back" in window._status_label.text()
 
 
-def test_set_sources_renders_muted_file_names(window: OverlayWindow) -> None:
+def test_set_sources_renders_each_file_name_as_a_clickable_link(window: OverlayWindow) -> None:
     sources = [
         SourceRef(file_name="invoice.pdf", file_path="C:/invoice.pdf", score=0.9),
         SourceRef(file_name="report.docx", file_path="C:/report.docx", score=0.7),
@@ -105,7 +105,10 @@ def test_set_sources_renders_muted_file_names(window: OverlayWindow) -> None:
 
     window.set_sources(sources)
 
-    assert window._sources_label.text() == "invoice.pdf · report.docx"
+    text = window._sources_label.text()
+    assert "invoice.pdf" in text
+    assert "report.docx" in text
+    assert "<a href=" in text
 
 
 def test_key_press_event_escape_calls_dismiss(window: OverlayWindow, mocker) -> None:

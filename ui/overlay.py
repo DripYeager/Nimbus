@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
 from core.logger import get_logger
 from models.schema import SourceRef
 from ui.overlay_shapes import CloudGlyph, OverlayCard
+from ui.overlay_sources import SourceCitations
 from ui.overlay_theme import (
     ACCENT_GOLD,
     ANSWER_HEIGHT,
@@ -49,7 +50,6 @@ from ui.overlay_theme import (
     SHADOW_MARGIN,
     SHADOW_OFFSET_Y,
     SHADOW_RGBA,
-    TEXT_MUTED,
     TEXT_PRIMARY,
     THINKING_TIMEOUT_MS,
     TIMEOUT_MESSAGE,
@@ -84,7 +84,7 @@ class OverlayWindow(QWidget):
         self._answer_buffer = ""
         self._glyph: CloudGlyph | None = None
         self._status_label: QLabel | None = None
-        self._sources_label: QLabel | None = None
+        self._sources_label: SourceCitations | None = None
         self._bob_animation: QVariantAnimation | None = None
         self._motion_animation: QParallelAnimationGroup | None = None
         self._timeout_timer: QTimer | None = None
@@ -96,6 +96,7 @@ class OverlayWindow(QWidget):
         self._build_layout()
         self._apply_styles()
         self._input.returnPressed.connect(self._handle_return_pressed)
+        self._sources_label.open_failed.connect(self.show_error)
 
     def is_thinking(self) -> bool:
         """True while waiting on a response — the thinking glyph is bobbing."""
@@ -143,8 +144,8 @@ class OverlayWindow(QWidget):
         self._status_label.setText(message)
 
     def set_sources(self, sources: list[SourceRef]) -> None:
-        """Renders source file names as muted citation text below the answer."""
-        self._sources_label.setText(" · ".join(source.file_name for source in sources))
+        """Delegates to the sources row — each citation becomes a clickable link to its file."""
+        self._sources_label.set_sources(sources)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Esc dismisses the overlay; everything else goes to the focused child widget."""
@@ -195,7 +196,7 @@ class OverlayWindow(QWidget):
 
         self._glyph = CloudGlyph(self._card)
         self._status_label = QLabel(self._card)
-        self._sources_label = QLabel(self._card)
+        self._sources_label = SourceCitations(self._card)
 
         status_row = QHBoxLayout()
         status_row.addWidget(self._glyph)
@@ -218,7 +219,6 @@ class OverlayWindow(QWidget):
             f"body {{ color: {TEXT_PRIMARY}; font-size: 14px; line-height: 150%; }}"
         )
         self._status_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 12px;")
-        self._sources_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px;")
         self._glyph.hide()
 
     def _play_enter(self, final_pos: QPoint) -> None:
