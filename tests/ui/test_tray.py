@@ -1,193 +1,195 @@
 from __future__ import annotations
 
-from pathlib import Path
+from collections.abc import Iterator
+from typing import Any
+from unittest.mock import Mock
 
-import httpx
-import pystray
-from PIL import Image
+import pytest
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QSystemTrayIcon
 from pytest_mock import MockerFixture
 
+from core.exceptions import NimbusError
 from models.schema import IndexStatus
-from ui.tray import TrayIcon, _load_icon_image, _notify_safely, _post_for_status, _settings_file_path
+from ui.api_client import ApiClient
+from ui.tray import TOOLTIP_TITLE, TrayIcon
 
 
-def _tray() -> TrayIcon:
-    tray = TrayIcon()
-    tray.setup()
-    return tray
+def _synchronous(fn: Any, ok: Any, err: Any = None) -> None:
+    """run_in_background without the thread pool, including the error path."""
+    try:
+        result = fn()
+    except NimbusError as e:
+        if err is not None:
+            err(str(e))
+        return
+    ok(result)
 
 
-def test_run_detached_delegates_to_the_underlying_icon(mocker: MockerFixture) -> None:
-    tray = _tray()
-    mocker.patch.object(tray, "_icon")
+@pytest.fixture
+def api(mocker: MockerFixture) -> Mock:
+    fake = mocker.Mock(spec=ApiClient)
+    fake.index_status.return_value = IndexStatus(cataloged_files=40)
+    fake.set_paused.return_value = IndexStatus(is_paused=True)
+    fake.rebuild_index.return_value = IndexStatus(is_scanning=True)
+    return fake
 
-    tray.run_detached()
 
-    tray._icon.run_detached.assert_called_once()
+@pytest.fixture
+def tray(mocker: MockerFixture, api: Mock) -> Iterator[TrayIcon]:
+    mocker.patch("ui.tray.run_in_background", side_effect=_synchronous)
+    tray_icon = TrayIcon(api)
+    tray_icon.setup()
+    yield tray_icon
+    tray_icon.hide()
 
 
-def test_setup_builds_a_menu_with_all_four_actions() -> None:
-    tray = _tray()
+def _action(tray_icon: TrayIcon, text: str) -> QAction:
+    return next(a for a in tray_icon._menu.actions() if a.text() == text)
 
-    labels = [item.text for item in tray._icon.menu]
 
-    assert labels == ["Pause Indexing", "Rebuild Index", "Open Settings", "Quit"]
+def test_setup_builds_the_full_menu(tray: TrayIcon) -> None:
+    texts = [a.text() for a in tray._menu.actions() if not a.isSeparator()]
 
+    assert texts == [
+        "Open Nimbus",
+        "Ready · 40 files known",
+        "Pause indexing",
+        "Rebuild index",
+        "Settings…",
+        "Quit Nimbus",
+    ]
 
-def test_pause_resume_label_reflects_the_current_state() -> None:
-    tray = _tray()
-    assert tray._pause_resume_label(None) == "Pause Indexing"
 
-    tray._is_paused = True
+def test_setup_shows_the_current_status_in_the_tooltip(tray: TrayIcon) -> None:
+    assert tray._tray.toolTip() == f"{TOOLTIP_TITLE} — Ready · 40 files known"
 
-    assert tray._pause_resume_label(None) == "Resume Indexing"
 
+def test_setup_keeps_the_status_line_disabled(tray: TrayIcon) -> None:
+    assert not tray._status_action.isEnabled()
 
-def test_toggle_pause_calls_pause_endpoint_and_updates_state(mocker: MockerFixture) -> None:
-    tray = _tray()
-    mocker.patch("ui.tray._post_for_status", return_value=IndexStatus(
-        total_files=0, indexed_files=0, pending=0, is_paused=True, last_error=None
-    ))
-    icon = mocker.Mock(spec=pystray.Icon)
 
-    tray._toggle_pause(icon, mocker.Mock())
+def test_setup_starts_status_polling(tray: TrayIcon) -> None:
+    assert tray._timer.isActive()
 
-    assert tray._is_paused is True
-    icon.update_menu.assert_called_once()
 
+def test_refresh_status_ignores_errors(tray: TrayIcon, api: Mock) -> None:
+    api.index_status.side_effect = NimbusError("down")
 
-def test_toggle_pause_calls_resume_endpoint_when_already_paused(mocker: MockerFixture) -> None:
-    tray = _tray()
-    tray._is_paused = True
-    status_spy = mocker.patch("ui.tray._post_for_status", return_value=IndexStatus(
-        total_files=0, indexed_files=0, pending=0, is_paused=False, last_error=None
-    ))
-    icon = mocker.Mock(spec=pystray.Icon)
+    tray.refresh_status()
 
-    tray._toggle_pause(icon, mocker.Mock())
+    assert tray._status_action.text() == "Ready · 40 files known"
 
-    status_spy.assert_called_once_with("/index/resume")
-    assert tray._is_paused is False
 
+def test_open_action_emits_summon_requested(tray: TrayIcon) -> None:
+    received: list[None] = []
+    tray.summon_requested.connect(lambda: received.append(None))
 
-def test_toggle_pause_notifies_when_the_server_is_unreachable(mocker: MockerFixture) -> None:
-    tray = _tray()
-    mocker.patch("ui.tray._post_for_status", return_value=None)
-    icon = mocker.Mock(spec=pystray.Icon)
+    _action(tray, "Open Nimbus").trigger()
 
-    tray._toggle_pause(icon, mocker.Mock())
+    assert received == [None]
 
-    icon.notify.assert_called_once()
-    icon.update_menu.assert_not_called()
 
+def test_settings_action_emits_settings_requested(tray: TrayIcon) -> None:
+    received: list[None] = []
+    tray.settings_requested.connect(lambda: received.append(None))
 
-def test_rebuild_index_posts_to_the_rebuild_endpoint(mocker: MockerFixture) -> None:
-    tray = _tray()
-    post_spy = mocker.patch("ui.tray.httpx.post")
-    icon = mocker.Mock(spec=pystray.Icon)
+    _action(tray, "Settings…").trigger()
 
-    tray._rebuild_index(icon, mocker.Mock())
+    assert received == [None]
 
-    url = post_spy.call_args[0][0]
-    assert url.endswith("/index/rebuild")
-    icon.notify.assert_not_called()
 
+def test_quit_action_emits_quit_requested(tray: TrayIcon) -> None:
+    received: list[None] = []
+    tray.quit_requested.connect(lambda: received.append(None))
 
-def test_rebuild_index_notifies_on_a_connection_failure(mocker: MockerFixture) -> None:
-    tray = _tray()
-    mocker.patch("ui.tray.httpx.post", side_effect=httpx.ConnectError("refused"))
-    icon = mocker.Mock(spec=pystray.Icon)
+    _action(tray, "Quit Nimbus").trigger()
 
-    tray._rebuild_index(icon, mocker.Mock())
+    assert received == [None]
 
-    icon.notify.assert_called_once()
 
+def test_toggle_pause_pauses_and_relabels_the_item(tray: TrayIcon, api: Mock) -> None:
+    _action(tray, "Pause indexing").trigger()
 
-def test_open_settings_opens_the_resolved_settings_path(mocker: MockerFixture) -> None:
-    tray = _tray()
-    startfile = mocker.patch("ui.tray.os.startfile")
-    mocker.patch("ui.tray._settings_file_path", return_value=Path("C:/Nimbus/.env"))
-    icon = mocker.Mock(spec=pystray.Icon)
+    api.set_paused.assert_called_once_with(True)
+    assert tray._pause_action.text() == "Resume indexing"
 
-    tray._open_settings(icon, mocker.Mock())
 
-    startfile.assert_called_once_with(Path("C:/Nimbus/.env"))
-    icon.notify.assert_not_called()
+def test_toggle_pause_resumes_when_paused(tray: TrayIcon, api: Mock) -> None:
+    _action(tray, "Pause indexing").trigger()
+    api.set_paused.return_value = IndexStatus()
 
+    tray._pause_action.trigger()
 
-def test_open_settings_notifies_when_the_os_cannot_open_it(mocker: MockerFixture) -> None:
-    tray = _tray()
-    mocker.patch("ui.tray.os.startfile", side_effect=OSError("no association"))
-    mocker.patch("ui.tray._settings_file_path", return_value=Path("C:/Nimbus/.env"))
-    icon = mocker.Mock(spec=pystray.Icon)
+    api.set_paused.assert_called_with(False)
+    assert tray._pause_action.text() == "Pause indexing"
 
-    tray._open_settings(icon, mocker.Mock())
 
-    icon.notify.assert_called_once()
+def test_toggle_pause_notifies_on_error(mocker: MockerFixture, tray: TrayIcon, api: Mock) -> None:
+    api.set_paused.side_effect = NimbusError("Engine is busy")
+    notify = mocker.patch.object(tray, "notify")
 
+    tray._pause_action.trigger()
 
-def test_quit_stops_the_icon_and_runs_the_shutdown_hook(mocker: MockerFixture) -> None:
-    on_quit = mocker.Mock()
-    tray = TrayIcon(on_quit=on_quit)
-    tray.setup()
-    icon = mocker.Mock(spec=pystray.Icon)
+    notify.assert_called_once_with("Engine is busy")
 
-    tray._quit(icon, mocker.Mock())
 
-    icon.stop.assert_called_once()
-    on_quit.assert_called_once()
+def test_rebuild_notifies_and_shows_the_new_status(mocker: MockerFixture, tray: TrayIcon) -> None:
+    notify = mocker.patch.object(tray, "notify")
 
+    _action(tray, "Rebuild index").trigger()
 
-def test_quit_is_safe_with_no_shutdown_hook(mocker: MockerFixture) -> None:
-    tray = _tray()
-    icon = mocker.Mock(spec=pystray.Icon)
+    notify.assert_called_once_with("Re-reading all your files in the background.")
+    assert tray._status_action.text() == "Looking for new files…"
 
-    tray._quit(icon, mocker.Mock())
 
-    icon.stop.assert_called_once()
+def test_rebuild_notifies_on_error(mocker: MockerFixture, tray: TrayIcon, api: Mock) -> None:
+    api.rebuild_index.side_effect = NimbusError("Can't rebuild now")
+    notify = mocker.patch.object(tray, "notify")
 
+    _action(tray, "Rebuild index").trigger()
 
-def test_post_for_status_parses_the_response_body(mocker: MockerFixture) -> None:
-    fake_response = mocker.Mock()
-    fake_response.json.return_value = {
-        "total_files": 0, "indexed_files": 0, "pending": 0, "is_paused": True, "last_error": None
-    }
-    mocker.patch("ui.tray.httpx.post", return_value=fake_response)
+    notify.assert_called_once_with("Can't rebuild now")
 
-    status = _post_for_status("/index/pause")
 
-    assert status.is_paused is True
+@pytest.mark.parametrize(
+    "reason", [QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick]
+)
+def test_handle_activated_summons_on_click(tray: TrayIcon, reason: QSystemTrayIcon.ActivationReason) -> None:
+    received: list[None] = []
+    tray.summon_requested.connect(lambda: received.append(None))
 
+    tray._handle_activated(reason)
 
-def test_post_for_status_returns_none_on_a_connection_failure(mocker: MockerFixture) -> None:
-    mocker.patch("ui.tray.httpx.post", side_effect=httpx.ConnectError("refused"))
+    assert received == [None]
 
-    assert _post_for_status("/index/pause") is None
 
+def test_handle_activated_ignores_the_context_menu_click(tray: TrayIcon) -> None:
+    received: list[None] = []
+    tray.summon_requested.connect(lambda: received.append(None))
 
-def test_notify_safely_swallows_an_unsupported_notification(mocker: MockerFixture) -> None:
-    icon = mocker.Mock(spec=pystray.Icon)
-    icon.notify.side_effect = NotImplementedError
+    tray._handle_activated(QSystemTrayIcon.ActivationReason.Context)
 
-    _notify_safely(icon, "hello")  # must not raise
+    assert received == []
 
 
-def test_settings_file_path_prefers_the_real_env_file_when_present() -> None:
-    path = _settings_file_path()
+def test_notify_shows_a_balloon(mocker: MockerFixture, tray: TrayIcon) -> None:
+    show_message = mocker.patch.object(tray._tray, "showMessage")
 
-    assert path.name == ".env"
+    tray.notify("Hello")
 
+    assert show_message.call_args.args[:2] == (TOOLTIP_TITLE, "Hello")
 
-def test_settings_file_path_falls_back_to_the_template_when_env_is_missing(mocker: MockerFixture) -> None:
-    mocker.patch("ui.tray.Path.exists", return_value=False)
 
-    path = _settings_file_path()
+def test_notify_does_nothing_before_setup(api: Mock) -> None:
+    TrayIcon(api).notify("Hello")
 
-    assert path.name == ".env.example"
 
+def test_hide_stops_polling(tray: TrayIcon) -> None:
+    tray.hide()
 
-def test_load_icon_image_returns_a_loadable_image() -> None:
-    image = _load_icon_image()
+    assert not tray._timer.isActive()
 
-    assert isinstance(image, Image.Image)
-    assert image.size[0] > 0 and image.size[1] > 0
+
+def test_hide_is_safe_before_setup(api: Mock) -> None:
+    TrayIcon(api).hide()

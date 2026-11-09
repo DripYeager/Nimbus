@@ -1,27 +1,29 @@
-"""Engine internals: logging, exceptions, indexing, retrieval, query orchestration."""
+"""Engine internals: logging, errors, indexing, retrieval and the assistant loop.
+
+Only the lightweight foundations are re-exported here. The indexing and query modules pull in
+parsers, ONNX runtimes and LLM SDKs, so callers import those from their own modules directly
+instead of paying for all of them whenever they just need an exception class.
+"""
 
 from __future__ import annotations
 
 from core.exceptions import (
     AppLaunchError,
+    ConversationNotFoundError,
     HotkeyError,
     IndexingError,
     NimbusError,
     ParsingError,
     ProviderError,
     QueryError,
+    SecretStoreError,
+    SettingsError,
+    ToolError,
+    ToolsUnsupportedError,
     UnsupportedFileTypeError,
+    UsageCapReachedError,
 )
-from core.document_parser import extract_document_text, parse_document
-from core.embedder import Embedder, get_embedder
-from core.indexer import Indexer
-from core.intent_router import classify_intent
 from core.logger import get_logger
-from core.ocr_fallback import extract_text_with_ocr
-from core.query_engine import QueryEngine
-from core.retriever import Retriever
-from core.text_chunker import chunk_text
-from core.vector_store import VectorStore
 
 __all__ = [
     "NimbusError",
@@ -30,18 +32,13 @@ __all__ = [
     "UnsupportedFileTypeError",
     "QueryError",
     "ProviderError",
+    "ToolsUnsupportedError",
+    "UsageCapReachedError",
     "AppLaunchError",
+    "ToolError",
     "HotkeyError",
+    "SettingsError",
+    "SecretStoreError",
+    "ConversationNotFoundError",
     "get_logger",
-    "VectorStore",
-    "Embedder",
-    "get_embedder",
-    "chunk_text",
-    "parse_document",
-    "extract_document_text",
-    "extract_text_with_ocr",
-    "Indexer",
-    "Retriever",
-    "classify_intent",
-    "QueryEngine",
 ]

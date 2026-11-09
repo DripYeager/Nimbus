@@ -1,0 +1,98 @@
+[
+  {
+    "query": "how much notice to end the supplier contract",
+    "expected": "acme_vendor_agreement.txt"
+  },
+  {
+    "query": "MSA-4471",
+    "expected": "acme_vendor_agreement.txt"
+  },
+  {
+    "query": "INV-2231",
+    "expected": "invoice_INV-2231.txt"
+  },
+  {
+    "query": "how much do we owe for the office chairs",
+    "expected": "invoice_INV-2231.txt"
+  },
+  {
+    "query": "software maintenance renewal invoice",
+    "expected": "invoice_INV-2240.txt"
+  },
+  {
+    "query": "what interest is charged on late payment",
+    "expected": "invoice_INV-2240.txt"
+  },
+  {
+    "query": "vacation in Portugal",
+    "expected": "lisbon_trip_notes.md"
+  },
+  {
+    "query": "where did we eat custard tarts",
+    "expected": "lisbon_trip_notes.md"
+  },
+  {
+    "query": "how did revenue do last quarter",
+    "expected": "q3_sales_report.md"
+  },
+  {
+    "query": "why did Europe miss its sales target",
+    "expected": "q3_sales_report.md"
+  },
+  {
+    "query": "what do I need to do in my first week at work",
+    "expected": "onboarding_checklist.md"
+  },
+  {
+    "query": "GlobalConnect",
+    "expected": "vpn_setup_guide.txt"
+  },
+  {
+    "query": "can't connect to the company network from home",
+    "expected": "vpn_setup_guide.txt"
+  },
+  {
+    "query": "bread baking temperature",
+    "expected": "sourdough_recipe.md"
+  },
+  {
+    "query": "how long is the longest training run",
+    "expected": "marathon_training_plan.md"
+  },
+  {
+    "query": "how much is my rent",
+    "expected": "apartment_lease.txt"
+  },
+  {
+    "query": "how much notice before moving out of the flat",
+    "expected": "apartment_lease.txt"
+  },
+  {
+    "query": "MTR-88213-K",
+    "expected": "car_insurance_policy.txt"
+  },
+  {
+    "query": "is a cracked windscreen covered",
+    "expected": "car_insurance_policy.txt"
+  },
+  {
+    "query": "who owns the billing migration",
+    "expected": "project_phoenix_kickoff.md"
+  },
+  {
+    "query": "when is my dental checkup",
+    "expected": "dentist_appointment.txt"
+  },
+  {
+    "query": "Okafor",
+    "expected": "dentist_appointment.txt"
+  },
+  {
+    "query": "guest wifi network name",
+    "expected": "home_wifi_details.txt"
+  },
+  {
+    "query": "how much did I earn freelancing",
+    "expected": "tax_return_2025_summary.txt"
+  }
+]

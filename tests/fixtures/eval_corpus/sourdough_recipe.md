@@ -1,0 +1,1 @@
+Sourdough loaf. Mix 500 g strong bread flour, 350 g water, 100 g active starter and 10 g salt. Stretch and fold four times, bulk ferment overnight in the fridge, then bake at 250 C in a dutch oven for 40 minutes.

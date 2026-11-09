@@ -1,133 +1,107 @@
 """
-The pystray system tray icon and its right-click menu: pause/resume indexing, rebuild the
-index, open the settings file, and quit. Talks to the API over HTTP like any other client —
-it owns background-control UI only, no engine logic.
+The system tray icon and its menu: open the chat, see indexing progress, pause/resume,
+rebuild, open Settings, quit. Built on Qt's own tray support so the whole UI runs on one
+toolkit and one thread. Owns tray UI only — it asks the API for status and emits signals for
+everything else.
 """
 
 from __future__ import annotations
 
-import os
-from collections.abc import Callable
-from pathlib import Path
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
-import httpx
-import pystray
-from PIL import Image
-
-from config.settings import get_settings
 from core.logger import get_logger
 from models.schema import IndexStatus
+from ui.api_client import ApiClient
+from ui.background_call import run_in_background
+from ui.status_text import describe_status
+from ui.theme.icons import app_icon
 
 logger = get_logger(__name__)
 
-TRAY_ICON_PATH = Path(__file__).resolve().parent.parent / "assets" / "tray_icon.png"
-TRAY_TOOLTIP = "Nimbus"
-TRAY_HTTP_TIMEOUT_SECONDS = 10.0
-UNREACHABLE_MESSAGE = "Couldn't reach Nimbus. Check that the app is running."
-SETTINGS_FILE_NAME = ".env"
-SETTINGS_TEMPLATE_FILE_NAME = ".env.example"
+STATUS_REFRESH_MS = 3000
+NOTIFICATION_MS = 4000
+TOOLTIP_TITLE = "Nimbus"
 
 
-class TrayIcon:
-    """The pystray icon and menu: pause/resume indexing, rebuild, open settings, quit."""
+class TrayIcon(QObject):
+    """The tray icon. Emits signals; the runtime decides what they do."""
 
-    def __init__(self, on_quit: Callable[[], None] | None = None) -> None:
-        self._on_quit = on_quit
+    summon_requested = pyqtSignal()
+    settings_requested = pyqtSignal()
+    quit_requested = pyqtSignal()
+
+    def __init__(self, api: ApiClient) -> None:
+        super().__init__()
+        self._api = api
+        self._tray: QSystemTrayIcon | None = None
+        self._menu: QMenu | None = None
+        self._status_action: QAction | None = None
+        self._pause_action: QAction | None = None
         self._is_paused = False
-        self._icon: pystray.Icon | None = None
+        self._timer: QTimer | None = None
 
     def setup(self) -> None:
-        """Builds the pystray icon and its menu; call run() afterward to display it."""
-        self._icon = pystray.Icon("Nimbus", _load_icon_image(), TRAY_TOOLTIP, self._build_menu())
+        """Builds the icon and menu, shows it, and starts polling for status."""
+        self._tray = QSystemTrayIcon(app_icon(), self)
+        self._tray.setToolTip(TOOLTIP_TITLE)
+        self._tray.setContextMenu(self._build_menu())
+        self._tray.activated.connect(self._handle_activated)
+        self._tray.show()
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self.refresh_status)
+        self._timer.start(STATUS_REFRESH_MS)
+        self.refresh_status()
 
-    def run(self) -> None:
-        """Shows the tray icon and blocks until stop() is called — must run on the main thread."""
-        self._icon.run()
+    def notify(self, message: str) -> None:
+        """Shows a balloon notification."""
+        if self._tray is not None:
+            self._tray.showMessage(TOOLTIP_TITLE, message, app_icon(), NOTIFICATION_MS)
 
-    def run_detached(self) -> None:
-        """Shows the tray icon on its own thread and returns immediately — for a host process
-        (like Qt) that already needs the main thread for its own event loop."""
-        self._icon.run_detached()
+    def hide(self) -> None:
+        if self._timer is not None:
+            self._timer.stop()
+        if self._tray is not None:
+            self._tray.hide()
 
-    def stop(self) -> None:
-        """Hides the tray icon and unblocks run()."""
-        self._icon.stop()
+    def refresh_status(self) -> None:
+        run_in_background(self._api.index_status, self._show_status, lambda _: None)
 
-    def _build_menu(self) -> pystray.Menu:
-        """Builds the right-click menu: pause/resume, rebuild, open settings, quit."""
-        return pystray.Menu(
-            pystray.MenuItem(self._pause_resume_label, self._toggle_pause),
-            pystray.MenuItem("Rebuild Index", self._rebuild_index),
-            pystray.MenuItem("Open Settings", self._open_settings),
-            pystray.MenuItem("Quit", self._quit),
-        )
+    def _build_menu(self) -> QMenu:
+        """Open, status line, pause/resume, rebuild, settings, quit."""
+        menu = QMenu()
+        menu.addAction("Open Nimbus", self.summon_requested.emit)
+        menu.addSeparator()
+        self._status_action = menu.addAction("Checking index…")
+        self._status_action.setEnabled(False)
+        self._pause_action = menu.addAction("Pause indexing", self._toggle_pause)
+        menu.addAction("Rebuild index", self._rebuild)
+        menu.addAction("Settings…", self.settings_requested.emit)
+        menu.addSeparator()
+        menu.addAction("Quit Nimbus", self.quit_requested.emit)
+        self._menu = menu
+        return menu
 
-    def _pause_resume_label(self, _item: pystray.MenuItem) -> str:
-        """Reflects the last known pause state in the menu item's own text."""
-        return "Resume Indexing" if self._is_paused else "Pause Indexing"
-
-    def _toggle_pause(self, icon: pystray.Icon, _item: pystray.MenuItem) -> None:
-        """Calls /index/pause or /index/resume for the current state, then refreshes the menu."""
-        endpoint = "/index/resume" if self._is_paused else "/index/pause"
-        status = _post_for_status(endpoint)
-        if status is None:
-            _notify_safely(icon, UNREACHABLE_MESSAGE)
-            return
+    def _show_status(self, status: IndexStatus) -> None:
+        """Updates the tooltip, the menu's status line and the pause item's label."""
+        text = describe_status(status)
+        self._tray.setToolTip(f"{TOOLTIP_TITLE} — {text}")
+        self._status_action.setText(text)
         self._is_paused = status.is_paused
-        icon.update_menu()
+        self._pause_action.setText("Resume indexing" if status.is_paused else "Pause indexing")
 
-    def _rebuild_index(self, icon: pystray.Icon, _item: pystray.MenuItem) -> None:
-        """Triggers a full reindex in the background via the existing /index/rebuild endpoint."""
-        url = f"{get_settings().api_base_url}/index/rebuild"
-        try:
-            httpx.post(url, json={}, timeout=TRAY_HTTP_TIMEOUT_SECONDS)
-        except httpx.HTTPError as e:
-            logger.warning("Rebuild request failed", extra={"error": str(e)})
-            _notify_safely(icon, UNREACHABLE_MESSAGE)
+    def _toggle_pause(self) -> None:
+        run_in_background(lambda: self._api.set_paused(not self._is_paused), self._show_status, self.notify)
 
-    def _open_settings(self, icon: pystray.Icon, _item: pystray.MenuItem) -> None:
-        """Opens .env (or its template, on a fresh clone) in its OS-registered default app."""
-        path = _settings_file_path()
-        try:
-            os.startfile(path)
-        except OSError as e:
-            logger.warning("Couldn't open settings file", extra={"path": str(path), "error": str(e)})
-            _notify_safely(icon, f"Couldn't open {path.name}: {e}")
+    def _rebuild(self) -> None:
+        def _started(status: IndexStatus) -> None:
+            self.notify("Re-reading all your files in the background.")
+            self._show_status(status)
 
-    def _quit(self, icon: pystray.Icon, _item: pystray.MenuItem) -> None:
-        """Stops the tray icon and runs the caller-supplied shutdown hook, if any."""
-        icon.stop()
-        if self._on_quit is not None:
-            self._on_quit()
+        run_in_background(self._api.rebuild_index, _started, self.notify)
 
-
-def _post_for_status(endpoint: str) -> IndexStatus | None:
-    """POSTs to an /index/* control endpoint and parses its IndexStatus, or None if unreachable."""
-    url = f"{get_settings().api_base_url}{endpoint}"
-    try:
-        response = httpx.post(url, timeout=TRAY_HTTP_TIMEOUT_SECONDS)
-        response.raise_for_status()
-    except httpx.HTTPError as e:
-        logger.warning("Index control request failed", extra={"endpoint": endpoint, "error": str(e)})
-        return None
-    return IndexStatus(**response.json())
-
-
-def _notify_safely(icon: pystray.Icon, message: str) -> None:
-    """Shows a tray notification, tolerating backends that don't support one."""
-    try:
-        icon.notify(message)
-    except (NotImplementedError, OSError) as e:
-        logger.warning("Tray notification failed", extra={"error": str(e)})
-
-
-def _settings_file_path() -> Path:
-    """Prefers the real .env; falls back to the documented template on a fresh, unconfigured clone."""
-    repo_root = Path(__file__).resolve().parent.parent
-    env_path = repo_root / SETTINGS_FILE_NAME
-    return env_path if env_path.exists() else repo_root / SETTINGS_TEMPLATE_FILE_NAME
-
-
-def _load_icon_image() -> Image.Image:
-    """Loads the tray icon PNG — the one real image asset in the app; everything else is code-drawn."""
-    return Image.open(TRAY_ICON_PATH)
+    def _handle_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        """A left click (or double click) on the icon opens the chat."""
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self.summon_requested.emit()

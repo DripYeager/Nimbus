@@ -1,174 +1,233 @@
 from __future__ import annotations
 
+import ctypes
+import threading
+import time
+from collections.abc import Callable, Iterator
+from typing import Any
+from unittest.mock import Mock
+
 import pytest
-from pynput.keyboard import HotKey, Key, KeyCode
+from PyQt6.QtWidgets import QApplication
 from pytest_mock import MockerFixture
 
 from core.exceptions import HotkeyError
-from ui.hotkey import DEBOUNCE_SECONDS, KEY_DOWN_FLAG, HotkeyListener, _combo_actually_held, _vk_of
+from ui.hotkey import DEBOUNCE_SECONDS, HOTKEY_ID, MOD_NOREPEAT, WM_HOTKEY, WM_QUIT, HotkeyListener, parse_hotkey
+
+CTRL, ALT, SHIFT, WIN = 0x0002, 0x0001, 0x0004, 0x0008
 
 
-@pytest.fixture(autouse=True, scope="session")
-def _qapp():
-    """QObject/pyqtSignal machinery needs a QApplication instance to exist somewhere."""
-    from PyQt6.QtWidgets import QApplication
-
-    return QApplication.instance() or QApplication([])
-
-
-def test_start_registers_the_configured_hotkey(mocker: MockerFixture) -> None:
-    global_hotkeys_cls = mocker.patch("ui.hotkey.keyboard.GlobalHotKeys")
-    listener = HotkeyListener("<ctrl>+<space>")
-
-    listener.start()
-
-    args, kwargs = global_hotkeys_cls.call_args
-    registered = args[0] if args else kwargs["hotkeys"]
-    assert list(registered.keys()) == ["<ctrl>+<space>"]
-    global_hotkeys_cls.return_value.start.assert_called_once()
+def _wait_for(condition: Callable[[], bool], timeout: float = 2.0) -> bool:
+    """Pumps Qt events until condition holds — summoned crosses threads as a queued signal."""
+    deadline = time.monotonic() + timeout
+    while not condition() and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    return condition()
 
 
-def test_start_raises_hotkey_error_for_an_invalid_hotkey_string() -> None:
+@pytest.mark.parametrize(
+    ("hotkey", "expected"),
+    [
+        ("<ctrl>+<space>", (CTRL, 0x20)),
+        ("<ctrl>+<shift>+n", (CTRL | SHIFT, ord("N"))),
+        ("<alt>+7", (ALT, ord("7"))),
+        ("<win>+<tab>", (WIN, 0x09)),
+        ("<cmd>+<enter>", (WIN, 0x0D)),
+        ("<ctrl>+<f1>", (CTRL, 0x70)),
+        ("<alt>+<f24>", (ALT, 0x70 + 23)),
+        (" <CTRL> + <Alt> + K ", (CTRL | ALT, ord("K"))),
+    ],
+)
+def test_parse_hotkey_returns_modifiers_and_virtual_key(hotkey: str, expected: tuple[int, int]) -> None:
+    assert parse_hotkey(hotkey) == expected
+
+
+@pytest.mark.parametrize(
+    "hotkey",
+    ["", "n", "<ctrl>", "<ctrl>+", "<ctrl>+a+b", "<ctrl>+<f0>", "<ctrl>+<f25>", "<ctrl>+<hyper>", "<ctrl>+ab"],
+)
+def test_parse_hotkey_raises_on_invalid_combo(hotkey: str) -> None:
     with pytest.raises(HotkeyError):
-        HotkeyListener("this is not a valid hotkey").start()
+        parse_hotkey(hotkey)
 
 
-def test_stop_is_safe_when_never_started() -> None:
-    HotkeyListener("<ctrl>+<space>").stop()
+def test_parse_hotkey_asks_windows_for_punctuation_keys(mocker: MockerFixture) -> None:
+    mocker.patch.object(ctypes.windll.user32, "VkKeyScanW", return_value=0x01BA)
+
+    assert parse_hotkey("<ctrl>+;") == (CTRL, 0xBA)
 
 
-def test_stop_stops_the_underlying_listener(mocker: MockerFixture) -> None:
-    global_hotkeys_cls = mocker.patch("ui.hotkey.keyboard.GlobalHotKeys")
-    listener = HotkeyListener("<ctrl>+<space>")
+def test_parse_hotkey_raises_when_the_layout_cannot_type_the_key(mocker: MockerFixture) -> None:
+    mocker.patch.object(ctypes.windll.user32, "VkKeyScanW", return_value=0xFFFF)
+
+    with pytest.raises(HotkeyError):
+        parse_hotkey("<ctrl>+§")
+
+
+def test_parse_hotkey_does_not_treat_non_ascii_letters_as_virtual_keys(mocker: MockerFixture) -> None:
+    scan = mocker.patch.object(ctypes.windll.user32, "VkKeyScanW", return_value=0x00DE)
+
+    assert parse_hotkey("<ctrl>+é") == (CTRL, 0xDE)
+    scan.assert_called_once_with(ord("é"))
+
+
+class FakeUser32:
+    """Stands in for the Win32 calls the listener makes; GetMessageW blocks until WM_QUIT is posted."""
+
+    def __init__(self, register_result: int = 1, pending_hotkeys: int = 0) -> None:
+        self.register_result = register_result
+        self.pending_hotkeys = pending_hotkeys
+        self.quit = threading.Event()
+        self.RegisterHotKey = Mock(side_effect=lambda *_: self.register_result)
+        self.UnregisterHotKey = Mock(return_value=1)
+        self.PostThreadMessageW = Mock(side_effect=self._post)
+        self.GetMessageW = Mock(side_effect=self._get_message)
+
+    def _post(self, thread_id: int, message: int, *_: Any) -> int:
+        if message == WM_QUIT:
+            self.quit.set()
+        return 1
+
+    def _get_message(self, message_ref: Any, *_: Any) -> int:
+        if self.pending_hotkeys:
+            self.pending_hotkeys -= 1
+            message_ref._obj.message = WM_HOTKEY
+            return 1
+        self.quit.wait(5)
+        return 0
+
+
+@pytest.fixture
+def user32(mocker: MockerFixture) -> FakeUser32:
+    fake = FakeUser32()
+    for name in ("RegisterHotKey", "UnregisterHotKey", "PostThreadMessageW", "GetMessageW"):
+        mocker.patch.object(ctypes.windll.user32, name, getattr(fake, name))
+    return fake
+
+
+@pytest.fixture
+def listener() -> Iterator[HotkeyListener]:
+    hotkey_listener = HotkeyListener("<ctrl>+<space>")
+    yield hotkey_listener
+    hotkey_listener.stop()
+
+
+def test_hotkey_listener_start_registers_with_windows(user32: FakeUser32, listener: HotkeyListener) -> None:
     listener.start()
+
+    user32.RegisterHotKey.assert_called_once_with(None, HOTKEY_ID, CTRL | MOD_NOREPEAT, 0x20)
+
+
+def test_hotkey_listener_start_raises_when_the_hotkey_is_taken(user32: FakeUser32, listener: HotkeyListener) -> None:
+    user32.register_result = 0
+
+    with pytest.raises(HotkeyError, match="already used by another app"):
+        listener.start()
+
+
+def test_hotkey_listener_start_raises_for_an_invalid_hotkey(user32: FakeUser32) -> None:
+    with pytest.raises(HotkeyError):
+        HotkeyListener("<ctrl>").start()
+    user32.RegisterHotKey.assert_not_called()
+
+
+def test_hotkey_listener_start_raises_off_windows(mocker: MockerFixture, user32: FakeUser32) -> None:
+    mocker.patch("ui.hotkey.sys.platform", "linux")
+
+    with pytest.raises(HotkeyError, match="only supported on Windows"):
+        HotkeyListener("<ctrl>+<space>").start()
+
+
+def test_hotkey_listener_start_raises_when_registration_times_out(mocker: MockerFixture, user32: FakeUser32) -> None:
+    mocker.patch("ui.hotkey.REGISTER_WAIT_SECONDS", 0.05)
+    release = threading.Event()
+    user32.RegisterHotKey.side_effect = lambda *_: 0 if release.wait(5) else 0
+    hotkey_listener = HotkeyListener("<ctrl>+<space>")
+
+    with pytest.raises(HotkeyError, match="Timed out"):
+        hotkey_listener.start()
+    release.set()
+
+
+def test_hotkey_listener_stop_posts_quit_and_unregisters(user32: FakeUser32, listener: HotkeyListener) -> None:
+    listener.start()
+    thread = listener._thread
 
     listener.stop()
 
-    global_hotkeys_cls.return_value.stop.assert_called_once()
-    global_hotkeys_cls.return_value.join.assert_called_once()
+    assert not thread.is_alive()
+    user32.UnregisterHotKey.assert_called_once_with(None, HOTKEY_ID)
 
 
-def test_activate_emits_summoned(mocker: MockerFixture) -> None:
-    listener = HotkeyListener("<ctrl>+<space>")
-    received = []
-    listener.summoned.connect(lambda: received.append(1))
+def test_hotkey_listener_stop_is_safe_before_start(user32: FakeUser32) -> None:
+    HotkeyListener("<ctrl>+<space>").stop()
 
-    listener._on_activate()
-
-    assert received == [1]
+    user32.PostThreadMessageW.assert_not_called()
 
 
-def test_activate_is_debounced_against_a_rapid_retrigger(mocker: MockerFixture) -> None:
-    listener = HotkeyListener("<ctrl>+<space>")
-    received = []
-    listener.summoned.connect(lambda: received.append(1))
-
-    listener._on_activate()
-    listener._on_activate()
-
-    assert received == [1]
-
-
-def test_activate_fires_again_once_the_debounce_window_has_passed(mocker: MockerFixture) -> None:
-    listener = HotkeyListener("<ctrl>+<space>")
-    received = []
-    listener.summoned.connect(lambda: received.append(1))
-    clock = mocker.patch("ui.hotkey.time.monotonic")
-
-    clock.return_value = 100.0
-    listener._on_activate()
-    clock.return_value = 100.0 + DEBOUNCE_SECONDS + 0.01
-    listener._on_activate()
-
-    assert received == [1, 1]
-
-
-def test_vk_of_resolves_a_key_enum_member() -> None:
-    assert _vk_of(Key.ctrl) == Key.ctrl.value.vk
-
-
-def test_vk_of_resolves_a_keycode_built_from_a_virtual_key_code() -> None:
-    assert _vk_of(KeyCode.from_vk(32)) == 32
-
-
-def test_vk_of_resolves_a_keycode_built_from_a_character(mocker: MockerFixture) -> None:
-    mocker.patch("ui.hotkey.ctypes.windll.user32.VkKeyScanW", return_value=0x00BF)
-
-    assert _vk_of(KeyCode.from_char("/")) == 0xBF
-
-
-def test_combo_actually_held_is_true_when_every_key_is_down(mocker: MockerFixture) -> None:
-    mocker.patch("ui.hotkey.ctypes.windll.user32.GetAsyncKeyState", return_value=KEY_DOWN_FLAG)
-
-    assert _combo_actually_held([0x11, 32]) is True
-
-
-def test_combo_actually_held_is_false_when_one_key_is_not_down(mocker: MockerFixture) -> None:
-    mocker.patch(
-        "ui.hotkey.ctypes.windll.user32.GetAsyncKeyState", side_effect=lambda vk: 0 if vk == 0x11 else KEY_DOWN_FLAG
-    )
-
-    assert _combo_actually_held([0x11, 32]) is False
-
-
-def test_start_computes_the_combo_vks_for_the_configured_hotkey(mocker: MockerFixture) -> None:
-    mocker.patch("ui.hotkey.keyboard.GlobalHotKeys")
-    listener = HotkeyListener("<ctrl>+<space>")
+def test_hotkey_listener_emits_summoned_on_wm_hotkey(user32: FakeUser32, listener: HotkeyListener) -> None:
+    user32.pending_hotkeys = 1
+    fired = threading.Event()
+    listener.summoned.connect(fired.set)
 
     listener.start()
 
-    assert listener._combo_vks == [Key.ctrl.value.vk, 32]
+    assert _wait_for(fired.is_set)
 
 
-def test_activate_ignores_a_stale_activation_when_the_combo_is_not_actually_held(mocker: MockerFixture) -> None:
-    mocker.patch("ui.hotkey.ctypes.windll.user32.GetAsyncKeyState", return_value=0)
-    listener = HotkeyListener("<ctrl>+<space>")
-    listener._combo_vks = [0x11, 32]
-    received = []
-    listener.summoned.connect(lambda: received.append(1))
+def test_hotkey_listener_rebind_switches_to_the_new_hotkey(user32: FakeUser32, listener: HotkeyListener) -> None:
+    listener.start()
 
-    listener._on_activate()
+    listener.rebind("<alt>+n")
 
-    assert received == []
+    assert listener.hotkey == "<alt>+n"
+    user32.RegisterHotKey.assert_called_with(None, HOTKEY_ID, ALT | MOD_NOREPEAT, ord("N"))
 
 
-def test_activate_fires_when_the_combo_is_actually_held(mocker: MockerFixture) -> None:
-    mocker.patch("ui.hotkey.ctypes.windll.user32.GetAsyncKeyState", return_value=KEY_DOWN_FLAG)
-    listener = HotkeyListener("<ctrl>+<space>")
-    listener._combo_vks = [0x11, 32]
-    received = []
-    listener.summoned.connect(lambda: received.append(1))
+def test_hotkey_listener_rebind_restores_the_old_hotkey_on_failure(
+    user32: FakeUser32, listener: HotkeyListener
+) -> None:
+    listener.start()
+    user32.RegisterHotKey.side_effect = lambda _hwnd, _id, _mods, vk: 0 if vk == ord("N") else 1
 
-    listener._on_activate()
+    with pytest.raises(HotkeyError, match="<alt>\\+n"):
+        listener.rebind("<alt>+n")
+    assert listener.hotkey == "<ctrl>+<space>"
+    assert listener._thread is not None
 
-    assert received == [1]
+
+def test_hotkey_listener_rebind_reports_the_new_hotkey_when_restore_also_fails(
+    user32: FakeUser32, listener: HotkeyListener
+) -> None:
+    listener.start()
+    user32.register_result = 0
+
+    with pytest.raises(HotkeyError, match="<alt>\\+n"):
+        listener.rebind("<alt>+n")
 
 
-def test_a_missed_ctrl_release_does_not_let_a_later_space_only_press_summon(mocker: MockerFixture) -> None:
-    """Reproduces the real bug end-to-end: pynput's own HotKey can get ctrl stuck in its
-    internal state after a missed release (which happens here because a successful
-    activation immediately steals keyboard focus for the overlay), so a bare space press
-    later re-matches the combo and calls _on_activate — which must refuse to fire since
-    ctrl isn't actually held anymore."""
-    listener = HotkeyListener("<ctrl>+<space>")
-    listener._combo_vks = [Key.ctrl.value.vk, 32]
-    received = []
-    listener.summoned.connect(lambda: received.append(1))
-    get_async_key_state = mocker.patch("ui.hotkey.ctypes.windll.user32.GetAsyncKeyState")
-    clock = mocker.patch("ui.hotkey.time.monotonic")
+def test_fire_emits_summoned_once_within_the_debounce_window(mocker: MockerFixture) -> None:
+    clock = mocker.patch("ui.hotkey.time")
+    hotkey_listener = HotkeyListener("<ctrl>+<space>")
+    presses: list[None] = []
+    hotkey_listener.summoned.connect(lambda: presses.append(None))
 
-    hotkey = HotKey(HotKey.parse("<ctrl>+<space>"), listener._on_activate)
-    space_key = next(k for k in hotkey._keys if k != Key.ctrl)
+    for now in (100.0, 100.0 + DEBOUNCE_SECONDS / 2):
+        clock.monotonic.return_value = now
+        hotkey_listener._fire()
 
-    clock.return_value = 100.0
-    get_async_key_state.return_value = KEY_DOWN_FLAG
-    hotkey.press(Key.ctrl)
-    hotkey.press(space_key)
-    hotkey.release(space_key)
-    # ctrl's own release event is missed here — pynput's _state still thinks it's held
+    assert len(presses) == 1
 
-    clock.return_value = 100.0 + DEBOUNCE_SECONDS + 0.01
-    get_async_key_state.return_value = 0  # ctrl genuinely isn't held anymore
-    hotkey.press(space_key)
 
-    assert received == [1]
+def test_fire_emits_again_after_the_debounce_window(mocker: MockerFixture) -> None:
+    clock = mocker.patch("ui.hotkey.time")
+    hotkey_listener = HotkeyListener("<ctrl>+<space>")
+    presses: list[None] = []
+    hotkey_listener.summoned.connect(lambda: presses.append(None))
+
+    for now in (100.0, 100.0 + DEBOUNCE_SECONDS):
+        clock.monotonic.return_value = now
+        hotkey_listener._fire()
+
+    assert len(presses) == 2

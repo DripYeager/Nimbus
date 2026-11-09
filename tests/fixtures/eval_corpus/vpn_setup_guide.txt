@@ -1,0 +1,1 @@
+How to connect to the corporate VPN. Install the GlobalConnect client from the software centre, sign in with your work email, and approve the push notification on your phone. If the tunnel drops, toggle Wi-Fi and reconnect.

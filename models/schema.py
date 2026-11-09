@@ -1,16 +1,17 @@
 """
-Defines every data contract that crosses a module boundary in Nimbus, as Pydantic models.
-Does not contain business logic — validation only.
+Defines the indexing, search and app-catalog data contracts that cross module boundaries.
+Does not contain business logic — validation only. Chat and agent shapes live in chat.py.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
+from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 @dataclass
@@ -32,15 +33,68 @@ class FileMetadata:
     modified_at: datetime
 
 
-class Intent(Enum):
-    """What the user is actually asking for, as decided by intent_router."""
+@dataclass(frozen=True)
+class ScannedFile:
+    """One file seen on disk during a source scan — just enough to tell if it changed."""
 
-    FILE_SEARCH = "file_search"
-    SUMMARIZE = "summarize"
-    DOWNLOADS_TODAY = "downloads_today"
-    APP_LAUNCH = "app_launch"
-    METADATA = "metadata"
-    GENERAL_QA = "general_qa"
+    path: Path
+    size_bytes: int
+    modified_ts: float
+
+
+class FileCategory(StrEnum):
+    """The file-type groups a user can switch content indexing on or off for."""
+
+    DOCUMENTS = "documents"
+    PDFS = "pdfs"
+    SPREADSHEETS = "spreadsheets"
+    SLIDES = "slides"
+    TEXT = "text"
+    CODE = "code"
+    EMAIL = "email"
+
+
+class IndexSource(BaseModel):
+    """A folder the user chose to index. include_contents=False keeps it searchable by file
+    name only, which is instant and never reads a file's bytes."""
+
+    path: Path
+    include_contents: bool = True
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def _expand_home(cls, value: str | Path) -> Path:
+        """Lets saved settings and .env use ~."""
+        return Path(value).expanduser()
+
+
+class CatalogStatus(StrEnum):
+    """Where one cataloged file is in the content-indexing pipeline."""
+
+    PENDING = "pending"
+    INDEXED = "indexed"
+    NAME_ONLY = "name_only"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class CatalogEntry:
+    """One file's row in the catalog: what it looked like when last seen, and its index status."""
+
+    path: Path
+    size_bytes: int
+    modified_ts: float
+    status: CatalogStatus
+
+
+@dataclass
+class SyncPlan:
+    """What a source scan decided: catalog rows to write, files to queue for content
+    indexing, and files whose content rows must go because they're now name-only."""
+
+    upserts: list[CatalogEntry] = field(default_factory=list)
+    to_queue: list[tuple[Path, float]] = field(default_factory=list)
+    drop_content: list[Path] = field(default_factory=list)
 
 
 class SourceRef(BaseModel):
@@ -50,17 +104,46 @@ class SourceRef(BaseModel):
 
 
 class AppEntry(BaseModel):
+    """One launchable app. launch_target is a shortcut path, an exe path, or a Store app ID."""
+
     name: str
-    exe_path: str
-    source: Literal["start_menu", "registry", "scan"]
+    launch_target: str
+    source: Literal["start_menu", "registry", "store_app"]
 
 
 class IndexStatus(BaseModel):
-    total_files: int
-    indexed_files: int
-    pending: int
-    is_paused: bool
-    last_error: str | None = None
+    """A snapshot of indexing progress, shown in the tray, the chat header and Settings."""
+
+    cataloged_files: int = 0
+    content_files: int = 0
+    indexed_files: int = 0
+    pending_files: int = 0
+    failed_files: int = 0
+    is_paused: bool = False
+    is_scanning: bool = False
+    current_file: str | None = None
+
+    @property
+    def is_busy(self) -> bool:
+        """True while there's still scanning or content indexing left to do."""
+        return self.is_scanning or self.pending_files > 0
+
+    @property
+    def progress_ratio(self) -> float:
+        """Fraction of content-indexable files already done, 1.0 when there's nothing to do."""
+        if self.content_files == 0:
+            return 1.0
+        return min(1.0, (self.indexed_files + self.failed_files) / self.content_files)
+
+
+class SourceSummary(BaseModel):
+    """Per-folder counts for the Settings window's Sources list."""
+
+    path: str
+    include_contents: bool
+    exists: bool
+    file_count: int
+    indexed_count: int
 
 
 class IndexedChunk(BaseModel):
@@ -80,6 +163,7 @@ class IndexedChunk(BaseModel):
 
 
 class SearchResult(BaseModel):
+    chunk_id: str
     chunk_text: str
     file_path: str
     file_name: str
@@ -87,41 +171,11 @@ class SearchResult(BaseModel):
     metadata: dict[str, Any]
 
 
-class QueryRequest(BaseModel):
-    text: str
-    max_results: int = 5
-    stream: bool = True
+class CatalogMatch(BaseModel):
+    """A file found by name in the catalog, with a 0-100 fuzzy match score."""
 
-
-class QueryResponse(BaseModel):
-    answer: str
-    intent: Intent
-    sources: list[SourceRef]
-    used_llm: bool
-    elapsed_ms: int
-
-
-class QueryStarted(BaseModel):
-    """Sent once routing resolves the intent and sources, before any answer tokens arrive."""
-
-    intent: Intent
-    sources: list[SourceRef]
-
-
-class QueryToken(BaseModel):
-    """One incremental slice of a streamed answer."""
-
-    text: str
-
-
-class QueryDone(BaseModel):
-    """Terminal event closing out a streamed query, once every token has been sent."""
-
-    used_llm: bool
-    elapsed_ms: int
-
-
-class QueryFailed(BaseModel):
-    """Sent instead of QueryDone if a tool or provider failed partway through the stream."""
-
-    message: str
+    file_path: str
+    file_name: str
+    size_bytes: int
+    modified_at: datetime
+    score: float

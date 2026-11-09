@@ -1,172 +1,157 @@
 """
-Watches the configured directories for file changes and forwards debounced, stable paths to
-the indexer — a burst of rapid saves collapses into one reindex. Also defines IndexingState,
-the shared pause/count state the tray and API read to build IndexStatus. Does not parse or
-embed anything itself; it only decides what needs (re)indexing and when.
+Watches the user's source folders for changes and forwards debounced paths to the index
+service — a burst of rapid saves collapses into one reindex. Does not decide what a change
+means for the index; it only reports which paths changed or disappeared, and when.
 """
 
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable
+import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from config.settings import get_settings
-from core.exceptions import NimbusError, UnsupportedFileTypeError
-from core.indexer import Indexer
 from core.logger import get_logger
-from core.vector_store import VectorStore
+from models.schema import IndexSource
 
 logger = get_logger(__name__)
 
 DEBOUNCE_SECONDS = 3.0
+STOP_JOIN_TIMEOUT_SECONDS = 5.0
 
 
-class IndexingState:
-    """Tracks pause state and the indexed/pending file counts the tray and API report. The
-    watcher is the only writer; api/server.py only reads it to build IndexStatus."""
+class ChangeSink(Protocol):
+    """Whatever wants to hear about changes — the index service, in the real app."""
 
-    def __init__(self) -> None:
-        self.is_paused = False
-        self.pending_files = 0
-        self._indexed_paths: set[str] = set()
+    def path_changed(self, path: Path) -> None: ...
 
-    @property
-    def indexed_files(self) -> int:
-        """Distinct files currently represented in the index, as tracked by the watcher."""
-        return len(self._indexed_paths)
-
-    @property
-    def total_files(self) -> int:
-        """Files the watcher currently knows about: already indexed plus still pending."""
-        return self.indexed_files + self.pending_files
-
-    def mark_indexed(self, path: str) -> None:
-        """Records path as indexed — safe to call repeatedly for the same path."""
-        self._indexed_paths.add(path)
-
-    def mark_removed(self, path: str) -> None:
-        """Drops path from the indexed set — called on delete or move-away."""
-        self._indexed_paths.discard(path)
-
-    def seed(self, paths: Iterable[str]) -> None:
-        """Seeds the indexed set from an initial full-index pass at startup."""
-        self._indexed_paths.update(paths)
+    def path_removed(self, path: Path) -> None: ...
 
 
 class FileWatcher:
-    """Wraps watchdog: observes the configured directories and debounces bursts of file events
-    before forwarding stable paths to the indexer.
+    """Wraps watchdog: observes the source folders and debounces bursts of events per path.
 
-    While indexing_state.is_paused is set, every event is dropped rather than queued — pausing
-    is meant to make Nimbus fully idle during a sensitive task, and queueing would mean a burst
-    of reindexing fires the moment the user resumes, defeating the point of pausing at all. A
-    file changed while paused is simply picked up the next time it changes, or by a rebuild.
-    """
+    One debounce thread serves every path. A per-path timer thread would be simpler, but an
+    `npm install` or an unzipped archive inside a source creates tens of thousands of files in
+    seconds — one thread each would exhaust the process."""
 
-    def __init__(
-        self,
-        indexer: Indexer,
-        store: VectorStore,
-        indexing_state: IndexingState,
-        debounce_seconds: float = DEBOUNCE_SECONDS,
-    ) -> None:
-        self._indexer = indexer
-        self._store = store
-        self._state = indexing_state
+    def __init__(self, sink: ChangeSink, debounce_seconds: float = DEBOUNCE_SECONDS) -> None:
+        self._sink = sink
         self._debounce_seconds = debounce_seconds
         self._observer: Observer | None = None
-        self._timers: dict[str, threading.Timer] = {}
-        self._lock = threading.Lock()
+        self._pending: dict[str, tuple[Path, float]] = {}
+        self._condition = threading.Condition()
+        self._debouncer: threading.Thread | None = None
+        self._stopping = False
 
-    def setup(self) -> None:
-        """Schedules a recursive watch on every configured directory that actually exists."""
+    def start(self, sources: list[IndexSource]) -> None:
+        """Starts a recursive watch on every source folder that exists. Returns immediately."""
+        with self._condition:
+            self._stopping = False
         self._observer = Observer()
         handler = _WatchHandler(self)
-        for directory in get_settings().watched_dirs:
-            if not directory.is_dir():
-                logger.warning("Watched directory doesn't exist, skipping", extra={"path": str(directory)})
+        for source in sources:
+            if not source.path.is_dir():
+                logger.warning("Source folder doesn't exist, not watching it", extra={"path": str(source.path)})
                 continue
-            self._observer.schedule(handler, str(directory), recursive=True)
-
-    def start(self) -> None:
-        """Starts the observer's own background thread — returns immediately."""
+            self._observer.schedule(handler, str(source.path), recursive=True)
         self._observer.start()
-        logger.info("File watcher started")
+        logger.info("File watcher started", extra={"folders": len(sources)})
 
     def stop(self) -> None:
-        """Stops the observer and cancels every pending debounce timer."""
-        self._observer.stop()
-        self._observer.join()
-        with self._lock:
-            for timer in self._timers.values():
-                timer.cancel()
-            self._timers.clear()
-        logger.info("File watcher stopped")
+        """Stops the observer and drops every pending change. Safe to call twice."""
+        if self._observer is not None:
+            self._observer.stop()
+            self._observer.join()
+            self._observer = None
+        with self._condition:
+            self._stopping = True
+            self._pending.clear()
+            self._condition.notify_all()
+        if self._debouncer is not None:
+            self._debouncer.join(timeout=STOP_JOIN_TIMEOUT_SECONDS)
+            self._debouncer = None
+
+    def restart(self, sources: list[IndexSource]) -> None:
+        """Re-watches a new set of folders after the user changes their sources."""
+        self.stop()
+        self.start(sources)
 
     def handle_changed(self, path: Path) -> None:
-        """(Re)starts path's debounce timer — a rapid burst of saves collapses into one reindex."""
-        with self._lock:
-            existing = self._timers.get(str(path))
-            if existing is not None:
-                existing.cancel()
-            timer = threading.Timer(self._debounce_seconds, self._process_changed, args=(path,))
-            timer.daemon = True
-            self._timers[str(path)] = timer
-            self._state.pending_files = len(self._timers)
-            timer.start()
+        """(Re)starts path's debounce window — a rapid burst of saves collapses into one event."""
+        with self._condition:
+            if self._stopping:
+                return
+            self._pending[str(path)] = (path, time.monotonic() + self._debounce_seconds)
+            self._ensure_debouncer()
+            self._condition.notify()
 
     def handle_removed(self, path: Path) -> None:
-        """Removes path's rows immediately — deletes aren't debounced, there's nothing to collapse."""
-        if self._state.is_paused:
-            logger.info("Dropping delete event while paused", extra={"path": str(path)})
-            return
-        try:
-            self._store.delete_by_path(str(path))
-            self._state.mark_removed(str(path))
-        except NimbusError as e:
-            logger.error("Failed to remove deleted file from the index", extra={"path": str(path), "error": str(e)})
+        """Forwards a delete immediately — there's nothing to collapse, and a pending change
+        for the same path would only try to index a file that's gone."""
+        with self._condition:
+            self._pending.pop(str(path), None)
+        self._forward(self._sink.path_removed, path)
 
-    def _process_changed(self, path: Path) -> None:
-        """Runs once the debounce window elapses; drops the event entirely if paused."""
-        with self._lock:
-            self._timers.pop(str(path), None)
-            self._state.pending_files = len(self._timers)
-        if self._state.is_paused:
-            logger.info("Dropping change event while paused", extra={"path": str(path)})
-            return
+    def _ensure_debouncer(self) -> None:
+        """Starts the debounce thread on first use. Caller holds the condition."""
+        if self._debouncer is None or not self._debouncer.is_alive():
+            self._debouncer = threading.Thread(target=self._run_debouncer, name="watch-debounce", daemon=True)
+            self._debouncer.start()
+
+    def _run_debouncer(self) -> None:
+        """Forwards each path once its window has passed, sleeping until the next one is due."""
+        while True:
+            with self._condition:
+                if self._stopping:
+                    return
+                due, wait_seconds = self._take_due_paths()
+                if not due:
+                    self._condition.wait(timeout=wait_seconds)
+                    continue
+            for path in due:
+                self._forward(self._sink.path_changed, path)
+
+    def _take_due_paths(self) -> tuple[list[Path], float | None]:
+        """Removes and returns the paths whose window has passed, plus how long until the next
+        one is due (None when nothing is pending). Caller holds the condition."""
+        now = time.monotonic()
+        due_keys = [key for key, (_, deadline) in self._pending.items() if deadline <= now]
+        due = [self._pending.pop(key)[0] for key in due_keys]
+        next_deadline = min((deadline for _, deadline in self._pending.values()), default=None)
+        return due, None if next_deadline is None else max(0.0, next_deadline - now)
+
+    def _forward(self, callback: Callable[[Path], None], path: Path) -> None:
+        """Calls the sink, logging failures — a watcher thread that dies stops all future updates."""
         try:
-            self._indexer.index_file(path)
-            self._state.mark_indexed(str(path))
-        except UnsupportedFileTypeError as e:
-            logger.info("Skipping file with no available converter", extra={"path": str(path), "error": str(e)})
-        except NimbusError as e:
-            logger.error("Failed to index changed file", extra={"path": str(path), "error": str(e)})
+            callback(path)
+        except Exception:
+            logger.exception("Failed to process a file change", extra={"path": str(path)})
 
 
 class _WatchHandler(FileSystemEventHandler):
-    """Translates raw watchdog events into FileWatcher calls, ignoring directory events."""
+    """Translates raw watchdog events into FileWatcher calls. Folder creations and moves are
+    forwarded too, so a folder dragged into a source gets scanned as a whole."""
 
     def __init__(self, watcher: FileWatcher) -> None:
         self._watcher = watcher
 
     def on_created(self, event: FileSystemEvent) -> None:
-        if not event.is_directory:
-            self._watcher.handle_changed(Path(event.src_path))
+        self._watcher.handle_changed(Path(event.src_path))
 
     def on_modified(self, event: FileSystemEvent) -> None:
+        # A folder's own "modified" event just means its listing changed; the files inside
+        # report themselves.
         if not event.is_directory:
             self._watcher.handle_changed(Path(event.src_path))
 
     def on_deleted(self, event: FileSystemEvent) -> None:
-        if not event.is_directory:
-            self._watcher.handle_removed(Path(event.src_path))
+        self._watcher.handle_removed(Path(event.src_path))
 
     def on_moved(self, event: FileSystemEvent) -> None:
-        if event.is_directory:
-            return
         self._watcher.handle_removed(Path(event.src_path))
         self._watcher.handle_changed(Path(event.dest_path))

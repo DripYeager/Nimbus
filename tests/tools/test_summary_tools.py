@@ -1,128 +1,90 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
+from unittest.mock import Mock
 
+import pytest
 from pytest_mock import MockerFixture
 
+from core.exceptions import ParsingError, ProviderError
 from llm.provider import LLMProvider
-from models.schema import FileMetadata
 from tools.summary_tools import (
     NOTHING_TO_SUMMARIZE_MESSAGE,
     SAFE_PROMPT_WORD_LIMIT,
-    stream_summarize_document,
-    stream_summarize_todays_downloads,
+    read_document_excerpt,
+    summarize_document,
+    summarize_text,
 )
 
 
-def _file(path: str, modified_at: datetime = datetime(2026, 8, 9, 9, 0)) -> FileMetadata:
-    return FileMetadata(file_path=path, file_name=Path(path).name, size_bytes=10, created_at=modified_at,
-                         modified_at=modified_at)
-
-
-def test_stream_summarize_document_streams_one_call_for_a_small_document(mocker: MockerFixture) -> None:
-    mocker.patch("tools.summary_tools.extract_document_text", return_value="A short document about invoices.")
+@pytest.fixture
+def provider(mocker: MockerFixture) -> Mock:
     provider = mocker.Mock(spec=LLMProvider)
-    provider.stream.return_value = iter(["five ", "bullet points"])
+    provider.complete.return_value = "five bullet points"
+    return provider
 
-    result = "".join(stream_summarize_document(Path("invoice.txt"), provider))
 
-    assert result == "five bullet points"
-    provider.stream.assert_called_once()
+def test_summarize_text_uses_one_call_for_a_short_text(provider: Mock) -> None:
+    summary = summarize_text("A short document about invoices.", provider)
+
+    assert summary == "five bullet points"
+    provider.complete.assert_called_once()
+    assert "A short document about invoices." in provider.complete.call_args.args[0]
+
+
+def test_summarize_text_map_reduces_a_long_text(provider: Mock) -> None:
+    provider.complete.side_effect = ["part one", "part two", "part three", "final summary"]
+
+    summary = summarize_text("word " * (SAFE_PROMPT_WORD_LIMIT * 2 + 1000), provider)
+
+    assert summary == "final summary"
+    final_prompt = provider.complete.call_args.args[0]
+    assert "part one" in final_prompt
+    assert "part three" in final_prompt
+
+
+def test_summarize_text_skips_the_model_for_blank_text(provider: Mock) -> None:
+    assert summarize_text("  \n ", provider) == NOTHING_TO_SUMMARIZE_MESSAGE
     provider.complete.assert_not_called()
-    assert "A short document about invoices." in provider.stream.call_args[0][0]
 
 
-def test_stream_summarize_document_map_reduces_a_large_document(mocker: MockerFixture) -> None:
-    huge_text = "word " * (SAFE_PROMPT_WORD_LIMIT * 2 + 1000)
-    mocker.patch("tools.summary_tools.extract_document_text", return_value=huge_text)
-    provider = mocker.Mock(spec=LLMProvider)
-    provider.complete.side_effect = ["part one summary", "part two summary", "part three summary"]
-    provider.stream.return_value = iter(["final summary"])
+def test_summarize_text_propagates_provider_errors(provider: Mock) -> None:
+    provider.complete.side_effect = ProviderError("offline")
 
-    result = "".join(stream_summarize_document(Path("big.txt"), provider))
-
-    assert result == "final summary"
-    assert provider.complete.call_count == 3
-    provider.stream.assert_called_once()
-    final_prompt = provider.stream.call_args[0][0]
-    assert "part one summary" in final_prompt
-    assert "part three summary" in final_prompt
+    with pytest.raises(ProviderError):
+        summarize_text("some text", provider)
 
 
-def test_stream_summarize_document_skips_the_llm_when_no_text_is_extracted(mocker: MockerFixture) -> None:
-    mocker.patch("tools.summary_tools.extract_document_text", return_value="   ")
-    provider = mocker.Mock(spec=LLMProvider)
+def test_summarize_document_summarizes_the_extracted_text(provider: Mock, mocker: MockerFixture) -> None:
+    mocker.patch("tools.summary_tools.extract_document_text", return_value="Board minutes from March.")
 
-    result = "".join(stream_summarize_document(Path("blank.txt"), provider))
-
-    assert result == NOTHING_TO_SUMMARIZE_MESSAGE
-    provider.complete.assert_not_called()
-    provider.stream.assert_not_called()
+    assert summarize_document(Path("minutes.docx"), provider) == "five bullet points"
+    assert "Board minutes from March." in provider.complete.call_args.args[0]
 
 
-def test_stream_summarize_todays_downloads_reports_when_downloads_is_not_watched(mocker: MockerFixture) -> None:
-    mocker.patch("tools.summary_tools.get_settings", return_value=SimpleNamespace(watched_dirs=[Path("~/Documents")]))
-    provider = mocker.Mock(spec=LLMProvider)
+def test_summarize_document_propagates_parsing_errors(provider: Mock, mocker: MockerFixture) -> None:
+    mocker.patch("tools.summary_tools.extract_document_text", side_effect=ParsingError("corrupt file"))
 
-    result = "".join(stream_summarize_todays_downloads(provider))
-
-    assert "isn't one of the watched folders" in result
-    provider.complete.assert_not_called()
-    provider.stream.assert_not_called()
+    with pytest.raises(ParsingError):
+        summarize_document(Path("broken.docx"), provider)
 
 
-def test_stream_summarize_todays_downloads_reports_when_nothing_was_downloaded(mocker: MockerFixture) -> None:
-    mocker.patch(
-        "tools.summary_tools.get_settings", return_value=SimpleNamespace(watched_dirs=[Path("~/Downloads")])
-    )
-    mocker.patch("tools.summary_tools.list_recent", return_value=[])
-    provider = mocker.Mock(spec=LLMProvider)
+def test_read_document_excerpt_cuts_to_the_word_budget(tmp_path: Path) -> None:
+    path = tmp_path / "long.txt"
+    path.write_text("one two three four five", encoding="utf-8")
 
-    result = "".join(stream_summarize_todays_downloads(provider))
-
-    assert result == "No files were downloaded today."
-    provider.complete.assert_not_called()
-    provider.stream.assert_not_called()
+    assert read_document_excerpt(path, max_words=3) == ("one two three", True)
 
 
-def test_stream_summarize_todays_downloads_combines_files_into_a_single_call(mocker: MockerFixture) -> None:
-    mocker.patch(
-        "tools.summary_tools.get_settings", return_value=SimpleNamespace(watched_dirs=[Path("~/Downloads")])
-    )
-    mocker.patch(
-        "tools.summary_tools.list_recent",
-        return_value=[_file("C:/Downloads/invoice.pdf"), _file("C:/Downloads/report.docx")],
-    )
-    mocker.patch(
-        "tools.summary_tools.extract_document_text",
-        side_effect=lambda path: "Invoice content." if path.name == "invoice.pdf" else "Report content.",
-    )
-    provider = mocker.Mock(spec=LLMProvider)
-    provider.stream.return_value = iter(["digest of today's downloads"])
+def test_read_document_excerpt_returns_a_short_document_whole(tmp_path: Path) -> None:
+    path = tmp_path / "short.txt"
+    path.write_text("one  two\nthree", encoding="utf-8")
 
-    result = "".join(stream_summarize_todays_downloads(provider))
-
-    assert result == "digest of today's downloads"
-    provider.stream.assert_called_once()
-    prompt = provider.stream.call_args[0][0]
-    assert "Invoice content." in prompt
-    assert "Report content." in prompt
+    assert read_document_excerpt(path, max_words=3) == ("one two three", False)
 
 
-def test_stream_summarize_todays_downloads_uses_real_extracted_text_from_matching_files(
-    tmp_path: Path, mocker: MockerFixture
-) -> None:
-    downloads = tmp_path / "Downloads"
-    downloads.mkdir()
-    (downloads / "notes.txt").write_text("Nimbus really did download this file today.")
-    mocker.patch("tools.summary_tools.get_settings", return_value=SimpleNamespace(watched_dirs=[downloads]))
-    provider = mocker.Mock(spec=LLMProvider)
-    provider.stream.return_value = iter(["digest"])
+def test_read_document_excerpt_propagates_parsing_errors(mocker: MockerFixture) -> None:
+    mocker.patch("tools.summary_tools.extract_document_text", side_effect=ParsingError("unreadable"))
 
-    result = "".join(stream_summarize_todays_downloads(provider))
-
-    assert result == "digest"
-    prompt = provider.stream.call_args[0][0]
-    assert "Nimbus really did download this file today." in prompt
+    with pytest.raises(ParsingError):
+        read_document_excerpt(Path("x.pdf"), max_words=10)

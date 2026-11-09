@@ -1,10 +1,11 @@
-"""The hotkey, the overlay window, the tray icon — everything the user actually sees."""
+"""Everything the user sees: the chat window, Settings, onboarding, the tray icon and the hotkey."""
 
 from __future__ import annotations
 
+from ui.api_client import ApiClient
+from ui.chat.chat_window import ChatWindow
+from ui.desktop_shell import DesktopShell
 from ui.hotkey import HotkeyListener
-from ui.overlay import OverlayWindow
-from ui.query_client import QueryClient
 from ui.tray import TrayIcon
 
-__all__ = ["HotkeyListener", "OverlayWindow", "QueryClient", "TrayIcon"]
+__all__ = ["ApiClient", "ChatWindow", "DesktopShell", "HotkeyListener", "TrayIcon"]

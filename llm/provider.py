@@ -1,6 +1,6 @@
 """
 Defines the provider-agnostic contract every LLM backend implements, and the factory that
-picks a concrete backend from settings. Does not implement any provider itself.
+builds a concrete backend from a ProviderConfig. Does not implement any provider itself.
 """
 
 from __future__ import annotations
@@ -10,10 +10,15 @@ from typing import Protocol
 
 from config.settings import Settings, get_settings
 from core.exceptions import ProviderError
+from core.secret_store import get_api_key
 from llm.anthropic_provider import AnthropicProvider
-from llm.deepinfra_provider import DeepInfraProvider
 from llm.ollama_provider import OllamaProvider
 from llm.openai_provider import OpenAIProvider
+from models.chat import ChatMessage, ProviderConfig, TextDelta, ToolCall, ToolSpec
+
+# The OpenAI SDK insists on some key, but local OpenAI-compatible servers (LM Studio, vLLM)
+# don't check it.
+PLACEHOLDER_LOCAL_KEY = "not-needed"
 
 
 class LLMProvider(Protocol):
@@ -23,18 +28,44 @@ class LLMProvider(Protocol):
 
     def stream(self, prompt: str) -> Iterator[str]: ...
 
+    def stream_chat(
+        self, system: str, messages: list[ChatMessage], tools: list[ToolSpec]
+    ) -> Iterator[TextDelta | ToolCall]: ...
+
+    def list_models(self) -> list[str]: ...
+
     def is_available(self) -> bool: ...
 
 
+def build_provider(config: ProviderConfig, ollama_host: str | None = None) -> LLMProvider:
+    """Builds the concrete provider config describes."""
+    if config.name == "ollama":
+        return OllamaProvider(ollama_host or get_settings().ollama_host, config.model)
+    if config.name == "anthropic":
+        return AnthropicProvider(config.api_key, config.model)
+    if config.name == "openai":
+        return OpenAIProvider(config.api_key, config.model)
+    if config.name == "openai_compatible":
+        if not config.base_url:
+            raise ProviderError("An OpenAI-compatible provider needs a base URL. Set one in Settings → Model.")
+        return OpenAIProvider(config.api_key or PLACEHOLDER_LOCAL_KEY, config.model, base_url=config.base_url)
+    raise ProviderError(f"Unknown provider: {config.name}")
+
+
+def provider_config_from_settings(settings: Settings) -> ProviderConfig:
+    """Reads the active provider's model, key and URL out of settings and the credential store."""
+    name = settings.llm_provider
+    models = {
+        "ollama": settings.ollama_model,
+        "openai": settings.openai_model,
+        "anthropic": settings.anthropic_model,
+        "openai_compatible": settings.compatible_model,
+    }
+    base_url = settings.compatible_base_url if name == "openai_compatible" else None
+    return ProviderConfig(name=name, model=models[name], api_key=get_api_key(name, settings), base_url=base_url)
+
+
 def get_provider(settings: Settings | None = None) -> LLMProvider:
-    """Builds the concrete provider selected by settings.llm_provider."""
+    """Builds the provider currently selected in settings."""
     settings = settings or get_settings()
-    if settings.llm_provider == "ollama":
-        return OllamaProvider(settings.ollama_host, settings.ollama_model)
-    if settings.llm_provider == "deepinfra":
-        return DeepInfraProvider(settings.deepinfra_api_key, settings.deepinfra_model)
-    if settings.llm_provider == "anthropic":
-        return AnthropicProvider(settings.anthropic_api_key, settings.anthropic_model)
-    if settings.llm_provider == "openai":
-        return OpenAIProvider(settings.openai_api_key, settings.openai_model)
-    raise ProviderError(f"Unknown llm_provider: {settings.llm_provider}")
+    return build_provider(provider_config_from_settings(settings), ollama_host=settings.ollama_host)

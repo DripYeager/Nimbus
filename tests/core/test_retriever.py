@@ -2,68 +2,150 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import Mock
 
+import pytest
 from pytest_mock import MockerFixture
 
-from core.embedder import Embedder, get_embedder
-from core.indexer import Indexer
-from core.retriever import DEFAULT_TOP_K, Retriever
+from core.embedder import Embedder
+from core.exceptions import QueryError
+from core.retriever import CANDIDATE_MULTIPLIER, RRF_K, Retriever, fuse_rankings
 from core.vector_store import VectorStore
-from models.schema import ParsedDocument, SearchResult
+from models.schema import IndexedChunk, SearchResult
+
+QUERY_VECTOR = [1.0, 0.0, 0.0, 0.0]
 
 
-def test_retrieve_embeds_the_query_and_passes_filters_to_the_store(mocker: MockerFixture) -> None:
-    store = mocker.Mock(spec=VectorStore)
-    store.search.return_value = []
-    embedder = mocker.Mock(spec=Embedder)
-    embedder.embed.return_value = [[0.1, 0.2, 0.3]]
-
-    cutoff = datetime(2026, 6, 1)
-    Retriever(store, embedder).retrieve("find the invoice", top_k=3, file_type="pdf", modified_after=cutoff)
-
-    embedder.embed.assert_called_once_with(["find the invoice"])
-    store.search.assert_called_once_with([0.1, 0.2, 0.3], top_k=3, file_type="pdf", modified_after=cutoff)
-
-
-def test_retrieve_uses_the_default_top_k_when_not_specified(mocker: MockerFixture) -> None:
-    store = mocker.Mock(spec=VectorStore)
-    store.search.return_value = []
-    embedder = mocker.Mock(spec=Embedder)
-    embedder.embed.return_value = [[0.1, 0.2, 0.3]]
-
-    Retriever(store, embedder).retrieve("find the invoice")
-
-    assert store.search.call_args.kwargs["top_k"] == DEFAULT_TOP_K
-
-
-def test_retrieve_returns_whatever_the_store_returns(mocker: MockerFixture) -> None:
-    store = mocker.Mock(spec=VectorStore)
-    expected = [SearchResult(chunk_text="t", file_path="p", file_name="n", score=0.5, metadata={})]
-    store.search.return_value = expected
-    embedder = mocker.Mock(spec=Embedder)
-    embedder.embed.return_value = [[0.1, 0.2, 0.3]]
-
-    assert Retriever(store, embedder).retrieve("anything") == expected
-
-
-def test_retrieve_finds_the_most_relevant_chunk_end_to_end(tmp_path: Path, mocker: MockerFixture) -> None:
-    mocker.patch(
-        "core.document_parser.parse_document",
-        side_effect=lambda path: ParsedDocument(
-            markdown_text="The vendor contract requires thirty days notice for termination."
-            if path.name == "contract.txt"
-            else "The lunch menu today includes soup and a sandwich.",
-            needs_ocr=False,
-        ),
+def _result(chunk_id: str, modified_at: datetime = datetime(2026, 1, 1)) -> SearchResult:
+    return SearchResult(
+        chunk_id=chunk_id,
+        chunk_text=f"text of {chunk_id}",
+        file_path=f"C:\\Docs\\{chunk_id}.txt",
+        file_name=f"{chunk_id}.txt",
+        score=0.0,
+        metadata={"modified_at": modified_at},
     )
-    (tmp_path / "contract.txt").write_text("placeholder")
-    (tmp_path / "menu.txt").write_text("placeholder")
 
+
+@pytest.fixture
+def store(mocker: MockerFixture) -> Mock:
+    fake = mocker.Mock(spec=VectorStore)
+    fake.search.return_value = []
+    fake.search_text.return_value = []
+    return fake
+
+
+@pytest.fixture
+def embedder(mocker: MockerFixture) -> Mock:
+    fake = mocker.Mock(spec=Embedder)
+    fake.embed_query.return_value = QUERY_VECTOR
+    return fake
+
+
+def test_fuse_rankings_ranks_a_chunk_found_by_both_lists_first() -> None:
+    semantic = [_result("only-semantic"), _result("both")]
+    keyword = [_result("only-keyword"), _result("both")]
+
+    fused = fuse_rankings([semantic, keyword])
+
+    assert fused[0].chunk_id == "both"
+
+
+def test_fuse_rankings_scores_with_reciprocal_rank() -> None:
+    fused = fuse_rankings([[_result("a"), _result("b")], [_result("a")]])
+
+    assert [r.score for r in fused] == [2 / (RRF_K + 1), 1 / (RRF_K + 2)]
+
+
+def test_fuse_rankings_returns_each_chunk_once() -> None:
+    fused = fuse_rankings([[_result("a")], [_result("a")], [_result("a")]])
+
+    assert [r.chunk_id for r in fused] == ["a"]
+
+
+def test_fuse_rankings_returns_empty_for_empty_rankings() -> None:
+    assert fuse_rankings([[], []]) == []
+
+
+def test_retrieve_oversamples_both_searches(store: Mock, embedder: Mock) -> None:
+    Retriever(store, embedder).retrieve("invoice", top_k=2)
+
+    store.search.assert_called_once_with(QUERY_VECTOR, top_k=2 * CANDIDATE_MULTIPLIER, modified_after=None)
+    store.search_text.assert_called_once_with("invoice", top_k=2 * CANDIDATE_MULTIPLIER)
+
+
+def test_retrieve_returns_at_most_top_k_results(store: Mock, embedder: Mock) -> None:
+    store.search.return_value = [_result(str(i)) for i in range(6)]
+
+    assert len(Retriever(store, embedder).retrieve("invoice", top_k=2)) == 2
+
+
+def test_retrieve_puts_a_keyword_and_meaning_match_on_top(store: Mock, embedder: Mock) -> None:
+    store.search.return_value = [_result("similar"), _result("exact")]
+    store.search_text.return_value = [_result("exact")]
+
+    assert Retriever(store, embedder).retrieve("INV-2231")[0].chunk_id == "exact"
+
+
+def test_retrieve_drops_keyword_hits_older_than_modified_after(store: Mock, embedder: Mock) -> None:
+    store.search_text.return_value = [_result("old", datetime(2025, 1, 1)), _result("new", datetime(2026, 9, 1))]
+
+    results = Retriever(store, embedder).retrieve("invoice", modified_after=datetime(2026, 6, 1))
+
+    assert [r.chunk_id for r in results] == ["new"]
+
+
+def test_retrieve_passes_the_recency_filter_to_vector_search(store: Mock, embedder: Mock) -> None:
+    cutoff = datetime(2026, 6, 1)
+
+    Retriever(store, embedder).retrieve("invoice", modified_after=cutoff)
+
+    assert store.search.call_args.kwargs["modified_after"] == cutoff
+
+
+def test_retrieve_lets_a_vector_search_failure_propagate(store: Mock, embedder: Mock) -> None:
+    store.search.side_effect = QueryError("store unavailable")
+
+    with pytest.raises(QueryError):
+        Retriever(store, embedder).retrieve("invoice")
+
+
+def test_retrieve_semantic_only_skips_keyword_search(store: Mock, embedder: Mock) -> None:
+    store.search.return_value = [_result("a")]
+
+    results = Retriever(store, embedder).retrieve_semantic_only("invoice", top_k=3)
+
+    assert [r.chunk_id for r in results] == ["a"]
+    store.search.assert_called_once_with(QUERY_VECTOR, top_k=3)
+    store.search_text.assert_not_called()
+
+
+def test_retrieve_finds_an_exact_token_in_a_real_store(tmp_path: Path, embedder: Mock) -> None:
     store = VectorStore(db_path=tmp_path / "index")
     store.connect()
-    Indexer(store, get_embedder()).index_directory(tmp_path)
+    now = datetime(2026, 1, 1)
+    store.upsert_chunks(
+        [
+            IndexedChunk(
+                id=name,
+                file_path=f"C:\\Docs\\{name}.txt",
+                file_name=f"{name}.txt",
+                file_type="txt",
+                content_hash="h",
+                chunk_index=0,
+                chunk_text=text,
+                vector=vector,
+                created_at=now,
+                modified_at=now,
+                indexed_at=now,
+            )
+            for name, text, vector in [
+                ("lookalike", "Invoices are due within thirty days", QUERY_VECTOR),
+                ("target", "Invoice INV-2231 for the March delivery", [0.0, 1.0, 0.0, 0.0]),
+            ]
+        ]
+    )
 
-    results = Retriever(store, get_embedder()).retrieve("What does the contract say about termination?", top_k=1)
+    results = Retriever(store, embedder).retrieve("INV-2231", top_k=1)
 
-    assert len(results) == 1
-    assert results[0].file_name == "contract.txt"
+    assert [r.chunk_id for r in results] == ["target"]

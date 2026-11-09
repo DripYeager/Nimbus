@@ -1,0 +1,1 @@
+Invoice INV-2240. Bill to: Northwind Ltd. Item: annual software maintenance renewal. Total due 4,500 USD within 30 days. Late payments accrue interest at 2 percent per month.

@@ -35,3 +35,11 @@ def test_chunk_text_raises_when_overlap_is_negative() -> None:
 def test_chunk_text_raises_when_overlap_is_not_smaller_than_chunk_size() -> None:
     with pytest.raises(ValueError):
         chunk_text("a b c", chunk_size=4, overlap=4)
+
+
+def test_chunk_text_does_not_emit_a_trailing_chunk_already_covered_by_overlap() -> None:
+    assert chunk_text("a b c d e", chunk_size=4, overlap=3) == ["a b c d", "b c d e"]
+
+
+def test_chunk_text_collapses_runs_of_whitespace() -> None:
+    assert chunk_text("one\n\n  two\tthree", chunk_size=10, overlap=0) == ["one two three"]

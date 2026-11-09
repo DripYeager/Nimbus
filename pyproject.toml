@@ -1,0 +1,25 @@
+[project]
+name = "nimbus"
+version = "2.0.0"
+description = "A private, hotkey-summoned desktop assistant that searches, reads and acts on your local files."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM"]
+ignore = [
+    # FastAPI's Depends() in argument defaults is the framework's intended pattern
+    "B008",
+    # Qt's overridable event handlers (keyPressEvent, paintEvent) are camelCase by design
+    "N802",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "config", "core", "llm", "models", "tools", "ui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,22 +1,40 @@
 """
-Loads and validates all application configuration from environment variables and .env.
-Does not contain business logic — callers import get_settings() and read typed fields.
+Loads and validates all application configuration. Values come from, in priority order: the
+Settings window's saved JSON file, environment variables, then .env — so a choice made in the
+UI always wins over a developer's .env. Does not contain business logic or write anything;
+saving lives in settings_store.py.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import (
+    BaseSettings,
+    JsonConfigSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
-DEFAULT_WATCHED_DIRS = ["~/Downloads", "~/Desktop", "~/Documents"]
+from config.legacy_settings import migrate_legacy_values
+from config.paths import app_data_dir, user_settings_path
+from models.chat import ProviderName
+from models.schema import FileCategory, IndexSource
+
+DEFAULT_SOURCE_DIRS = ["~/Downloads", "~/Desktop", "~/Documents"]
+CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "anthropic", "openai_compatible"})
 
 
 def _expanded(path: str | Path) -> Path:
     """Resolves ~ to the user's home directory."""
     return Path(path).expanduser()
+
+
+def _default_sources() -> list[IndexSource]:
+    """Downloads, Desktop and Documents, contents included — what most people mean by 'my files'."""
+    return [IndexSource(path=_expanded(p)) for p in DEFAULT_SOURCE_DIRS]
 
 
 class Settings(BaseSettings):
@@ -25,46 +43,88 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # ollama runs fully local, so it's the only provider that never ships file contents off the machine
-    llm_provider: Literal["ollama", "deepinfra", "anthropic", "openai"] = "ollama"
+    llm_provider: ProviderName = "ollama"
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
-    deepinfra_api_key: str | None = None
-    deepinfra_model: str = "deepseek-ai/DeepSeek-V4-Flash-0731"
-    anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-3-5-haiku-latest"
+    openai_model: str = "gpt-5-mini"
+    anthropic_model: str = "claude-haiku-5-5"
+    compatible_base_url: str = ""
+    compatible_model: str = ""
+    # Developer fallback only. Keys entered in the Settings window go to the OS credential
+    # store (core/secret_store.py) and are never written to settings.json.
     openai_api_key: str | None = None
-    openai_model: str = "gpt-4o-mini"
+    anthropic_api_key: str | None = None
+    compatible_api_key: str | None = None
 
-    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_threads: int = 2
 
-    watched_dirs: list[Path] = Field(default_factory=lambda: [_expanded(p) for p in DEFAULT_WATCHED_DIRS])
-    max_chunk_size: int = 512
-    chunk_overlap: int = 50
-    lancedb_path: Path = Path("./data/index")
+    sources: list[IndexSource] = Field(default_factory=_default_sources)
+    file_categories: list[FileCategory] = Field(default_factory=lambda: list(FileCategory))
+    max_file_size_mb: int = 50
+    exclude_patterns: list[str] = Field(default_factory=list)
+    # bge-small reads at most 512 tokens, so a chunk has to stay well under that many words
+    max_chunk_size: int = 250
+    chunk_overlap: int = 40
+    # a short pause between files keeps a first-run index from pinning the CPU
+    index_throttle_ms: int = 20
+    data_dir: Path = Field(default_factory=app_data_dir)
 
     hotkey: str = "<ctrl>+<space>"
-    # a hard safety backstop, not a typical-response expectation — err generous, since a cloud
-    # provider map-reducing over several documents can legitimately take a while to answer
-    thinking_timeout_seconds: int = 60
-
-    # host is not configurable on purpose — see api/server.py, it's always 127.0.0.1
+    # a hard safety backstop, reset by every streamed event — not a typical wait time
+    thinking_timeout_seconds: int = 120
     api_port: int = 8765
+
+    daily_llm_call_cap: int | None = None
+    auto_approved_tools: list[str] = Field(default_factory=list)
+    max_agent_steps: int = 6
+    onboarding_complete: bool = False
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Puts the Settings window's JSON file ahead of env vars and .env."""
+        json_settings = JsonConfigSettingsSource(settings_cls, json_file=user_settings_path())
+        return init_settings, json_settings, env_settings, dotenv_settings
 
     @property
     def api_base_url(self) -> str:
         """The loopback-only base URL every API client should call — never a raw host string."""
         return f"http://127.0.0.1:{self.api_port}"
 
-    @field_validator("watched_dirs", mode="before")
-    @classmethod
-    def _expand_watched_dirs(cls, value: list[str | Path]) -> list[Path]:
-        """Lets .env use ~ the same way the defaults do."""
-        return [_expanded(p) for p in value]
+    @property
+    def lancedb_path(self) -> Path:
+        return self.data_dir / "index"
 
-    @field_validator("lancedb_path", mode="before")
+    @property
+    def catalog_path(self) -> Path:
+        return self.data_dir / "catalog.db"
+
+    @property
+    def conversations_path(self) -> Path:
+        return self.data_dir / "conversations.db"
+
+    @property
+    def is_cloud_provider(self) -> bool:
+        """True when answers are generated off this machine — drives the privacy badge."""
+        return self.llm_provider in CLOUD_PROVIDERS
+
+    @model_validator(mode="before")
     @classmethod
-    def _expand_lancedb_path(cls, value: str | Path) -> Path:
-        """Same deal, but for a single path instead of a list."""
+    def _migrate_legacy(cls, data: Any) -> Any:
+        """Accepts a Nimbus 1.x .env instead of refusing to start."""
+        return migrate_legacy_values(data) if isinstance(data, dict) else data
+
+    @field_validator("data_dir", mode="before")
+    @classmethod
+    def _expand_data_dir(cls, value: str | Path) -> Path:
+        """Lets .env use ~ in the data folder path."""
         return _expanded(value)
 
 
@@ -77,3 +137,10 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
     return _settings
+
+
+def reload_settings() -> Settings:
+    """Drops the cached Settings and re-reads every source — called after the UI saves a change."""
+    global _settings
+    _settings = None
+    return get_settings()

@@ -1,0 +1,1 @@
+Project Phoenix kickoff notes. Goal: migrate the billing service from the monolith to its own service by December. Owner: Priya Raman. Risks: data migration of 9 million invoices and the payment gateway cutover.

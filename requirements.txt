@@ -3,43 +3,45 @@ pydantic==2.13.4
 pydantic-settings==2.15.0
 python-dotenv==1.2.2
 
-# API server
+# Local API
 fastapi==0.141.1
 uvicorn==0.52.1
-python-multipart==0.0.32
 
-# Document parsing
+# Document parsing — MarkItDown for office formats, pdfium's text layer for PDFs
 markitdown[all]==0.1.7
-docling==2.118.1
+pypdfium2==5.12.1
 
 # OCR fallback — pure Python/ONNX, no external binary like Tesseract or Poppler to install
 rapidocr==3.9.2
-pypdfium2==5.12.1
 
-# Embeddings & vector store
-sentence-transformers==5.7.0
+# Embeddings (ONNX, no torch) & storage
+fastembed==0.9.1
 lancedb==0.36.0
+pyarrow==25.0.0
 
 # File watching
 watchdog==6.0.0
 
-# LLM providers
+# Model providers
 ollama==0.6.2
 anthropic==0.120.2
 openai==2.53.0
 
-# Overlay UI / trigger layer
+# Desktop UI
 PyQt6==6.11.0
-pynput==1.8.2
-pystray==0.19.5
 Pillow==12.3.0
 
-# Fuzzy matching (app launch)
+# Fuzzy matching (app and file-name search)
 rapidfuzz==3.14.5
 
-# HTTP client (overlay -> API)
+# System status (battery, disk, CPU, memory)
+psutil==7.2.2
+
+# HTTP client (UI -> local API)
 httpx==0.28.1
 
-# Tests
-pytest==9.1.1
-pytest-mock==3.15.1
+# API keys live in the OS credential store (Windows Credential Manager)
+keyring==25.7.0
+
+# Windows integration (start-at-sign-in shortcut)
+pywin32==312; sys_platform == "win32"

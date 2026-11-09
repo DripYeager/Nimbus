@@ -15,6 +15,10 @@ from core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# OCR runs at roughly a second per page on a laptop CPU; past this, a scanned book would hold
+# up the whole index queue for many minutes for little search value.
+MAX_OCR_PAGES = 40
+
 _engine: RapidOCR | None = None
 
 
@@ -27,13 +31,13 @@ def _get_engine() -> RapidOCR:
 
 
 def extract_text_with_ocr(path: Path) -> str:
-    """Rasterizes every page of a PDF and OCRs it, returning the joined page text."""
+    """Rasterizes the first MAX_OCR_PAGES pages of a PDF and OCRs them, returning the joined text."""
     try:
         pdf = pdfium.PdfDocument(str(path))
     except Exception as e:
         raise ParsingError(f"Couldn't open {path} for OCR: {e}") from e
     with pdf:
-        page_texts = [_ocr_page(pdf, i) for i in range(len(pdf))]
+        page_texts = [_ocr_page(pdf, i) for i in range(min(len(pdf), MAX_OCR_PAGES))]
     return "\n\n".join(text for text in page_texts if text)
 
 

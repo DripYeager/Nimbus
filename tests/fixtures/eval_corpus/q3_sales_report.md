@@ -1,0 +1,1 @@
+Q3 sales report. Revenue grew 18 percent quarter on quarter to 2.4 million, driven by the enterprise tier. Churn fell to 3.1 percent. The EMEA region missed target by 6 percent because of delayed deals in Germany.

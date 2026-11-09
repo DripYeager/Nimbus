@@ -26,3 +26,10 @@ env/
 # IDE
 .vscode/
 .idea/
+
+# Local tooling
+.claude/
+
+# Build output
+build/
+dist/

@@ -1,0 +1,1 @@
+Invoice INV-2231. Bill to: Northwind Ltd. Item: 40 ergonomic office chairs at 210 USD each. Subtotal 8,400 USD. VAT 20 percent. Total due 10,080 USD by 3 March. Pay by bank transfer to account ending 7781.

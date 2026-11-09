@@ -1,0 +1,1 @@
+Home network: the router is a TP-Link Archer in the hallway cupboard. Guest network name is Harbour-Guest. Reboot the router if the smart TV loses connection.
