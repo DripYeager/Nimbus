@@ -43,3 +43,19 @@ class AppLaunchResult(BaseModel):
 class UsageView(BaseModel):
     calls_today: int
     daily_cap: int | None
+
+
+class OllamaStatus(BaseModel):
+    """Everything the Settings page needs to walk someone from "no Ollama" to "ready"."""
+
+    installed: bool
+    running: bool
+    models: list[str] = Field(default_factory=list)
+    has_model: bool = False
+    pulling: str | None = None
+    pull_percent: float | None = None
+    pull_error: str | None = None
+
+
+class OllamaPullRequest(BaseModel):
+    model: str

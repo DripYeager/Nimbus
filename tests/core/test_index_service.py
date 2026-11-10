@@ -247,3 +247,22 @@ def test_rescan_drops_rows_of_a_vanished_file_that_was_waiting_for_reindex(
     service.rescan()
 
     assert store.content_hash_for(str(notes)) is None
+
+
+def test_source_summaries_flag_the_folder_being_indexed(
+    service: IndexService, docs: Path, catalog: FileCatalog, mocker: MockerFixture
+) -> None:
+    report = write_file(docs / "report.txt")
+    catalog.upsert([CatalogEntry(report, 1, 1.0, CatalogStatus.PENDING)])
+    mocker.patch.object(type(service._worker), "current_path", new_callable=mocker.PropertyMock, return_value=report)
+
+    (summary,) = service.source_summaries()
+
+    assert (summary.is_active, summary.current_file, summary.pending_count) == (True, "report.txt", 1)
+
+
+def test_status_reports_the_full_path_being_indexed(service: IndexService, docs: Path, mocker: MockerFixture) -> None:
+    report = docs / "report.txt"
+    mocker.patch.object(type(service._worker), "current_path", new_callable=mocker.PropertyMock, return_value=report)
+
+    assert service.status().current_path == str(report)

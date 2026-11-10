@@ -1,7 +1,8 @@
 """
 The "what should Nimbus learn?" editor: source folders (with names-only or full-contents
 reading), file types, a size limit and exclude patterns, optionally with live indexing
-controls. Owns editing these settings in memory; saving them and scrolling are the caller's job.
+controls and per-folder progress that refreshes while the editor is on screen. Owns editing
+these settings in memory; saving them and scrolling are the caller's job.
 """
 
 from __future__ import annotations
@@ -10,7 +11,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtGui import QHideEvent, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
     QGridLayout,
@@ -28,7 +30,7 @@ from ui.background_call import run_in_background
 from ui.settings.index_panel import IndexPanel
 from ui.settings.label_roles import styled_label
 from ui.settings.section_layout import GAP, GROUP_SPACING, SettingsCard, divider, group_header, two_state_icon
-from ui.settings.source_row import SourceRow
+from ui.settings.source_row import SourceRow, describe_source_counts
 from ui.theme.line_icons import line_icon
 from ui.theme.tokens import ICON_SIZE, TEXT, TEXT_MUTED, TEXT_ON_ORANGE
 
@@ -52,21 +54,14 @@ EXCLUDE_BOX_HEIGHT = 88
 EXCLUDE_PLACEHOLDER = "One pattern per line, e.g.\n*.iso\nArchive"
 FOLDERS_HINT = "Switch off “Read contents” to keep a folder searchable by file name only."
 NO_FOLDERS_TEXT = "No folders yet — add one so Nimbus has something to learn."
+PROGRESS_REFRESH_MS = 2000
+# Re-exported for callers that format a folder's status line without a row.
+__all__ = ["SourcesEditor", "describe_source_counts"]
 
 
 def _path_key(path: str) -> str:
     """Compares folder paths the way Windows does: case-insensitive, ~ expanded."""
     return os.path.normcase(str(Path(path).expanduser()))
-
-
-def describe_source_counts(summary: SourceSummary) -> str:
-    """The muted counts line under a folder, e.g. "1,240 files · 980 read"."""
-    if not summary.exists:
-        return "Folder not found"
-    text = f"{summary.file_count:,} files"
-    if summary.include_contents:
-        text += f" · {summary.indexed_count:,} read"
-    return text
 
 
 def _category_chip(label: str, icon: str) -> QPushButton:
@@ -111,7 +106,26 @@ class SourcesEditor(QWidget):
         self._exclude_box.setPlaceholderText(EXCLUDE_PLACEHOLDER)
         self._exclude_box.setFixedHeight(EXCLUDE_BOX_HEIGHT)
         self._index_panel = IndexPanel(api) if show_index_controls else None
+        self._progress_timer = QTimer(self)
+        self._progress_timer.setInterval(PROGRESS_REFRESH_MS)
+        self._progress_timer.timeout.connect(self.refresh_progress)
+        self._is_refreshing = False
         self._build_layout()
+
+    def refresh_progress(self) -> None:
+        """Fetches each folder's progress in the background; skips if a fetch is still running."""
+        if self._is_refreshing:
+            return
+        self._is_refreshing = True
+        run_in_background(self._api.source_summaries, self._show_counts, self._refresh_failed)
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        self._progress_timer.start()
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        super().hideEvent(event)
+        self._progress_timer.stop()
 
     def _build_layout(self) -> None:
         """Index card (if any), then folders, file types and limits, each under its own title."""
@@ -167,7 +181,7 @@ class SourcesEditor(QWidget):
             chip.setChecked(category.value in enabled)
         self._size_box.setValue(int(values.get("max_file_size_mb", DEFAULT_FILE_SIZE_MB)))
         self._exclude_box.setPlainText("\n".join(values.get("exclude_patterns", [])))
-        run_in_background(self._api.source_summaries, self._show_counts)
+        self.refresh_progress()
 
     def collect(self) -> dict[str, Any]:
         """The edited values as settings updates."""
@@ -197,10 +211,14 @@ class SourcesEditor(QWidget):
         row.deleteLater()
         self._empty_label.setVisible(not self._rows)
 
+    def _refresh_failed(self, _message: str) -> None:
+        self._is_refreshing = False
+
     def _show_counts(self, summaries: list[SourceSummary]) -> None:
-        """Puts each folder's file counts under it; folders the engine hasn't seen keep their note."""
+        """Puts each folder's progress under it; folders the engine hasn't seen keep their note."""
+        self._is_refreshing = False
         by_path = {_path_key(summary.path): summary for summary in summaries}
         for row in self._rows:
             summary = by_path.get(_path_key(row.path))
             if summary is not None:
-                row.counts_label.setText(describe_source_counts(summary))
+                row.set_summary(summary)

@@ -131,14 +131,14 @@ class FileCatalog:
         rows = self._query("SELECT status, COUNT(*) FROM files GROUP BY status")
         return {CatalogStatus(status): count for status, count in rows}
 
-    def count_under(self, root: Path) -> tuple[int, int]:
-        """(all files, content-indexed files) below root, for the Settings window's source list."""
+    def status_counts_under(self, root: Path) -> dict[CatalogStatus, int]:
+        """How many files below root are in each status, for the Settings page's folder list."""
         prefix = folder_prefix(root)
         rows = self._query(
-            "SELECT COUNT(*), SUM(status = ?) FROM files WHERE substr(path_key, 1, ?) = ?",
-            (CatalogStatus.INDEXED, len(prefix), prefix),
+            "SELECT status, COUNT(*) FROM files WHERE substr(path_key, 1, ?) = ? GROUP BY status",
+            (len(prefix), prefix),
         )
-        return rows[0][0], rows[0][1] or 0
+        return {CatalogStatus(status): count for status, count in rows}
 
     def search_names(self, query: str, limit: int = 10) -> list[CatalogMatch]:
         """Fuzzy-matches query against every cataloged file name, best match first."""

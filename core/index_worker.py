@@ -39,14 +39,14 @@ class IndexWorker:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._running = threading.Event()
-        self._current_file: str | None = None
+        self._current_path: Path | None = None
         self._since_optimize = 0
         self._index_lock = threading.Lock()
 
     @property
-    def current_file(self) -> str | None:
-        """Name of the file being indexed right now, for the progress display."""
-        return self._current_file
+    def current_path(self) -> Path | None:
+        """The file being indexed right now, for the progress displays."""
+        return self._current_path
 
     @property
     def is_paused(self) -> bool:
@@ -109,7 +109,7 @@ class IndexWorker:
             # Deleted after it was queued; forget it rather than leave it pending forever.
             self._catalog.remove([path])
             return
-        self._current_file = path.name
+        self._current_path = path
         try:
             self._indexer.index_file(path)
             self._catalog.set_status(path, CatalogStatus.INDEXED)
@@ -125,7 +125,7 @@ class IndexWorker:
             logger.exception("Unexpected error indexing file", extra={"path": str(path)})
             self._catalog.set_status(path, CatalogStatus.FAILED, error=str(e)[:500])
         finally:
-            self._current_file = None
+            self._current_path = None
 
     def _optimize_if_dirty(self, force: bool) -> None:
         """Optimizes the store when the queue runs dry, or every OPTIMIZE_EVERY_N_FILES files."""

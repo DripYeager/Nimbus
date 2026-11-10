@@ -136,14 +136,14 @@ def test_worker_skips_a_file_deleted_before_its_turn(
 def test_worker_reports_the_file_it_is_indexing(
     worker: IndexWorker, tmp_path: Path, catalog: FileCatalog, queue: IndexQueue, indexer: Mock
 ) -> None:
-    seen: list[str | None] = []
-    indexer.index_file.side_effect = lambda path: seen.append(worker.current_file)
+    seen: list[Path | None] = []
+    indexer.index_file.side_effect = lambda path: seen.append(worker.current_path)
 
     path = _add_file(tmp_path, catalog, queue, "report.docx")
 
     assert _wait_until(_has_status(catalog, path, CatalogStatus.INDEXED))
-    assert seen == ["report.docx"]
-    assert worker.current_file is None
+    assert seen == [path]
+    assert worker.current_path is None
 
 
 def test_worker_optimizes_the_store_once_the_queue_runs_dry(

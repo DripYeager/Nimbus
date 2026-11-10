@@ -123,20 +123,25 @@ def test_status_counts_is_empty_for_an_empty_catalog(catalog: FileCatalog) -> No
     assert catalog.status_counts() == {}
 
 
-def test_count_under_counts_all_and_indexed_files_below_a_folder(catalog: FileCatalog) -> None:
+def test_status_counts_under_counts_each_status_below_a_folder(catalog: FileCatalog) -> None:
     catalog.upsert(
         [
             _entry(DOCS / "a.txt", CatalogStatus.INDEXED),
             _entry(DOCS / "b.jpg", CatalogStatus.NAME_ONLY),
+            _entry(DOCS / "c.pdf", CatalogStatus.PENDING),
             _entry(Path("C:/Users/me/Docs2/c.txt"), CatalogStatus.INDEXED),
         ]
     )
 
-    assert catalog.count_under(DOCS) == (2, 1)
+    assert catalog.status_counts_under(DOCS) == {
+        CatalogStatus.INDEXED: 1,
+        CatalogStatus.NAME_ONLY: 1,
+        CatalogStatus.PENDING: 1,
+    }
 
 
-def test_count_under_is_zero_for_an_unknown_folder(catalog: FileCatalog) -> None:
-    assert catalog.count_under(DOCS) == (0, 0)
+def test_status_counts_under_is_empty_for_an_unknown_folder(catalog: FileCatalog) -> None:
+    assert catalog.status_counts_under(DOCS) == {}
 
 
 def test_search_names_finds_a_file_by_a_loose_name(catalog: FileCatalog) -> None:

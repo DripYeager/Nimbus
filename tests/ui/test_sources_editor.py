@@ -8,6 +8,7 @@ from pytest_mock import MockerFixture
 
 from models.schema import FileCategory, IndexStatus, SourceSummary
 from ui.api_client import ApiClient
+from ui.settings.source_row import SourceRow
 from ui.settings.sources_editor import SourcesEditor, describe_source_counts
 
 VALUES: dict[str, Any] = {
@@ -48,7 +49,7 @@ def test_collect_round_trips_loaded_values(api: Mock) -> None:
 def test_load_shows_folder_counts(api: Mock) -> None:
     editor = SourcesEditor(api)
     editor.load(VALUES)
-    assert editor._rows[0].counts_label.text() == "1,240 files · 980 read"
+    assert editor._rows[0].counts_label.text() == "1,240 files · all read"
 
 
 def test_choose_folder_adds_new_folder(api: Mock, mocker: MockerFixture) -> None:
@@ -79,9 +80,68 @@ def test_describe_source_counts_reports_missing_folder() -> None:
     assert describe_source_counts(summary) == "Folder not found"
 
 
-def test_describe_source_counts_omits_read_count_for_names_only() -> None:
+def test_describe_source_counts_marks_a_names_only_folder() -> None:
     summary = SourceSummary(path="D:/Media", include_contents=False, exists=True, file_count=12, indexed_count=0)
-    assert describe_source_counts(summary) == "12 files"
+    assert describe_source_counts(summary) == "12 files · names only"
+
+
+def _progress(**fields: object) -> SourceSummary:
+    base = {"path": "C:/Docs", "include_contents": True, "exists": True, "file_count": 100, "indexed_count": 40}
+    return SourceSummary(**{**base, **fields})
+
+
+def test_describe_source_counts_names_the_file_being_read() -> None:
+    summary = _progress(pending_count=60, is_active=True, current_file="report.pdf")
+    assert describe_source_counts(summary) == "Reading report.pdf… · 40 of 100 read"
+
+
+def test_describe_source_counts_shows_what_is_still_waiting() -> None:
+    assert describe_source_counts(_progress(pending_count=60)) == "40 of 100 read · 60 waiting"
+
+
+def test_describe_source_counts_mentions_files_that_failed() -> None:
+    summary = _progress(indexed_count=98, failed_count=2)
+    assert describe_source_counts(summary) == "100 files · all read · 2 couldn't be read"
+
+
+def test_source_row_shows_progress_and_orb_for_the_active_folder() -> None:
+    row = SourceRow("C:/Docs", include_contents=True)
+
+    row.set_summary(_progress(pending_count=60, is_active=True, current_file="report.pdf"))
+
+    assert not row.progress.isHidden()
+    assert row.progress.value() == 400
+    assert not row.orb.isHidden()
+
+
+def test_source_row_hides_progress_once_the_folder_is_done() -> None:
+    row = SourceRow("C:/Docs", include_contents=True)
+    row.set_summary(_progress(pending_count=60, is_active=True, current_file="a.pdf"))
+
+    row.set_summary(_progress(indexed_count=100))
+
+    assert row.progress.isHidden()
+    assert row.orb.isHidden()
+
+
+def test_refresh_progress_skips_while_a_fetch_is_running(mocker: MockerFixture, api: Mock) -> None:
+    background = mocker.patch("ui.settings.sources_editor.run_in_background")
+    editor = SourcesEditor(api)
+
+    editor.refresh_progress()
+    editor.refresh_progress()
+
+    background.assert_called_once()
+
+
+def test_progress_polling_runs_only_while_shown(api: Mock) -> None:
+    editor = SourcesEditor(api)
+
+    editor.show()
+    shown = editor._progress_timer.isActive()
+    editor.hide()
+
+    assert (shown, editor._progress_timer.isActive()) == (True, False)
 
 
 def test_sources_editor_with_index_controls_has_panel(api: Mock) -> None:

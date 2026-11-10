@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from api import app_routes, chat_routes, index_routes, settings_routes
+from api import app_routes, chat_routes, index_routes, ollama_routes, settings_routes
 from core.exceptions import (
     AppLaunchError,
     ConversationNotFoundError,
@@ -56,6 +56,7 @@ app.include_router(chat_routes.router)
 app.include_router(index_routes.router)
 app.include_router(settings_routes.router)
 app.include_router(app_routes.router)
+app.include_router(ollama_routes.router)
 
 
 @app.exception_handler(NimbusError)

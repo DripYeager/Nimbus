@@ -206,6 +206,12 @@ are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - Small local models (under ~8B parameters) are noticeably weaker at choosing tools than
   cloud models; Nimbus falls back to plain retrieval answers when a model can't call tools.
 
+## Roadmap
+
+What's planned next (asking about the clipboard or a screenshot, an Explorer right-click action,
+searchable screenshots, page-level PDF citations, reranking and more) is in
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ## About the name
 
 In Dragon Ball, the Flying Nimbus is a cloud you call and it takes you wherever you need to go.

@@ -12,6 +12,7 @@ from api.server import app
 from core.chat_service import ChatService
 from core.conversation_store import ConversationStore
 from core.index_service import IndexService
+from core.ollama_setup import OllamaSetup
 from core.service_container import AppServices
 from core.usage_meter import UsageMeter
 from llm.active_provider import ActiveProvider
@@ -28,6 +29,7 @@ def services(mocker: MockerFixture) -> AppServices:
     services.apps = mocker.Mock(spec=AppCatalog)
     services.provider = mocker.Mock(spec=ActiveProvider)
     services.usage = mocker.Mock(spec=UsageMeter)
+    services.ollama = mocker.Mock(spec=OllamaSetup)
     return services
 
 

@@ -54,3 +54,14 @@ def asset_path(*parts: str) -> Path:
     unpacked bundle when running as a packaged executable."""
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     return base.joinpath("assets", *parts)
+
+
+def ollama_install_candidates() -> list[Path]:
+    """Where the Ollama installer puts ollama.exe: per-user by default (no admin), or Program Files."""
+    candidates = []
+    for env_var in ("LOCALAPPDATA", "ProgramFiles"):
+        base = os.environ.get(env_var)
+        if base:
+            subfolder = "Programs/Ollama" if env_var == "LOCALAPPDATA" else "Ollama"
+            candidates.append(Path(base) / subfolder / "ollama.exe")
+    return candidates

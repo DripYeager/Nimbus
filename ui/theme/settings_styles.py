@@ -102,4 +102,11 @@ QLabel#StepCaption {{ color: {TEXT_MUTED}; font-size: 12px; font-weight: 600; }}
 QWidget#OnboardingStep {{ background: transparent; }}
 """
 
-SETTINGS_QSS = _STRUCTURE + _SOURCES + _MODEL + _GENERAL + _ONBOARDING
+_PROGRESS = f"""
+QProgressBar#FolderProgress {{ background: rgba(255, 255, 255, 0.08); border: none; border-radius: 2px; }}
+QProgressBar#FolderProgress::chunk {{ border-radius: 2px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {CLOUD_GOLD}, stop:1 {GI_ORANGE}); }}
+QFrame#Card[accent="orange"] {{ border-left: 3px solid {GI_ORANGE}; }}
+"""
+
+SETTINGS_QSS = _STRUCTURE + _SOURCES + _MODEL + _GENERAL + _ONBOARDING + _PROGRESS

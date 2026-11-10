@@ -24,6 +24,7 @@ from core.file_watcher import FileWatcher
 from core.index_service import IndexService
 from core.indexer import Indexer
 from core.logger import get_logger
+from core.ollama_setup import OllamaSetup
 from core.rag_answer import RagAnswerer
 from core.retriever import Retriever
 from core.usage_meter import UsageMeter
@@ -57,6 +58,7 @@ class AppServices:
         self.conversations: ConversationStore | None = None
         self.chat: ChatService | None = None
         self.usage: UsageMeter | None = None
+        self.ollama: OllamaSetup | None = None
         self._settings_listeners: list[SettingsListener] = []
 
     @classmethod
@@ -73,6 +75,7 @@ class AppServices:
         services.conversations.connect()
         services.usage = UsageMeter(settings.data_dir / "usage.json")
         services.provider = ActiveProvider(services.usage)
+        services.ollama = OllamaSetup(lambda: get_settings().ollama_host)
         services.index = IndexService(services.catalog, services.store, Indexer(services.store, get_embedder()))
         services.watcher = FileWatcher(services.index)
         services.apps = AppCatalog()

@@ -20,7 +20,7 @@ from core.index_worker import IndexWorker
 from core.indexer import Indexer
 from core.logger import get_logger
 from core.vector_store import VectorStore
-from models.schema import CatalogEntry, CatalogStatus, IndexStatus, ScannedFile, SourceSummary, SyncPlan
+from models.schema import CatalogEntry, CatalogStatus, IndexSource, IndexStatus, ScannedFile, SourceSummary, SyncPlan
 
 logger = get_logger(__name__)
 
@@ -126,6 +126,7 @@ class IndexService:
     def status(self) -> IndexStatus:
         """A snapshot of progress for the tray, the chat header and Settings."""
         counts = self._catalog.status_counts()
+        current = self._worker.current_path
         indexed = counts.get(CatalogStatus.INDEXED, 0)
         pending = counts.get(CatalogStatus.PENDING, 0)
         failed = counts.get(CatalogStatus.FAILED, 0)
@@ -137,24 +138,29 @@ class IndexService:
             failed_files=failed,
             is_paused=self._worker.is_paused,
             is_scanning=self._is_scanning,
-            current_file=self._worker.current_file,
+            current_file=current.name if current else None,
+            current_path=str(current) if current else None,
         )
 
     def source_summaries(self) -> list[SourceSummary]:
-        """Per-folder counts for the Settings window."""
-        summaries = []
-        for source in self._rules.sources:
-            total, indexed = self._catalog.count_under(source.path)
-            summaries.append(
-                SourceSummary(
-                    path=str(source.path),
-                    include_contents=source.include_contents,
-                    exists=source.path.is_dir(),
-                    file_count=total,
-                    indexed_count=indexed,
-                )
-            )
-        return summaries
+        """Per-folder progress for the Settings page, including which folder is being worked on."""
+        current = self._worker.current_path
+        active = self._rules.source_for(current) if current else None
+        return [self._summarize(source, active is source, current) for source in self._rules.sources]
+
+    def _summarize(self, source: IndexSource, is_active: bool, current: Path | None) -> SourceSummary:
+        counts = self._catalog.status_counts_under(source.path)
+        return SourceSummary(
+            path=str(source.path),
+            include_contents=source.include_contents,
+            exists=source.path.is_dir(),
+            file_count=sum(counts.values()),
+            indexed_count=counts.get(CatalogStatus.INDEXED, 0),
+            pending_count=counts.get(CatalogStatus.PENDING, 0),
+            failed_count=counts.get(CatalogStatus.FAILED, 0),
+            is_active=is_active,
+            current_file=current.name if is_active and current else None,
+        )
 
     def _scan_all_sources(self) -> None:
         """Walks every source, applies each one's changes as soon as it's scanned (so name

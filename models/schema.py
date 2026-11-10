@@ -122,6 +122,7 @@ class IndexStatus(BaseModel):
     is_paused: bool = False
     is_scanning: bool = False
     current_file: str | None = None
+    current_path: str | None = None
 
     @property
     def is_busy(self) -> bool:
@@ -144,6 +145,23 @@ class SourceSummary(BaseModel):
     exists: bool
     file_count: int
     indexed_count: int
+    pending_count: int = 0
+    failed_count: int = 0
+    # True while the file being indexed right now lives in this folder.
+    is_active: bool = False
+    current_file: str | None = None
+
+    @property
+    def content_count(self) -> int:
+        """Files in this folder whose contents are being read (done, waiting or failed)."""
+        return self.indexed_count + self.pending_count + self.failed_count
+
+    @property
+    def progress_ratio(self) -> float:
+        """Share of this folder's content files already handled; 1.0 when there's nothing to do."""
+        if self.content_count == 0:
+            return 1.0
+        return (self.indexed_count + self.failed_count) / self.content_count
 
 
 class IndexedChunk(BaseModel):

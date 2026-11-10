@@ -7,12 +7,13 @@ window never freezes. Owns HTTP plumbing and error translation only.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from config.settings import get_settings
 from core.exceptions import NimbusError
-from models.api import ProviderTestResult, SettingsView, UsageView
+from models.api import OllamaStatus, ProviderTestResult, SettingsView, UsageView
 from models.chat import ChatMessage, ConversationSummary, ProviderConfig, ProviderName
 from models.schema import IndexStatus, SourceSummary
 
@@ -52,6 +53,15 @@ class ApiClient:
     def test_provider(self, config: ProviderConfig) -> ProviderTestResult:
         response = self._request("POST", "/providers/test", json=config.model_dump(), timeout=PROVIDER_TIMEOUT_SECONDS)
         return ProviderTestResult(**response)
+
+    def ollama_status(self, model: str) -> OllamaStatus:
+        return OllamaStatus(**self._request("GET", f"/providers/ollama/status?model={quote(model)}"))
+
+    def start_ollama(self) -> OllamaStatus:
+        return OllamaStatus(**self._request("POST", "/providers/ollama/start"))
+
+    def pull_ollama_model(self, model: str) -> OllamaStatus:
+        return OllamaStatus(**self._request("POST", "/providers/ollama/pull", json={"model": model}))
 
     def usage(self) -> UsageView:
         return UsageView(**self._request("GET", "/usage"))

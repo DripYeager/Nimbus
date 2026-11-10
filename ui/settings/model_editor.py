@@ -25,6 +25,7 @@ from models.chat import ProviderConfig, ProviderName
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
 from ui.settings.label_roles import set_state, styled_label
+from ui.settings.ollama_helper import OllamaHelper
 from ui.settings.provider_picker import LOCAL_PROVIDER, ProviderPicker
 from ui.settings.section_layout import CARD_ROW_SPACING, GAP, GROUP_SPACING, SettingsCard, group_header, icon_label
 from ui.settings.status_pill import StatusPill
@@ -83,7 +84,10 @@ class ModelEditor(QWidget):
         self._privacy_label = styled_label("", "muted", wrap=True)
         self._privacy_card = SettingsCard()
         self._form = QFormLayout()
+        self._ollama_helper = OllamaHelper(api)
         self._build_layout()
+        # Re-check the local setup when a different model is picked or typed.
+        self._model_box.currentTextChanged.connect(self._watch_local_model)
         self._picker.picked.connect(self._on_provider_picked)
         self._test_button.clicked.connect(self._test_connection)
 
@@ -94,6 +98,8 @@ class ModelEditor(QWidget):
         layout.setSpacing(GAP)
         layout.addWidget(group_header("Provider", "Pick where answers are written."))
         layout.addWidget(self._picker)
+        layout.addSpacing(GAP)
+        layout.addWidget(self._ollama_helper)
         layout.addSpacing(GROUP_SPACING - GAP)
         layout.addWidget(group_header("Connection"))
         layout.addWidget(self._build_connection_card())
@@ -194,6 +200,13 @@ class ModelEditor(QWidget):
         self._model_box.clear()
         self._model_box.setEditText(str(self._values.get(MODEL_SETTING_KEYS[provider], "")))
         self._show_privacy(provider)
+        self._ollama_helper.setVisible(provider == LOCAL_PROVIDER)
+        self._watch_local_model()
+
+    def _watch_local_model(self) -> None:
+        """Points the Ollama setup card at the model currently picked, if Ollama is selected."""
+        if self.provider() == LOCAL_PROVIDER:
+            self._ollama_helper.watch(self._model_box.currentText())
 
     def _show_privacy(self, provider: ProviderName) -> None:
         """A green shield for the local model; an orange globe and a plain warning for the cloud."""
