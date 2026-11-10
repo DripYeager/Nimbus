@@ -13,12 +13,14 @@
 <p align="center">
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB">
   <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4">
-  <img alt="Tests: 1,400+" src="https://img.shields.io/badge/tests-1%2C400%2B%20passing-2BB673">
+  <img alt="Tests: 1,500+" src="https://img.shields.io/badge/tests-1%2C500%2B%20passing-2BB673">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-FFC940">
 </p>
 
 <p align="center">
-  <img src="docs/images/chat.png" width="640" alt="The Nimbus chat window answering a question about a contract, with tool steps, a source card and an approval prompt">
+  <img src="docs/images/demo.gif" width="620" alt="Demo: asking about a vendor contract, Nimbus searches and reads it, streams an answer citing page 12, then creates an Excel sheet of the key dates after an approval card">
+  <br>
+  <sub>Ask about a contract, get an answer that cites the page, then turn it into an Excel sheet. (Demo data.)</sub>
 </p>
 
 ## What it does
@@ -56,19 +58,16 @@ Anything that **launches or writes** shows an approval card first: *Allow*, *Alw
 
 ## A look around
 
-<p align="center">
-  <img src="docs/images/chat-empty.png" width="430" alt="A new chat: the golden cloud, the WHERE TO? headline and suggestion cards">
-  &nbsp;
-  <img src="docs/images/history.png" width="430" alt="Chat history with search and per-chat delete">
-</p>
-<p align="center">
-  <img src="docs/images/settings-sources.png" width="430" alt="Settings inside the chat window: folders to learn, with the power-level readout">
-  &nbsp;
-  <img src="docs/images/settings-model.png" width="430" alt="Settings: choosing the model provider from four cards">
-</p>
-<p align="center">
-  <img src="docs/images/onboarding.png" width="430" alt="First-run setup: the welcome step">
-</p>
+| | |
+|:---:|:---:|
+| <img src="docs/images/chat.png" width="420" alt="An answer about a contract with tool steps, a source card showing page 12, and an approval card before opening the file"> | <img src="docs/images/ask-screenshot.png" width="420" alt="A screenshot of an installer error attached to a question, shown as a thumbnail, with Nimbus explaining the error"> |
+| **Answers with sources.** The card opens the PDF at the cited page; actions wait for approval. | **Ask about the screen.** Box any part of it; Windows OCR reads it. |
+| <img src="docs/images/create-file.png" width="420" alt="Nimbus creating an Excel sheet of key dates in Downloads, with a source card for the new file"> | <img src="docs/images/chat-empty.png" width="420" alt="A new chat with the WHERE TO? headline, suggestion cards and a Use what I copied offer above the message box"> |
+| **Make files.** Word, Excel, CSV, text and Markdown, in the folder you name. | **Start anywhere.** Suggestions, plus an offer to use what you just copied. |
+| <img src="docs/images/settings-sources.png" width="420" alt="Settings inside the chat window: folders to learn, file types including text in images, and the power-level readout"> | <img src="docs/images/settings-model.png" width="420" alt="Settings: choosing the model provider from four cards"> |
+| **Choose what it learns.** Folders, file types and live indexing progress. | **Bring your own model.** Local Ollama or a cloud provider. |
+| <img src="docs/images/settings-general.png" width="420" alt="Settings, General: summon hotkey, start at sign-in, and the File Explorer right-click entry"> | <img src="docs/images/history.png" width="420" alt="Chat history with search and per-chat delete"> |
+| **Fits into Windows.** Hotkey, start at sign-in, and an Explorer right-click entry. | **Every chat saved locally.** Search and reopen past conversations. |
 
 ## Engineering notes
 
@@ -190,7 +189,7 @@ models/     Pydantic data contracts shared across layers
 tools/      Tools the agent can call: files, apps, system actions, notes
 ui/         Chat window, Settings, onboarding, tray, hotkey, theme
 scripts/    Retrieval benchmark, CLI indexer, release build
-tests/      1,400+ tests mirroring the source tree, fully offline
+tests/      1,500+ tests mirroring the source tree, fully offline
 ```
 
 ## Development

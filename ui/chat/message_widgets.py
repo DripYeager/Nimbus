@@ -121,6 +121,9 @@ class AssistantMessage(QWidget):
         self._sources = QVBoxLayout()
         self._sources.setSpacing(6)
         self._content.addLayout(self._sources)
+        # Spare height (the answer view briefly over-measures as text starts streaming) goes
+        # below the reply, not into gaps between the activity steps.
+        self._content.addStretch(1)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 40, 0)
         row.setSpacing(12)
@@ -173,7 +176,7 @@ class AssistantMessage(QWidget):
         label = QLabel(message, self)
         label.setObjectName("ErrorLine")
         label.setWordWrap(True)
-        self._content.addWidget(label)
+        self._content.insertWidget(self._content.count() - 1, label)
 
     def mark_stopped(self) -> None:
         """Ends the reply where it is, with a quiet note that the user stopped it."""
@@ -181,7 +184,7 @@ class AssistantMessage(QWidget):
         self._has_error = True
         label = QLabel(STOPPED_TEXT, self)
         label.setObjectName("StoppedLine")
-        self._content.addWidget(label)
+        self._content.insertWidget(self._content.count() - 1, label)
 
     def _author_row(self) -> QHBoxLayout:
         """ "Nimbus · 10:42" with the copy button at the far end."""

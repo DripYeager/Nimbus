@@ -59,6 +59,9 @@ class ConversationColumn(QWidget):
         while self._layout.count() > 1:
             item = self._layout.takeAt(0)
             if item.widget() is not None:
+                # Hidden at once: deletion waits for the event loop, and until then the old
+                # messages would still paint under whatever is shown next.
+                item.widget().hide()
                 item.widget().deleteLater()
         self._current = None
         self._cards.clear()
