@@ -12,6 +12,9 @@ uvicorn==0.52.1
 markitdown[docx,pptx,xlsx,xls,outlook]==0.1.7
 pypdfium2==5.12.1
 
+# Writing new Word files on request (Excel uses openpyxl, which MarkItDown already brings)
+python-docx==1.1.2
+
 # OCR for scanned PDFs uses the engine built into Windows, nothing to download or install
 winrt-runtime==4.1.0
 winrt-Windows.Foundation==4!10.0.28000.2957

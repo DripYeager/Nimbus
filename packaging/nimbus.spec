@@ -33,8 +33,9 @@ for package in ("sqlite_vec", "fastembed", "pypdfium2", "pypdfium2_raw", "winrt"
     datas += package_datas
     binaries += package_binaries
     hiddenimports += [m for m in package_hidden if _wanted(m)]
-# These only need their model/config files plus the submodules on the ONNX path.
-for package in ("markitdown", "magika", "onnxruntime"):
+# These only need their data files (models, configs, python-docx's blank document template)
+# plus their submodules.
+for package in ("markitdown", "magika", "onnxruntime", "docx"):
     datas += collect_data_files(package)
     hiddenimports += collect_submodules(package, filter=_wanted)
 

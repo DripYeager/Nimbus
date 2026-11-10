@@ -230,13 +230,16 @@ def test_run_saves_the_step_limit_note_in_the_history(registry: ToolRegistry) ->
     assert messages[-1] == ChatMessage(role="assistant", content=STEP_LIMIT_MESSAGE.strip())
 
 
-def test_run_offers_no_tools_for_a_question_about_an_attachment(registry: ToolRegistry) -> None:
+def test_run_offers_only_file_creation_for_a_question_about_an_attachment(
+    registry: ToolRegistry, lookup: RecordingTool
+) -> None:
+    registry.register(Tool(simple_spec("create_spreadsheet"), lookup, lambda a: "Create", requires_confirmation=True))
     provider = ScriptedProvider([[TextDelta(text="It says hello.")]])
-    question = with_attachment("What does this say?", "Screenshot", "hello")
+    question = with_attachment("Put this table in Excel", "Screenshot", "a,b")
 
     list(make_agent(provider, registry).run([ChatMessage(role="user", content=question)]))
 
-    assert provider.tools_seen == [[]]
+    assert [[spec.name for spec in tools] for tools in provider.tools_seen] == [["create_spreadsheet"]]
 
 
 def test_run_offers_tools_again_for_a_follow_up_without_one(registry: ToolRegistry) -> None:

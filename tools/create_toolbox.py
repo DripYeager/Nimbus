@@ -1,0 +1,102 @@
+"""
+Tools that create new files on request: documents (.txt, .md, .docx) and spreadsheets (.xlsx,
+.csv). A file goes in the folder the user asks for, by full path or by name ("Downloads",
+"Desktop\\Reports", or a folder inside one they shared), and only falls back to
+Documents\\Nimbus when they didn't say. It never replaces an existing file and, like every
+action that writes, waits for the user's approval, which shows the exact path first. Owns
+choosing the folder and describing the result; the writing is document_writer's job.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+from models.chat import ToolResult
+from tools.document_writer import (
+    DOCUMENT_SUFFIXES,
+    SPREADSHEET_SUFFIXES,
+    unique_path,
+    write_document,
+    write_spreadsheet,
+)
+from tools.file_tools import source_ref_for
+from tools.registry import Tool, ToolRegistry, object_schema, string_param, tool_spec
+
+DEFAULT_OUTPUT_DIR = Path("~/Documents/Nimbus")
+_FOLDER = string_param(
+    "The folder the user asked for: a full path, or a name like Downloads or Desktop\\Reports. "
+    "Leave empty only if they didn't say"
+)
+CREATE_DOCUMENT = tool_spec(
+    "create_document",
+    "Create a new text, Markdown or Word file. Write the content as Markdown: # headings, - bullets, "
+    "1. numbered items, **bold**, and | tables |. Word files get real headings, lists and tables.",
+    object_schema(
+        {
+            "file_name": string_param("Name with extension: .docx, .txt or .md, e.g. trip-plan.docx"),
+            "content": string_param("The full text, in Markdown"),
+            "folder": _FOLDER,
+        },
+        ["file_name", "content"],
+    ),
+)
+CREATE_SPREADSHEET = tool_spec(
+    "create_spreadsheet",
+    "Create a new Excel (.xlsx) or CSV file from a table. Give the table as CSV text with the "
+    "header row first; numbers become real numbers in Excel.",
+    object_schema(
+        {
+            "file_name": string_param("Name with extension: .xlsx or .csv, e.g. budget.xlsx"),
+            "csv": string_param("The table as CSV text, header row first"),
+            "sheet_name": string_param("Optional sheet name for Excel"),
+            "folder": _FOLDER,
+        },
+        ["file_name", "csv"],
+    ),
+)
+
+
+class CreateToolbox:
+    """shared_roots lists the user's shared folders, so a bare folder name can be found inside
+    them as well as in their home folder."""
+
+    def __init__(self, shared_roots: Callable[[], list[Path]], output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
+        self._shared_roots = shared_roots
+        self._output_dir = output_dir.expanduser()
+
+    def register(self, registry: ToolRegistry) -> None:
+        registry.register(Tool(CREATE_DOCUMENT, self.create_document, self.describe, True))
+        registry.register(Tool(CREATE_SPREADSHEET, self.create_spreadsheet, self.describe, True))
+
+    def create_document(self, args: dict[str, Any]) -> ToolResult:
+        path = unique_path(self.folder_for(args.get("folder")), str(args["file_name"]), DOCUMENT_SUFFIXES)
+        write_document(path, str(args["content"]))
+        return _created(path, "")
+
+    def create_spreadsheet(self, args: dict[str, Any]) -> ToolResult:
+        path = unique_path(self.folder_for(args.get("folder")), str(args["file_name"]), SPREADSHEET_SUFFIXES)
+        rows = write_spreadsheet(path, str(args["csv"]), str(args.get("sheet_name") or "Sheet1"))
+        return _created(path, f" with {rows} row{'' if rows == 1 else 's'}")
+
+    def folder_for(self, requested: object) -> Path:
+        """Where the file goes. A full path is used as is (created if missing). A name is looked
+        up under the home folder first ("Downloads"), then inside each shared folder
+        ("Reports" in Documents), and is otherwise created under the home folder."""
+        text = str(requested or "").strip()
+        if not text:
+            return self._output_dir
+        raw = Path(text).expanduser()
+        if raw.is_absolute():
+            return raw.resolve()
+        candidates = [Path.home() / raw, *(root / raw for root in self._shared_roots())]
+        return next((c.resolve() for c in candidates if c.is_dir()), (Path.home() / raw).resolve())
+
+    def describe(self, args: dict[str, Any]) -> str:
+        """What the approval card says: the exact folder, so nothing lands somewhere unexpected."""
+        return f"Create “{args.get('file_name', 'a file')}” in {self.folder_for(args.get('folder'))}"
+
+
+def _created(path: Path, detail: str) -> ToolResult:
+    return ToolResult(content=f"Created {path.name}{detail} at {path}.", sources=[source_ref_for(path)])

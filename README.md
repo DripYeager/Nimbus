@@ -34,6 +34,7 @@ Press **Ctrl+Space** in any app and Nimbus glides up, ready for a request:
 | *"open spotify"* | Launches the app straight away (Start Menu, registry and Store apps are all discovered) |
 | *"Open the Wi-Fi settings"* · *"How's my battery?"* | Opens Windows Settings pages and reports system status |
 | *"Remember that the project deadline is the 14th"* | Saves a note it can search later |
+| *"Make an Excel sheet of these expenses in Downloads"* · *"Write the meeting notes as a Word doc"* | Creates real .xlsx, .docx, .csv, .txt or .md files in the folder you name, after you approve |
 | Right-click a file in Explorer, *Ask Nimbus about this* | Opens with the file attached and one-click questions ready |
 | Copy some text, then summon Nimbus | Offers *Use what I copied*, so you can ask about text from any app |
 | Click the scan button and drag over part of the screen | Reads it with Windows OCR and answers about it ("what does this error mean?") |
@@ -172,8 +173,9 @@ python scripts/build_release.py      # creates dist/Nimbus/Nimbus.exe and dist/N
 
 - File contents only leave the machine if you choose a cloud model, and then only the excerpts
   needed to answer the current question.
-- Nimbus never modifies, moves or deletes your files. Its only writes are its own notes, index
-  and settings under `%APPDATA%\Nimbus`.
+- Nimbus never modifies, moves or deletes your files. Apart from its own notes, index and
+  settings under `%APPDATA%\Nimbus`, it only writes new files you ask for, after you approve the
+  exact path, and never over an existing file.
 - File tools refuse any path outside the folders you shared (path traversal is resolved first).
 - Logs record paths, counts and timings, never file contents, prompts or API keys.
 

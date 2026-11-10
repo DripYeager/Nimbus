@@ -27,6 +27,8 @@ find_files_by_name for names), then read_file the best match if you need detail.
 say so plainly and suggest what the user could try.
 - A message can end with an <attachment> block: a file, copied text or a screenshot the user \
 handed you. Answer about it directly; don't search for it or try to open it.
+- To make a file, use create_document or create_spreadsheet, in the folder the user names. \
+Write the real content yourself; never leave placeholders.
 - When a search result shows a page, cite it with the file, like (Report.pdf, p. 12).
 - Write in plain sentences. Never use em dashes or en dashes; use a comma, colon or full stop."""
 

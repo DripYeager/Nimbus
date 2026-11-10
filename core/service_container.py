@@ -33,6 +33,7 @@ from llm.active_provider import ActiveProvider
 from llm.prompts import build_system_prompt
 from tools.action_toolbox import ActionToolbox
 from tools.app_catalog import AppCatalog
+from tools.create_toolbox import CreateToolbox
 from tools.file_toolbox import FileToolbox
 from tools.registry import ToolRegistry
 
@@ -122,6 +123,7 @@ class AppServices:
         FileToolbox(retriever, self.catalog, self.is_path_shared, self.provider).register(registry)
         actions = ActionToolbox(self.apps, self.is_path_shared)
         actions.register(registry)
+        CreateToolbox(lambda: [source.path.expanduser() for source in get_settings().sources]).register(registry)
         agent = Agent(self.provider, registry, _system_prompt, RagAnswerer(retriever, self.provider).answer)
         self.chat = ChatService(self.conversations, agent, FastPath(self.catalog, actions), self.index.status)
 

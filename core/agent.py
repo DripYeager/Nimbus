@@ -37,6 +37,7 @@ CONTEXT_MESSAGES = 30
 # A tool result bigger than this is almost always a whole document the model asked for,
 # trimming keeps one call from blowing a small local model's context window.
 MAX_TOOL_RESULT_CHARS = 12000
+ATTACHMENT_TOOLS = frozenset({"create_document", "create_spreadsheet"})
 EMPTY_ANSWER_MESSAGE = (
     "The model finished without writing an answer. Try asking again, or pick a larger model in Settings."
 )
@@ -107,11 +108,13 @@ class Agent:
     def _tools_for(self, messages: list[ChatMessage]) -> list[ToolSpec]:
         """Every tool, except when the newest question came with an attachment: the answer is
         in what the user handed over, and small local models otherwise go off searching files
-        for it instead of reading it."""
+        for it instead of reading it. Making a file from it ("put this table in Excel") still
+        works, so the create tools stay."""
+        specs = self._registry.specs()
         latest = next((m for m in reversed(messages) if m.role == "user"), None)
         if latest is not None and has_attachment(latest.content):
-            return []
-        return self._registry.specs()
+            return [spec for spec in specs if spec.name in ATTACHMENT_TOOLS]
+        return specs
 
     def _fallback_turn(self, messages: list[ChatMessage], sources: SourceTracker) -> Iterator[ChatEvent]:
         """Answers the latest question from retrieved excerpts, without tools."""
