@@ -25,6 +25,13 @@ def test_enter_submits_the_trimmed_text(chat_input: ChatInput, sent: list[str]) 
     QTest.keyClick(chat_input._field, Qt.Key.Key_Return)
 
     assert sent == ["Find my resume"]
+
+
+def test_enter_clears_the_field_after_sending(chat_input: ChatInput, sent: list[str]) -> None:
+    chat_input.set_text("Find my resume")
+
+    QTest.keyClick(chat_input._field, Qt.Key.Key_Return)
+
     assert chat_input._field.toPlainText() == ""
 
 
@@ -36,14 +43,21 @@ def test_keypad_enter_submits(chat_input: ChatInput, sent: list[str]) -> None:
     assert sent == ["hello"]
 
 
-def test_shift_enter_adds_a_line_instead_of_sending(chat_input: ChatInput, sent: list[str]) -> None:
+def test_shift_enter_does_not_send(chat_input: ChatInput, sent: list[str]) -> None:
+    chat_input.set_text("first")
+
+    QTest.keyClick(chat_input._field, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier)
+
+    assert sent == []
+
+
+def test_shift_enter_adds_a_line_break(chat_input: ChatInput) -> None:
     chat_input.set_text("first")
     chat_input._field.moveCursor(chat_input._field.textCursor().MoveOperation.End)
 
     QTest.keyClick(chat_input._field, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier)
 
-    assert sent == []
-    assert "\n" in chat_input._field.toPlainText().replace(" ", "\n")
+    assert chat_input._field.toPlainText() == "first\n"
 
 
 def test_enter_ignores_blank_text(chat_input: ChatInput, sent: list[str]) -> None:
@@ -68,26 +82,48 @@ def test_set_busy_blocks_sending_and_keeps_the_text(chat_input: ChatInput, sent:
 
     QTest.keyClick(chat_input._field, Qt.Key.Key_Return)
 
-    assert sent == []
-    assert chat_input._field.toPlainText() == "queued question"
+    assert (sent, chat_input._field.toPlainText()) == ([], "queued question")
 
 
-def test_set_busy_shows_the_glyph_and_runs_the_animations(chat_input: ChatInput) -> None:
+def test_set_busy_disables_the_send_button(chat_input: ChatInput) -> None:
     chat_input.set_busy(True)
 
-    assert not chat_input._glyph.isHidden()
+    assert not chat_input._send.isEnabled()
+
+
+def test_set_busy_pulses_the_aura(chat_input: ChatInput) -> None:
+    chat_input.set_busy(True)
+
     assert chat_input._aura.state() == QAbstractAnimation.State.Running
-    assert chat_input._bob.state() == QAbstractAnimation.State.Running
 
 
-def test_set_busy_false_stops_the_glow_and_reenables_sending(chat_input: ChatInput, sent: list[str]) -> None:
+def test_set_busy_twice_replaces_the_running_aura(chat_input: ChatInput) -> None:
+    chat_input.set_busy(True)
+    first = chat_input._aura
+
+    chat_input.set_busy(True)
+
+    assert (first.state(), chat_input._aura.state()) == (
+        QAbstractAnimation.State.Stopped,
+        QAbstractAnimation.State.Running,
+    )
+
+
+def test_set_busy_false_stops_the_glow(chat_input: ChatInput) -> None:
+    chat_input.set_busy(True)
+
+    chat_input.set_busy(False)
+
+    assert (chat_input.glow, chat_input._aura) == (0.0, None)
+
+
+def test_set_busy_false_reenables_sending(chat_input: ChatInput, sent: list[str]) -> None:
     chat_input.set_busy(True)
 
     chat_input.set_busy(False)
     chat_input.set_text("hello")
     chat_input._send.click()
 
-    assert (chat_input.glow, chat_input._aura, chat_input._glyph.isHidden()) == (0.0, None, True)
     assert sent == ["hello"]
 
 
@@ -95,13 +131,13 @@ def test_fit_height_starts_at_one_line(chat_input: ChatInput) -> None:
     assert chat_input._field.height() == MIN_LINES * LINE_HEIGHT_PX + FIELD_PADDING_PX
 
 
-def test_fit_height_stops_growing_at_max_lines(chat_input: ChatInput) -> None:
-    chat_input.set_text("\n".join(f"line {i}" for i in range(MAX_LINES * 3)))
-
-    assert chat_input._field.height() == MAX_LINES * LINE_HEIGHT_PX + FIELD_PADDING_PX
-
-
 def test_fit_height_grows_with_extra_lines(chat_input: ChatInput) -> None:
     chat_input.set_text("one\ntwo\nthree")
 
     assert chat_input._field.height() == 3 * LINE_HEIGHT_PX + FIELD_PADDING_PX
+
+
+def test_fit_height_stops_growing_at_max_lines(chat_input: ChatInput) -> None:
+    chat_input.set_text("\n".join(f"line {i}" for i in range(MAX_LINES * 3)))
+
+    assert chat_input._field.height() == MAX_LINES * LINE_HEIGHT_PX + FIELD_PADDING_PX

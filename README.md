@@ -45,11 +45,22 @@ Anything that **launches or writes** shows an approval card first: *Allow*, *Alw
 - **You decide what it learns.** Pick folders, mark any folder "names only", choose file types, set a size limit and exclude patterns, all from the Settings window.
 - **Built for locked-down work laptops.** No admin rights, no services, no keyboard hooks: the hotkey uses the Windows `RegisterHotKey` API, data lives in `%APPDATA%`, and the API server binds to `127.0.0.1` only.
 - **Small and fast.** No PyTorch and no separate database server. The whole search index is one SQLite file, and the standalone release is about 120 MB zipped.
+- **A UI with personality.** Original artwork inspired by a flying golden cloud: a sky header with speed lines, an energy orb that pulses while Nimbus thinks, a scouter-style power level for indexing progress, and comic-style headlines. Settings and history open inside the same window, with a back arrow to return to the chat.
+
+## A look around
 
 <p align="center">
-  <img src="docs/images/settings-sources.png" width="430" alt="Settings: choosing which folders and file types to index">
+  <img src="docs/images/chat-empty.png" width="430" alt="A new chat: the golden cloud, the WHERE TO? headline and suggestion cards">
   &nbsp;
-  <img src="docs/images/settings-model.png" width="430" alt="Settings: choosing the model provider">
+  <img src="docs/images/history.png" width="430" alt="Chat history with search and per-chat delete">
+</p>
+<p align="center">
+  <img src="docs/images/settings-sources.png" width="430" alt="Settings inside the chat window: folders to learn, with the power-level readout">
+  &nbsp;
+  <img src="docs/images/settings-model.png" width="430" alt="Settings: choosing the model provider from four cards">
+</p>
+<p align="center">
+  <img src="docs/images/onboarding.png" width="430" alt="First-run setup: the welcome step">
 </p>
 
 ## Engineering notes
@@ -199,7 +210,14 @@ are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 In Dragon Ball, the Flying Nimbus is a cloud you call and it takes you wherever you need to go.
 That's the idea here: call it from anywhere, and it gets you to the file, answer or app you
-were after. The golden-cloud look is an original design inspired by it.
+were after. The golden-cloud look is an original design inspired by it: no artwork, characters
+or logos from the series are used.
+
+## Credits
+
+- Line icons: [Lucide](https://lucide.dev) (ISC licence, see `assets/icons/LICENSE.txt`).
+- Display font: [Bangers](https://fonts.google.com/specimen/Bangers) by Vernon Adams (SIL Open
+  Font Licence, see `assets/fonts/OFL.txt`).
 
 ## License
 

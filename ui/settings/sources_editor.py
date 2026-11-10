@@ -1,7 +1,7 @@
 """
 The "what should Nimbus learn?" editor: source folders (with names-only or full-contents
 reading), file types, a size limit and exclude patterns, optionally with live indexing
-controls. Owns editing these settings in memory; saving them is the caller's job.
+controls. Owns editing these settings in memory; saving them and scrolling are the caller's job.
 """
 
 from __future__ import annotations
@@ -10,16 +10,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QFileDialog,
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QPlainTextEdit,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -30,26 +27,31 @@ from ui.api_client import ApiClient
 from ui.background_call import run_in_background
 from ui.settings.index_panel import IndexPanel
 from ui.settings.label_roles import styled_label
+from ui.settings.section_layout import GAP, GROUP_SPACING, SettingsCard, divider, group_header, two_state_icon
+from ui.settings.source_row import SourceRow
+from ui.theme.line_icons import line_icon
+from ui.theme.tokens import ICON_SIZE, TEXT, TEXT_MUTED, TEXT_ON_ORANGE
 
-CATEGORY_LABELS: dict[FileCategory, str] = {
-    FileCategory.DOCUMENTS: "Documents",
-    FileCategory.PDFS: "PDFs",
-    FileCategory.SPREADSHEETS: "Spreadsheets",
-    FileCategory.SLIDES: "Slides",
-    FileCategory.TEXT: "Text && Markdown",
-    FileCategory.CODE: "Code",
-    FileCategory.EMAIL: "Email",
+# (label, icon) per file type; "&&" because a single & would become a keyboard mnemonic.
+CATEGORY_CHIPS: dict[FileCategory, tuple[str, str]] = {
+    FileCategory.DOCUMENTS: ("Documents", "file-text"),
+    FileCategory.PDFS: ("PDFs", "file"),
+    FileCategory.SPREADSHEETS: ("Spreadsheets", "file-spreadsheet"),
+    FileCategory.SLIDES: ("Slides", "presentation"),
+    FileCategory.TEXT: ("Text && Markdown", "notebook-pen"),
+    FileCategory.CODE: ("Code", "app-window"),
+    FileCategory.EMAIL: ("Email", "mail"),
 }
 CATEGORY_COLUMNS = 4
+CHIP_HEIGHT = 32
 MIN_FILE_SIZE_MB = 1
 MAX_FILE_SIZE_MB = 2048
 DEFAULT_FILE_SIZE_MB = 50
-EXCLUDE_BOX_HEIGHT = 72
-SECTION_GAP = 8
-SCROLLBAR_GUTTER = 12
+SIZE_BOX_WIDTH = 110
+EXCLUDE_BOX_HEIGHT = 88
 EXCLUDE_PLACEHOLDER = "One pattern per line, e.g.\n*.iso\nArchive"
-FOLDERS_HINT = "Unticked “Read contents” keeps a folder searchable by file name only."
-NEW_FOLDER_COUNTS = "Counted after you save"
+FOLDERS_HINT = "Switch off “Read contents” to keep a folder searchable by file name only."
+NO_FOLDERS_TEXT = "No folders yet — add one so Nimbus has something to learn."
 
 
 def _path_key(path: str) -> str:
@@ -67,32 +69,25 @@ def describe_source_counts(summary: SourceSummary) -> str:
     return text
 
 
-class _SourceRow(QFrame):
-    """One folder: its path, the read-contents switch, its counts and a remove button."""
+def _category_chip(label: str, icon: str) -> QPushButton:
+    """A checkable pill for one file type; orange with dark ink while selected."""
+    chip = QPushButton(label)
+    chip.setObjectName("TypeChip")
+    chip.setFixedHeight(CHIP_HEIGHT)
+    chip.setCheckable(True)
+    chip.setIcon(two_state_icon(icon, TEXT_MUTED, TEXT_ON_ORANGE))
+    chip.setIconSize(QSize(ICON_SIZE - 2, ICON_SIZE - 2))
+    chip.setCursor(Qt.CursorShape.PointingHandCursor)
+    return chip
 
-    remove_requested = pyqtSignal(object)
 
-    def __init__(self, path: str, include_contents: bool, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.path = path
-        self.contents_box = QCheckBox("Read contents")
-        self.contents_box.setChecked(include_contents)
-        self.counts_label = styled_label(NEW_FOLDER_COUNTS, "muted")
-        remove_button = QPushButton("Remove")
-        remove_button.setProperty("variant", "danger")
-        remove_button.clicked.connect(lambda: self.remove_requested.emit(self))
-        text_column = QVBoxLayout()
-        text_column.setSpacing(2)
-        text_column.addWidget(styled_label(path))
-        text_column.addWidget(self.counts_label)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 4, 0, 4)
-        layout.addLayout(text_column, 1)
-        layout.addWidget(self.contents_box)
-        layout.addWidget(remove_button)
-
-    def to_setting(self) -> dict[str, Any]:
-        return {"path": self.path, "include_contents": self.contents_box.isChecked()}
+def _add_folder_button() -> QPushButton:
+    button = QPushButton("Add folder")
+    button.setObjectName("AddFolderButton")
+    button.setIcon(line_icon("folder-plus", TEXT_MUTED, ICON_SIZE, hover_color=TEXT))
+    button.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    return button
 
 
 class SourcesEditor(QWidget):
@@ -101,13 +96,17 @@ class SourcesEditor(QWidget):
     def __init__(self, api: ApiClient, parent: QWidget | None = None, *, show_index_controls: bool = False) -> None:
         super().__init__(parent)
         self._api = api
-        self._rows: list[_SourceRow] = []
+        self._rows: list[SourceRow] = []
         self._rows_layout = QVBoxLayout()
-        self._category_boxes = {category: QCheckBox(label) for category, label in CATEGORY_LABELS.items()}
+        self._rows_layout.setSpacing(GAP)
+        self._empty_label = styled_label(NO_FOLDERS_TEXT, "muted")
+        self._category_chips = {category: _category_chip(*chip) for category, chip in CATEGORY_CHIPS.items()}
         self._size_box = QSpinBox()
         self._size_box.setRange(MIN_FILE_SIZE_MB, MAX_FILE_SIZE_MB)
         self._size_box.setSuffix(" MB")
         self._size_box.setValue(DEFAULT_FILE_SIZE_MB)
+        self._size_box.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self._size_box.setFixedWidth(SIZE_BOX_WIDTH)
         self._exclude_box = QPlainTextEdit()
         self._exclude_box.setPlaceholderText(EXCLUDE_PLACEHOLDER)
         self._exclude_box.setFixedHeight(EXCLUDE_BOX_HEIGHT)
@@ -115,53 +114,47 @@ class SourcesEditor(QWidget):
         self._build_layout()
 
     def _build_layout(self) -> None:
-        """Index strip (if any) pinned on top; folders, file types and limits scroll beneath it."""
-        outer = QVBoxLayout(self)
+        """Index card (if any), then folders, file types and limits, each under its own title."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(GAP)
         if self._index_panel is not None:
-            outer.addWidget(styled_label("Index", "section"))
-            outer.addWidget(self._index_panel)
-            outer.addSpacing(SECTION_GAP)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setWidget(self._build_scrolling_content())
-        # setWidget turns auto-fill on, which paints the platform palette over the night theme.
-        scroll.widget().setAutoFillBackground(False)
-        scroll.viewport().setAutoFillBackground(False)
-        outer.addWidget(scroll, 1)
-
-    def _build_scrolling_content(self) -> QWidget:
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, SCROLLBAR_GUTTER, 0)
-        layout.addWidget(styled_label("Folders", "section"))
-        layout.addWidget(styled_label(FOLDERS_HINT, "muted", wrap=True))
+            layout.addWidget(group_header("Index"))
+            layout.addWidget(self._index_panel)
+            layout.addSpacing(GROUP_SPACING - GAP)
+        layout.addWidget(group_header("Folders", FOLDERS_HINT))
+        layout.addWidget(self._empty_label)
         layout.addLayout(self._rows_layout)
-        add_button = QPushButton("Add folder…")
+        add_button = _add_folder_button()
         add_button.clicked.connect(self._choose_folder)
-        layout.addWidget(add_button, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addSpacing(SECTION_GAP)
-        layout.addWidget(styled_label("File types to read", "section"))
-        layout.addLayout(self._build_category_grid())
-        layout.addSpacing(SECTION_GAP)
-        layout.addLayout(self._build_limits_row())
-        layout.addWidget(styled_label("Skip these (one name or pattern per line)", "muted"))
-        layout.addWidget(self._exclude_box)
+        layout.addWidget(add_button)
+        layout.addSpacing(GROUP_SPACING - GAP)
+        layout.addWidget(group_header("File types to read", "Other files are still found by name."))
+        layout.addWidget(self._build_category_card())
+        layout.addSpacing(GROUP_SPACING - GAP)
+        layout.addWidget(group_header("Limits"))
+        layout.addWidget(self._build_limits_card())
         layout.addStretch(1)
-        return content
 
-    def _build_category_grid(self) -> QGridLayout:
+    def _build_category_card(self) -> SettingsCard:
+        card = SettingsCard()
         grid = QGridLayout()
-        for index, box in enumerate(self._category_boxes.values()):
-            grid.addWidget(box, index // CATEGORY_COLUMNS, index % CATEGORY_COLUMNS)
-        return grid
+        grid.setSpacing(GAP)
+        for index, chip in enumerate(self._category_chips.values()):
+            grid.addWidget(chip, index // CATEGORY_COLUMNS, index % CATEGORY_COLUMNS)
+        card.body.addLayout(grid)
+        return card
 
-    def _build_limits_row(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.addWidget(styled_label("Skip files larger than"))
-        row.addWidget(self._size_box)
-        row.addStretch(1)
-        return row
+    def _build_limits_card(self) -> SettingsCard:
+        card = SettingsCard()
+        size_row = QHBoxLayout()
+        size_row.addWidget(styled_label("Skip files larger than"), 1)
+        size_row.addWidget(self._size_box)
+        card.body.addLayout(size_row)
+        card.body.addWidget(divider())
+        card.body.addWidget(styled_label("Skip these names or patterns, one per line"))
+        card.body.addWidget(self._exclude_box)
+        return card
 
     def load(self, values: dict[str, Any]) -> None:
         """Fills every field from saved settings, then fetches folder counts in the background."""
@@ -170,8 +163,8 @@ class SourcesEditor(QWidget):
         for source in values.get("sources", []):
             self._add_row(str(source["path"]), bool(source.get("include_contents", True)))
         enabled = set(values.get("file_categories", list(FileCategory)))
-        for category, box in self._category_boxes.items():
-            box.setChecked(category.value in enabled)
+        for category, chip in self._category_chips.items():
+            chip.setChecked(category.value in enabled)
         self._size_box.setValue(int(values.get("max_file_size_mb", DEFAULT_FILE_SIZE_MB)))
         self._exclude_box.setPlainText("\n".join(values.get("exclude_patterns", [])))
         run_in_background(self._api.source_summaries, self._show_counts)
@@ -181,7 +174,7 @@ class SourcesEditor(QWidget):
         patterns = [line.strip() for line in self._exclude_box.toPlainText().splitlines() if line.strip()]
         return {
             "sources": [row.to_setting() for row in self._rows],
-            "file_categories": [c.value for c, box in self._category_boxes.items() if box.isChecked()],
+            "file_categories": [c.value for c, chip in self._category_chips.items() if chip.isChecked()],
             "max_file_size_mb": self._size_box.value(),
             "exclude_patterns": patterns,
         }
@@ -192,15 +185,17 @@ class SourcesEditor(QWidget):
             self._add_row(str(Path(folder)), include_contents=True)
 
     def _add_row(self, path: str, include_contents: bool) -> None:
-        row = _SourceRow(path, include_contents)
+        row = SourceRow(path, include_contents)
         row.remove_requested.connect(self._remove_row)
         self._rows.append(row)
         self._rows_layout.addWidget(row)
+        self._empty_label.hide()
 
-    def _remove_row(self, row: _SourceRow) -> None:
+    def _remove_row(self, row: SourceRow) -> None:
         self._rows.remove(row)
         self._rows_layout.removeWidget(row)
         row.deleteLater()
+        self._empty_label.setVisible(not self._rows)
 
     def _show_counts(self, summaries: list[SourceSummary]) -> None:
         """Puts each folder's file counts under it; folders the engine hasn't seen keep their note."""

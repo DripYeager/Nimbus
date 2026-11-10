@@ -5,19 +5,33 @@ from typing import Any
 from unittest.mock import MagicMock, Mock
 
 import pytest
-from PyQt6.QtCore import QAbstractAnimation, QEvent, Qt
+from PyQt6.QtCore import QAbstractAnimation, QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import QToolButton
+from PyQt6.QtWidgets import QToolButton, QWidget
 from pytest_mock import MockerFixture
 
 from models.api import SettingsView
 from models.schema import IndexStatus
 from ui.api_client import ApiClient
-from ui.chat.chat_window import STATUS_POLL_MS, ChatWindow
+from ui.chat.chat_window import CHAT_PAGE, SETTINGS_PAGE, STATUS_POLL_MS, ChatWindow
 
 
 def _synchronous(fn: Any, ok: Any, err: Any = None) -> None:
     ok(fn())
+
+
+class FakeSettingsPanel(QWidget):
+    """Stands in for the real Settings page, which has its own tests."""
+
+    back_requested = pyqtSignal()
+    saved = pyqtSignal()
+
+    def __init__(self, api: Any, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.loads = 0
+
+    def load(self) -> None:
+        self.loads += 1
 
 
 @pytest.fixture
@@ -40,6 +54,7 @@ def window(mocker: MockerFixture, api: Mock, stream: MagicMock) -> Iterator[Chat
     mocker.patch("ui.chat.chat_window.run_in_background", side_effect=_synchronous)
     mocker.patch("ui.chat.history_panel.run_in_background", side_effect=_synchronous)
     mocker.patch("ui.chat.chat_session.run_in_background", side_effect=_synchronous)
+    mocker.patch("ui.chat.chat_window.SettingsPanel", FakeSettingsPanel)
     chat_window = ChatWindow(api)
     chat_window.setup()
     yield chat_window
@@ -75,7 +90,7 @@ def test_summon_polls_status_into_the_header(window: ChatWindow) -> None:
     window.summon()
 
     assert window._header._status.text() == "Ready · 321 files known"
-    assert window._header._badge.text() == "● Cloud"
+    assert window._header._badge.text() == "●  Cloud"
     assert window._status_timer.interval() == STATUS_POLL_MS
 
 
@@ -158,13 +173,38 @@ def test_close_button_dismisses_the_window(window: ChatWindow) -> None:
     assert not window.isVisible()
 
 
-def test_settings_button_emits_settings_requested(window: ChatWindow) -> None:
-    received: list[None] = []
-    window.settings_requested.connect(lambda: received.append(None))
-
+def test_settings_button_opens_settings_inside_the_window(window: ChatWindow) -> None:
     _header_button(window, "Settings").click()
 
-    assert received == [None]
+    assert window._pages.currentIndex() == SETTINGS_PAGE
+    assert window._settings.loads == 1
+
+
+def test_back_button_returns_from_settings_to_the_chat(window: ChatWindow) -> None:
+    window.show_settings()
+
+    _header_button(window, "Back to chat").click()
+
+    assert window._pages.currentIndex() == CHAT_PAGE
+
+
+def test_escape_on_settings_goes_back_instead_of_hiding(window: ChatWindow) -> None:
+    window.summon()
+    _finish_animation(window)
+    window.show_settings()
+
+    window.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
+
+    assert window._pages.currentIndex() == CHAT_PAGE
+    assert window.isVisible()
+
+
+def test_saving_settings_refreshes_the_privacy_badge(window: ChatWindow, api: Mock) -> None:
+    api.index_status.reset_mock()
+
+    window._settings.saved.emit()
+
+    api.index_status.assert_called_once()
 
 
 def test_history_button_shows_the_history_page(window: ChatWindow, api: Mock) -> None:
@@ -177,9 +217,9 @@ def test_history_button_shows_the_history_page(window: ChatWindow, api: Mock) ->
 def test_history_back_returns_to_the_chat(window: ChatWindow) -> None:
     _header_button(window, "Chat history").click()
 
-    window._history.back.emit()
+    _header_button(window, "Back to chat").click()
 
-    assert window._pages.currentIndex() == 0
+    assert window._pages.currentIndex() == CHAT_PAGE
 
 
 def test_opening_a_saved_chat_loads_it(window: ChatWindow, api: Mock) -> None:

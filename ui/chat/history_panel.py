@@ -1,72 +1,139 @@
 """
-The chat-history page: recent conversations, newest first, with open and delete. Loads the
-list from the API in the background. Display and selection only.
+The chat-history page: a search box and recent conversations, newest first, each with its own
+delete button. Loads the list from the API in the background and filters it as you type.
+Display and selection only — the window handles navigation.
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from models.chat import ConversationSummary
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
+from ui.theme.line_icons import line_icon, line_pixmap
+from ui.theme.tokens import DANGER, GI_ORANGE, TEXT_FAINT, TEXT_MUTED
+
+ROW_ICON_SIZE = 18
+SEARCH_ICON_SIZE = 16
+
+
+class ConversationRow(QPushButton):
+    """One saved chat: icon, title and date, with a delete button on the right."""
+
+    delete_requested = pyqtSignal(str)
+
+    def __init__(self, conversation: ConversationSummary, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("ConversationRow")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.conversation_id = conversation.id
+        self.title = conversation.title
+        icon = QLabel(self)
+        icon.setPixmap(line_pixmap("message-square", GI_ORANGE, ROW_ICON_SIZE))
+        title = QLabel(conversation.title, self)
+        title.setObjectName("ConversationTitle")
+        date = QLabel(f"{conversation.updated_at:%d %b %Y · %H:%M}", self)
+        date.setObjectName("ConversationDate")
+        text = QVBoxLayout()
+        text.setSpacing(1)
+        text.addWidget(title)
+        text.addWidget(date)
+        delete = QToolButton(self)
+        delete.setIcon(line_icon("trash-2", TEXT_FAINT, ROW_ICON_SIZE - 2, hover_color=DANGER))
+        delete.setIconSize(QSize(ROW_ICON_SIZE - 2, ROW_ICON_SIZE - 2))
+        delete.setToolTip("Delete this chat")
+        delete.clicked.connect(lambda: self.delete_requested.emit(self.conversation_id))
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 10, 8, 10)
+        row.setSpacing(12)
+        row.addWidget(icon)
+        row.addLayout(text, stretch=1)
+        row.addWidget(delete)
+        self.setMinimumHeight(56)
 
 
 class HistoryPanel(QWidget):
-    """Emits opened(conversation_id) or back() — the window switches pages."""
+    """Emits opened(conversation_id) when a chat is picked."""
 
     opened = pyqtSignal(str)
-    back = pyqtSignal()
 
     def __init__(self, api: ApiClient, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._api = api
-        self._list = QListWidget(self)
-        self._list.setObjectName("HistoryList")
-        self._list.itemActivated.connect(self._open_item)
-        self._list.itemClicked.connect(self._open_item)
+        self._rows: list[ConversationRow] = []
+        self._search = QLineEdit(self)
+        self._search.setObjectName("HistorySearch")
+        self._search.setPlaceholderText("Search your chats")
+        self._search.addAction(
+            line_icon("search", TEXT_MUTED, SEARCH_ICON_SIZE), QLineEdit.ActionPosition.LeadingPosition
+        )
+        self._search.textChanged.connect(self._filter)
         self._message = QLabel(self)
-        self._message.setProperty("role", "muted")
+        self._message.setObjectName("HistoryEmpty")
+        self._message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._list = QVBoxLayout()
+        self._list.setSpacing(4)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.addLayout(self._toolbar())
+        layout.setContentsMargins(4, 8, 4, 4)
+        layout.setSpacing(12)
+        layout.addWidget(self._search)
         layout.addWidget(self._message)
-        layout.addWidget(self._list, stretch=1)
+        layout.addWidget(self._scrolling_list(), stretch=1)
 
     def refresh(self) -> None:
         """Reloads the list from the API."""
         self._message.setText("Loading…")
+        self._message.show()
         run_in_background(self._api.conversations, self._show, self._message.setText)
 
-    def _toolbar(self) -> QHBoxLayout:
-        back = QPushButton("← Back to chat", self)
-        back.clicked.connect(self.back)
-        delete = QPushButton("Delete selected", self)
-        delete.setProperty("variant", "danger")
-        delete.clicked.connect(self._delete_selected)
-        row = QHBoxLayout()
-        row.addWidget(back)
-        row.addStretch()
-        row.addWidget(delete)
-        return row
+    def _scrolling_list(self) -> QScrollArea:
+        holder = QWidget()
+        column = QVBoxLayout(holder)
+        column.setContentsMargins(0, 0, 6, 0)
+        column.addLayout(self._list)
+        column.addStretch()
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(holder)
+        return scroll
 
     def _show(self, conversations: list[ConversationSummary]) -> None:
-        self._list.clear()
-        self._message.setText("" if conversations else "No chats yet.")
+        for row in self._rows:
+            row.deleteLater()
+        self._rows = []
         for conversation in conversations:
-            item = QListWidgetItem(f"{conversation.title}\n{conversation.updated_at:%d %b %Y, %H:%M}")
-            item.setData(Qt.ItemDataRole.UserRole, conversation.id)
-            self._list.addItem(item)
+            row = ConversationRow(conversation, self)
+            row.clicked.connect(lambda _=False, cid=conversation.id: self.opened.emit(cid))
+            row.delete_requested.connect(self._delete)
+            self._list.addWidget(row)
+            self._rows.append(row)
+        self._message.setText("No chats yet. Your conversations will show up here.")
+        self._message.setVisible(not conversations)
+        self._filter(self._search.text())
 
-    def _open_item(self, item: QListWidgetItem) -> None:
-        self.opened.emit(item.data(Qt.ItemDataRole.UserRole))
+    def _filter(self, text: str) -> None:
+        needle = text.strip().lower()
+        for row in self._rows:
+            row.setVisible(needle in row.title.lower())
 
-    def _delete_selected(self) -> None:
-        item = self._list.currentItem()
-        if item is None:
-            return
-        conversation_id = item.data(Qt.ItemDataRole.UserRole)
+    def _delete(self, conversation_id: str) -> None:
         run_in_background(
-            lambda: self._api.delete_conversation(conversation_id), lambda _: self.refresh(), self._message.setText
+            lambda: self._api.delete_conversation(conversation_id), lambda _: self.refresh(), self._show_error
         )
+
+    def _show_error(self, message: str) -> None:
+        """The message line is hidden while chats are listed, so unhide it for the error."""
+        self._message.setText(message)
+        self._message.show()

@@ -153,7 +153,7 @@ def test_build_qt_app_configures_a_tray_style_app(mocker: MockerFixture) -> None
         assert built is app
         assert not built.quitOnLastWindowClosed()
         assert built.applicationName() == "Nimbus"
-        assert "ChatPanel" in built.styleSheet()
+        assert "ChatContent" in built.styleSheet()
         set_app_id.assert_called_once_with(APP_USER_MODEL_ID)
     finally:
         app.setStyleSheet(previous_stylesheet)

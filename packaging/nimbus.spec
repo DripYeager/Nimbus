@@ -7,7 +7,13 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_sub
 
 ROOT = Path(SPECPATH).parent
 
-datas = [(str(ROOT / "assets" / "nimbus.ico"), "assets"), (str(ROOT / "assets" / "nimbus.png"), "assets")]
+datas = [
+    (str(ROOT / "assets" / "nimbus.ico"), "assets"),
+    (str(ROOT / "assets" / "nimbus.png"), "assets"),
+    # The display font and line icons are read at runtime through config.paths.asset_path.
+    (str(ROOT / "assets" / "fonts"), "assets/fonts"),
+    (str(ROOT / "assets" / "icons"), "assets/icons"),
+]
 binaries = []
 hiddenimports = ["win32com.client", "keyring.backends.Windows"]
 

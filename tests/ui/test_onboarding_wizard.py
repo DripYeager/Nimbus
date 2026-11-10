@@ -40,7 +40,7 @@ def _run_now(fn: Any, ok: Any, err: Any = None) -> None:
 
 @pytest.fixture
 def api(mocker: MockerFixture) -> Mock:
-    for module in ("ui.onboarding.onboarding_wizard", "ui.settings.sources_editor"):
+    for module in ("ui.onboarding.onboarding_wizard", "ui.settings.sources_editor", "ui.settings.model_editor"):
         mocker.patch(f"{module}.run_in_background", side_effect=_run_now)
     fake = mocker.Mock(spec=ApiClient)
     fake.settings.return_value = SettingsView(values=VALUES, has_api_key={}, data_dir="C:/data", is_cloud=False)
@@ -109,5 +109,27 @@ def test_accept_completes_even_when_autostart_fails(
     completed.assert_called_once()
 
 
-def test_wizard_has_five_pages(wizard: OnboardingWizard) -> None:
-    assert len(wizard.pageIds()) == 5
+def test_wizard_has_five_steps(wizard: OnboardingWizard) -> None:
+    assert wizard.step_count() == 5
+
+
+def test_advance_moves_to_next_step(wizard: OnboardingWizard) -> None:
+    wizard._advance()
+    assert wizard.current_step() == 1
+    assert wizard._progress.current_step() == 1
+
+
+def test_go_to_first_step_hides_back(wizard: OnboardingWizard) -> None:
+    wizard._go_to(0)
+    assert wizard._back_button.isHidden()
+
+
+def test_go_to_last_step_offers_finish(wizard: OnboardingWizard) -> None:
+    wizard._go_to(wizard.step_count() - 1)
+    assert wizard._next_button.text() == "Finish"
+
+
+def test_advance_on_last_step_saves(wizard: OnboardingWizard, api: Mock) -> None:
+    wizard._go_to(wizard.step_count() - 1)
+    wizard._advance()
+    api.update_settings.assert_called_once()

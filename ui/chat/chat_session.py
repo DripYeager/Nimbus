@@ -46,6 +46,7 @@ class ChatSession(QObject):
     def send(self, text: str) -> None:
         """Shows the message and streams the reply."""
         self._view.add_user_message(text)
+        self._view.begin_reply()
         self._input.set_busy(True)
         self._stream.send(text, self._conversation_id)
 
@@ -103,9 +104,9 @@ class ChatSession(QObject):
         """Shows an approve/decline card; the answer resumes the paused turn."""
         call_id = data["call_id"]
         card = self._view.add_confirmation(data["description"])
-        self._view.end_reply()
 
         def _decided(approved: bool, always: bool) -> None:
+            self._view.begin_reply()
             self._input.set_busy(True)
             decision = {"call_id": call_id, "approved": approved, "always_allow": always}
             self._stream.answer_confirmation(self._conversation_id, decision)

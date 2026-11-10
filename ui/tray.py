@@ -8,7 +8,7 @@ everything else.
 from __future__ import annotations
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
 from core.logger import get_logger
@@ -17,10 +17,13 @@ from ui.api_client import ApiClient
 from ui.background_call import run_in_background
 from ui.status_text import describe_status
 from ui.theme.icons import app_icon
+from ui.theme.line_icons import line_icon
+from ui.theme.tokens import CLOUD_GOLD
 
 logger = get_logger(__name__)
 
 STATUS_REFRESH_MS = 3000
+MENU_ICON_SIZE = 16
 NOTIFICATION_MS = 4000
 TOOLTIP_TITLE = "Nimbus"
 
@@ -71,15 +74,15 @@ class TrayIcon(QObject):
     def _build_menu(self) -> QMenu:
         """Open, status line, pause/resume, rebuild, settings, quit."""
         menu = QMenu()
-        menu.addAction("Open Nimbus", self.summon_requested.emit)
+        menu.addAction(_menu_icon("cloud"), "Open Nimbus", self.summon_requested.emit)
         menu.addSeparator()
-        self._status_action = menu.addAction("Checking index…")
+        self._status_action = menu.addAction(_menu_icon("zap"), "Checking index…")
         self._status_action.setEnabled(False)
-        self._pause_action = menu.addAction("Pause indexing", self._toggle_pause)
-        menu.addAction("Rebuild index", self._rebuild)
-        menu.addAction("Settings…", self.settings_requested.emit)
+        self._pause_action = menu.addAction(_menu_icon("pause"), "Pause indexing", self._toggle_pause)
+        menu.addAction(_menu_icon("refresh-cw"), "Rebuild index", self._rebuild)
+        menu.addAction(_menu_icon("settings"), "Settings…", self.settings_requested.emit)
         menu.addSeparator()
-        menu.addAction("Quit Nimbus", self.quit_requested.emit)
+        menu.addAction(_menu_icon("x"), "Quit Nimbus", self.quit_requested.emit)
         self._menu = menu
         return menu
 
@@ -90,6 +93,7 @@ class TrayIcon(QObject):
         self._status_action.setText(text)
         self._is_paused = status.is_paused
         self._pause_action.setText("Resume indexing" if status.is_paused else "Pause indexing")
+        self._pause_action.setIcon(_menu_icon("play" if status.is_paused else "pause"))
 
     def _toggle_pause(self) -> None:
         run_in_background(lambda: self._api.set_paused(not self._is_paused), self._show_status, self.notify)
@@ -105,3 +109,7 @@ class TrayIcon(QObject):
         """A left click (or double click) on the icon opens the chat."""
         if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
             self.summon_requested.emit()
+
+
+def _menu_icon(name: str) -> QIcon:
+    return line_icon(name, CLOUD_GOLD, MENU_ICON_SIZE)

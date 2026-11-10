@@ -1,31 +1,38 @@
 """
-The building blocks of a conversation on screen: the user's bubble, the assistant's answer
-(streaming Markdown, tool-step chips, clickable source cards), the approve/decline card for
-actions, and the empty-state welcome. Display only — none of these talk to the API.
+The two kinds of message on screen: the user's orange speech bubble, and Nimbus's reply — an
+energy-orb avatar that pulses while it's thinking, the activity steps, the streamed Markdown
+answer, source cards and a copy button. Display only; neither talks to the API.
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices, QFont, QFontMetrics, QResizeEvent
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout, QWidget
+from datetime import datetime
+
+from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtGui import QDesktopServices, QFont, QFontMetrics, QGuiApplication, QIcon, QResizeEvent
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QTextBrowser, QToolButton, QVBoxLayout, QWidget
 
 from models.schema import SourceRef
-from ui.theme.painting import CloudGlyph
+from ui.chat.message_cards import SourceCard, ToolStep
+from ui.theme.energy import EnergyOrb
+from ui.theme.line_icons import line_icon
+from ui.theme.tokens import SUCCESS, TEXT, TEXT_MUTED
 
-TOOL_ICONS = {"running": "⏳", "done": "✓", "failed": "⚠", "denied": "✕", "info": "ℹ"}
 MAX_SOURCE_CARDS = 6
-ANSWER_PADDING_PX = 8
+ANSWER_PADDING_PX = 6
 USER_BUBBLE_MAX_WIDTH = 520
-BUBBLE_PADDING_PX = 28
+BUBBLE_PADDING_PX = 32
 BUBBLE_TEXT_SLACK_PX = 8
 # Must match QLabel#UserText's font-size in the stylesheet.
 USER_TEXT_PX = 14
-EMPTY_CLOUD_SIZE = 96
+AVATAR_SIZE = 34
+COPY_ICON_SIZE = 15
+COPIED_FEEDBACK_MS = 1500
+THINKING_TEXT = "Charging up…"
 
 
 class UserBubble(QWidget):
-    """The user's message, right-aligned in a rounded bubble."""
+    """The user's message, right-aligned in a gi-orange bubble."""
 
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -35,15 +42,15 @@ class UserBubble(QWidget):
         label.setObjectName("UserText")
         label.setWordWrap(True)
         label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        inner = QVBoxLayout(bubble)
-        inner.setContentsMargins(14, 10, 14, 10)
-        inner.addWidget(label)
         # A wrapping QLabel otherwise collapses to its narrowest width; size it to the text.
         text_width = _text_width(text, USER_TEXT_PX) + BUBBLE_TEXT_SLACK_PX
         label.setMinimumWidth(min(text_width, USER_BUBBLE_MAX_WIDTH - BUBBLE_PADDING_PX))
+        inner = QVBoxLayout(bubble)
+        inner.setContentsMargins(16, 10, 16, 10)
+        inner.addWidget(label)
         bubble.setMaximumWidth(USER_BUBBLE_MAX_WIDTH)
         row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
+        row.setContentsMargins(60, 0, 0, 0)
         row.addStretch()
         row.addWidget(bubble)
 
@@ -58,6 +65,8 @@ class AnswerText(QTextBrowser):
         self.anchorClicked.connect(QDesktopServices.openUrl)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.document().setDocumentMargin(0)
+        self.document().setDefaultStyleSheet(f"a {{ color: {SUCCESS}; }} code {{ color: {TEXT}; }}")
         self.document().contentsChanged.connect(self._fit_height)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -71,29 +80,57 @@ class AnswerText(QTextBrowser):
 
 
 class AssistantMessage(QWidget):
-    """One assistant reply: tool chips on top, the streamed answer, then source cards."""
+    """One reply. Starts in the thinking state when created for a new question."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._markdown = ""
-        self._chips: dict[str, QLabel] = {}
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(0, 0, 40, 0)
-        self._layout.setSpacing(6)
-        self._chip_column = QVBoxLayout()
-        self._chip_column.setSpacing(4)
-        self._layout.addLayout(self._chip_column)
+        self._steps: dict[str, ToolStep] = {}
+        self._has_error = False
+        self._avatar = EnergyOrb(AVATAR_SIZE, self)
+        self._thinking = QLabel(THINKING_TEXT, self)
+        self._thinking.setObjectName("Thinking")
+        self._thinking.hide()
+        self._copy = _copy_button(self)
+        self._copy.clicked.connect(self._copy_answer)
+        self._copied_reset = QTimer(self)
+        self._copied_reset.setSingleShot(True)
+        self._copied_reset.setInterval(COPIED_FEEDBACK_MS)
+        self._copied_reset.timeout.connect(lambda: self._copy.setIcon(_copy_icon()))
+        self._copy.hide()
         self._answer = AnswerText(self)
         self._answer.hide()
-        self._layout.addWidget(self._answer)
+        self._content = QVBoxLayout()
+        self._content.setSpacing(6)
+        self._content.addLayout(self._author_row())
+        self._content.addWidget(self._thinking)
+        self._steps_column = QVBoxLayout()
+        self._steps_column.setSpacing(2)
+        self._content.addLayout(self._steps_column)
+        self._content.addWidget(self._answer)
         self._sources = QVBoxLayout()
-        self._sources.setSpacing(4)
-        self._layout.addLayout(self._sources)
+        self._sources.setSpacing(6)
+        self._content.addLayout(self._sources)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 40, 0)
+        row.setSpacing(12)
+        row.addWidget(self._avatar, alignment=Qt.AlignmentFlag.AlignTop)
+        row.addLayout(self._content, stretch=1)
+
+    def start_thinking(self) -> None:
+        self._thinking.show()
+        self._avatar.start()
+
+    def stop_thinking(self) -> None:
+        self._thinking.hide()
+        self._avatar.stop()
 
     def append_text(self, token: str) -> None:
         """Adds streamed text and re-renders the Markdown."""
+        self.stop_thinking()
         self._markdown += token
         self._answer.show()
+        self._copy.show()
         self._answer.setMarkdown(self._markdown)
 
     def set_text(self, markdown: str) -> None:
@@ -103,78 +140,64 @@ class AssistantMessage(QWidget):
     def has_text(self) -> bool:
         return bool(self._markdown.strip())
 
+    def is_empty(self) -> bool:
+        """True when nothing but the thinking state was ever shown."""
+        return not self.has_text() and not self._steps and not self._has_error and self._sources.count() == 0
+
     def show_tool(self, call_id: str, label: str, status: str) -> None:
-        """Adds a chip for a tool step, or updates it when the step finishes."""
-        chip = self._chips.get(call_id)
-        if chip is None:
-            chip = QLabel(self)
-            chip.setObjectName("ToolChip")
-            self._chips[call_id] = chip
-            row = QHBoxLayout()
-            row.addWidget(chip)
-            row.addStretch()
-            self._chip_column.addLayout(row)
-        chip.setText(f"{TOOL_ICONS.get(status, '•')}  {label}")
-        chip.setProperty("status", status)
-        chip.style().unpolish(chip)
-        chip.style().polish(chip)
+        """Adds a step to the activity log, or updates it when the step finishes."""
+        step = self._steps.get(call_id)
+        if step is None:
+            step = ToolStep(self)
+            self._steps[call_id] = step
+            self._steps_column.addWidget(step)
+        step.update_step(label, status)
 
     def set_sources(self, sources: list[SourceRef]) -> None:
-        """Shows each source as a card that opens the file when clicked."""
         for source in sources[:MAX_SOURCE_CARDS]:
-            card = QPushButton(f"📄  {source.file_name}", self)
-            card.setObjectName("SourceCard")
-            card.setToolTip(source.file_path)
-            card.setCursor(Qt.CursorShape.PointingHandCursor)
-            card.clicked.connect(
-                lambda _=False, path=source.file_path: QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-            )
-            row = QHBoxLayout()
-            row.addWidget(card)
-            row.addStretch()
-            self._sources.addLayout(row)
+            self._sources.addWidget(SourceCard(source, self))
 
     def show_error(self, message: str) -> None:
-        label = QLabel(f"⚠  {message}", self)
+        self.stop_thinking()
+        self._has_error = True
+        label = QLabel(message, self)
         label.setObjectName("ErrorLine")
         label.setWordWrap(True)
-        self._layout.addWidget(label)
+        self._content.addWidget(label)
+
+    def _author_row(self) -> QHBoxLayout:
+        """ "Nimbus · 10:42" with the copy button at the far end."""
+        author = QLabel("Nimbus", self)
+        author.setObjectName("ReplyAuthor")
+        meta = QLabel(datetime.now().strftime("%H:%M"), self)
+        meta.setObjectName("ReplyMeta")
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(author)
+        row.addWidget(meta)
+        row.addStretch()
+        row.addWidget(self._copy)
+        return row
+
+    def _copy_answer(self) -> None:
+        """Copies the answer's Markdown and flashes a check mark."""
+        QGuiApplication.clipboard().setText(self._markdown)
+        self._copy.setIcon(line_icon("check", SUCCESS, COPY_ICON_SIZE))
+        self._copied_reset.start()
 
 
-class ConfirmCard(QFrame):
-    """Asks before an action runs: Allow once, Always allow, or Don't."""
+def _copy_icon() -> QIcon:
+    return line_icon("copy", TEXT_MUTED, COPY_ICON_SIZE, hover_color=TEXT)
 
-    decided = pyqtSignal(bool, bool)
 
-    def __init__(self, description: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setObjectName("ConfirmCard")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        question = QLabel(f"<b>Nimbus wants to:</b> {description}", self)
-        question.setWordWrap(True)
-        layout.addWidget(question)
-        self._buttons = QHBoxLayout()
-        self._add_button("Allow", "primary", approved=True, always=False)
-        self._add_button("Always allow", "", approved=True, always=True)
-        self._add_button("Don't", "danger", approved=False, always=False)
-        self._buttons.addStretch()
-        layout.addLayout(self._buttons)
-
-    def _add_button(self, text: str, variant: str, approved: bool, always: bool) -> None:
-        button = QPushButton(text, self)
-        if variant:
-            button.setProperty("variant", variant)
-        button.clicked.connect(lambda: self._decide(approved, always))
-        self._buttons.addWidget(button)
-
-    def _decide(self, approved: bool, always: bool) -> None:
-        """Locks the card so a double click can't answer twice, then reports the choice."""
-        for index in range(self._buttons.count()):
-            widget = self._buttons.itemAt(index).widget()
-            if widget is not None:
-                widget.setEnabled(False)
-        self.decided.emit(approved, always)
+def _copy_button(parent: QWidget) -> QToolButton:
+    button = QToolButton(parent)
+    button.setObjectName("MessageAction")
+    button.setIcon(_copy_icon())
+    button.setIconSize(QSize(COPY_ICON_SIZE, COPY_ICON_SIZE))
+    button.setToolTip("Copy answer")
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    return button
 
 
 def _text_width(text: str, pixel_size: int) -> int:
@@ -183,32 +206,3 @@ def _text_width(text: str, pixel_size: int) -> int:
     font.setPixelSize(pixel_size)
     metrics = QFontMetrics(font)
     return max(metrics.horizontalAdvance(line) for line in text.splitlines() or [""])
-
-
-class EmptyState(QWidget):
-    """The welcome shown in a fresh chat: a cloud, a greeting and a few things to try."""
-
-    suggestion_clicked = pyqtSignal(str)
-
-    def __init__(self, suggestions: list[str], parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cloud = CloudGlyph(EMPTY_CLOUD_SIZE, self)
-        layout.addWidget(cloud, alignment=Qt.AlignmentFlag.AlignHCenter)
-        title = QLabel("Where to?", self)
-        title.setObjectName("EmptyTitle")
-        layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignHCenter)
-        hint = QLabel("Ask about your files, or tell me what to open.", self)
-        hint.setProperty("role", "muted")
-        layout.addWidget(hint, alignment=Qt.AlignmentFlag.AlignHCenter)
-        layout.addSpacing(12)
-        for text in suggestions:
-            chip = QPushButton(text, self)
-            chip.setProperty("variant", "chip")
-            chip.setCursor(Qt.CursorShape.PointingHandCursor)
-            chip.clicked.connect(lambda _=False, t=text: self.suggestion_clicked.emit(t))
-            layout.addWidget(chip, alignment=Qt.AlignmentFlag.AlignHCenter)
-
-    def sizeHint(self) -> QSize:
-        return QSize(400, 360)

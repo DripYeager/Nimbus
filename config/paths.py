@@ -47,3 +47,10 @@ def model_cache_dir() -> Path:
 def is_frozen() -> bool:
     """True when running from a packaged executable rather than from source."""
     return bool(getattr(sys, "frozen", False))
+
+
+def asset_path(*parts: str) -> Path:
+    """A file under assets/ — next to the source tree when running from source, or inside the
+    unpacked bundle when running as a packaged executable."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return base.joinpath("assets", *parts)

@@ -1,6 +1,6 @@
 """
-Small helpers for the stylesheet's label roles (title, section, muted, error) and button
-variants, used across the settings and onboarding screens. Owns assigning them only; the look
+Small helpers for the stylesheet's label roles (title, section, muted, error), button
+variants and widget states, used across the settings and onboarding screens. Owns assigning them only; the look
 itself lives in the theme.
 """
 
@@ -26,6 +26,11 @@ def set_role(widget: QWidget, role: str) -> None:
 def set_variant(widget: QWidget, variant: str) -> None:
     """Changes a button's variant after it has been polished."""
     _restyle(widget, "variant", variant)
+
+
+def set_state(widget: QWidget, state: str) -> None:
+    """Changes a widget's state property (e.g. a pill's ok/error look) after it has been polished."""
+    _restyle(widget, "state", state)
 
 
 def _restyle(widget: QWidget, name: str, value: str) -> None:

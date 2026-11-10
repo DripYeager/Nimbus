@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 from pytest_mock import MockerFixture
 
-from models.schema import IndexStatus, SourceSummary
+from models.schema import FileCategory, IndexStatus, SourceSummary
 from ui.api_client import ApiClient
 from ui.settings.sources_editor import SourcesEditor, describe_source_counts
 
@@ -86,3 +86,17 @@ def test_describe_source_counts_omits_read_count_for_names_only() -> None:
 
 def test_sources_editor_with_index_controls_has_panel(api: Mock) -> None:
     assert SourcesEditor(api, show_index_controls=True)._index_panel is not None
+
+
+def test_collect_reflects_toggled_chip(api: Mock) -> None:
+    editor = SourcesEditor(api)
+    editor.load(VALUES)
+    editor._category_chips[FileCategory.EMAIL].click()
+    assert editor.collect()["file_categories"] == ["pdfs", "code", "email"]
+
+
+def test_remove_row_shows_empty_note_when_last_folder_goes(api: Mock) -> None:
+    editor = SourcesEditor(api)
+    editor.load({**VALUES, "sources": [VALUES["sources"][0]]})
+    editor._remove_row(editor._rows[0])
+    assert not editor._empty_label.isHidden()

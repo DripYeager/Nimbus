@@ -21,12 +21,13 @@ from ui.theme.tokens import (
     RADIUS_WINDOW,
     SKY_BOTTOM,
     SKY_TOP,
-    SURFACE,
+    SURFACE_RAISED,
 )
 
 # Puffs as (x, y, width, height) in a 100x60 design box: round lumps over a wide, flat belly.
 _PUFFS = ((4, 24, 34, 34), (20, 10, 38, 38), (42, 2, 40, 40), (64, 12, 32, 32), (72, 26, 26, 26), (14, 30, 72, 26))
 STREAK_MAX_ALPHA = 110
+COMPOSER_RADIUS = 24
 SHADOW_DEPTH = 0.06
 _STREAKS = ((0.12, 0.30, 0.22), (0.55, 0.22, 0.30), (0.30, 0.62, 0.18), (0.72, 0.70, 0.24), (0.86, 0.40, 0.12))
 
@@ -164,8 +165,9 @@ class AuraFrame(QFrame):
             painter.setPen(QPen(gradient, 2 + 2 * self._glow))
         else:
             painter.setPen(QPen(QColor(BORDER), 1))
-        painter.setBrush(QColor(SURFACE))
-        painter.drawRoundedRect(rect, 16, 16)
+        painter.setBrush(QColor(SURFACE_RAISED))
+        radius = min(COMPOSER_RADIUS, rect.height() / 2)
+        painter.drawRoundedRect(rect, radius, radius)
 
 
 class PowerBar(QWidget):

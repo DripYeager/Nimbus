@@ -5,14 +5,14 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QIcon, QImage
 from PyQt6.QtWidgets import QSystemTrayIcon
 from pytest_mock import MockerFixture
 
 from core.exceptions import NimbusError
 from models.schema import IndexStatus
 from ui.api_client import ApiClient
-from ui.tray import TOOLTIP_TITLE, TrayIcon
+from ui.tray import MENU_ICON_SIZE, TOOLTIP_TITLE, TrayIcon, _menu_icon
 
 
 def _synchronous(fn: Any, ok: Any, err: Any = None) -> None:
@@ -48,6 +48,10 @@ def _action(tray_icon: TrayIcon, text: str) -> QAction:
     return next(a for a in tray_icon._menu.actions() if a.text() == text)
 
 
+def _image(icon: QIcon) -> QImage:
+    return icon.pixmap(MENU_ICON_SIZE, MENU_ICON_SIZE).toImage()
+
+
 def test_setup_builds_the_full_menu(tray: TrayIcon) -> None:
     texts = [a.text() for a in tray._menu.actions() if not a.isSeparator()]
 
@@ -59,6 +63,14 @@ def test_setup_builds_the_full_menu(tray: TrayIcon) -> None:
         "Settings…",
         "Quit Nimbus",
     ]
+
+
+def test_setup_gives_every_menu_item_an_icon(tray: TrayIcon) -> None:
+    assert all(not a.icon().isNull() for a in tray._menu.actions() if not a.isSeparator())
+
+
+def test_setup_shows_the_pause_icon_while_indexing_runs(tray: TrayIcon) -> None:
+    assert _image(tray._pause_action.icon()) == _image(_menu_icon("pause"))
 
 
 def test_setup_shows_the_current_status_in_the_tooltip(tray: TrayIcon) -> None:
@@ -113,6 +125,12 @@ def test_toggle_pause_pauses_and_relabels_the_item(tray: TrayIcon, api: Mock) ->
 
     api.set_paused.assert_called_once_with(True)
     assert tray._pause_action.text() == "Resume indexing"
+
+
+def test_toggle_pause_flips_the_icon_to_play(tray: TrayIcon) -> None:
+    _action(tray, "Pause indexing").trigger()
+
+    assert _image(tray._pause_action.icon()) == _image(_menu_icon("play"))
 
 
 def test_toggle_pause_resumes_when_paused(tray: TrayIcon, api: Mock) -> None:

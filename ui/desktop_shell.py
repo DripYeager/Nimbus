@@ -1,6 +1,6 @@
 """
 Everything the user interacts with, wired together: the chat window, the tray icon, the global
-hotkey, the Settings window and first-run onboarding. Reacts to settings changes (a new
+hotkey, the in-window Settings page and first-run onboarding. Reacts to settings changes (a new
 hotkey) and second launches. Owns UI composition; the engine and process lifecycle belong to
 core/app_runtime.py.
 """
@@ -18,7 +18,6 @@ from ui.api_client import ApiClient
 from ui.chat.chat_window import ChatWindow
 from ui.hotkey import HotkeyListener
 from ui.onboarding.onboarding_wizard import OnboardingWizard
-from ui.settings.settings_window import SettingsWindow
 from ui.single_instance import InstanceServer
 from ui.tray import TrayIcon
 
@@ -39,13 +38,11 @@ class DesktopShell(QObject):
         self._tray = TrayIcon(api)
         self._hotkey = HotkeyListener(get_settings().hotkey)
         self._instances = InstanceServer()
-        self._settings_window: SettingsWindow | None = None
         self._wizard: OnboardingWizard | None = None
 
     def start(self) -> None:
         """Shows the tray, registers the hotkey, and runs onboarding on first launch."""
         self._chat.setup()
-        self._chat.settings_requested.connect(self.open_settings)
         self._tray.setup()
         self._tray.summon_requested.connect(self._chat.summon)
         self._tray.settings_requested.connect(self.open_settings)
@@ -67,16 +64,9 @@ class DesktopShell(QObject):
         self._chat.hide()
 
     def open_settings(self) -> None:
-        """Opens (or brings forward) the Settings window."""
-        if self._settings_window is None:
-            self._settings_window = SettingsWindow(self._api)
-            self._settings_window.finished.connect(self._forget_settings_window)
-        self._settings_window.open_settings()
-        self._settings_window.raise_()
-        self._settings_window.activateWindow()
-
-    def _forget_settings_window(self) -> None:
-        self._settings_window = None
+        """Summons the chat window on its Settings page."""
+        self._chat.summon()
+        self._chat.show_settings()
 
     def _run_onboarding(self) -> None:
         self._wizard = OnboardingWizard(self._api)

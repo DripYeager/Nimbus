@@ -59,7 +59,7 @@ def test_autostart_toggle_enables_immediately(api: Mock, mocker: MockerFixture) 
     enable = mocker.patch("ui.settings.general_tab.enable_autostart")
     tab = GeneralTab(api)
     tab.load(VALUES)
-    tab._autostart_box.setChecked(True)
+    tab._autostart_switch.setChecked(True)
     enable.assert_called_once()
 
 
@@ -67,8 +67,8 @@ def test_autostart_toggle_reverts_and_explains_on_failure(api: Mock, mocker: Moc
     mocker.patch("ui.settings.general_tab.enable_autostart", side_effect=AutostartError("Startup folder is locked"))
     tab = GeneralTab(api)
     tab.load(VALUES)
-    tab._autostart_box.setChecked(True)
-    assert not tab._autostart_box.isChecked()
+    tab._autostart_switch.setChecked(True)
+    assert not tab._autostart_switch.isChecked()
     assert tab._autostart_error.text() == "Startup folder is locked"
     assert not tab._autostart_error.isHidden()
 
@@ -78,5 +78,12 @@ def test_load_does_not_touch_autostart(api: Mock, mocker: MockerFixture) -> None
     enable = mocker.patch("ui.settings.general_tab.enable_autostart")
     tab = GeneralTab(api)
     tab.load(VALUES)
-    assert tab._autostart_box.isChecked()
+    assert tab._autostart_switch.isChecked()
     enable.assert_not_called()
+
+
+def test_collect_reflects_switched_action(api: Mock) -> None:
+    tab = GeneralTab(api)
+    tab.load(VALUES)
+    tab._action_rows["open_website"].switch.setChecked(True)
+    assert tab.collect()["auto_approved_tools"] == ["open_app", "open_website", "save_note"]

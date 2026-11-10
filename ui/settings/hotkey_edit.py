@@ -22,7 +22,9 @@ _MODIFIERS: tuple[tuple[Qt.KeyboardModifier, str], ...] = (
     (Qt.KeyboardModifier.MetaModifier, "<win>"),
 )
 FUNCTION_KEY_COUNT = 12
+KEYCAP_MIN_WIDTH = 200
 UNSUPPORTED_HINT = "Use Ctrl, Alt, Shift or Win together with a letter, a digit, Space or F1–F12."
+CAPTURE_TOOLTIP = "Click, then press the keys you want to use"
 
 
 def _build_key_names() -> dict[Qt.Key, str]:
@@ -73,16 +75,18 @@ def from_hotkey_string(hotkey: str) -> QKeySequence:
 
 
 class HotkeyEdit(QWidget):
-    """A one-chord key recorder that explains itself when the chord can't be used."""
+    """A one-chord key recorder drawn as a keycap, explaining itself when the chord can't be used."""
 
     hotkey_changed = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._edit = QKeySequenceEdit()
+        self._edit.setObjectName("Keycap")
         self._edit.setMaximumSequenceLength(1)
-        self._edit.setClearButtonEnabled(True)
-        self._hint = styled_label(UNSUPPORTED_HINT, "muted", wrap=True)
+        self._edit.setMinimumWidth(KEYCAP_MIN_WIDTH)
+        self._edit.setToolTip(CAPTURE_TOOLTIP)
+        self._hint = styled_label(UNSUPPORTED_HINT, "error", wrap=True)
         self._hint.hide()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

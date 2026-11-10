@@ -5,7 +5,18 @@ from pathlib import Path
 
 import pytest
 
-from config.paths import app_data_dir, is_frozen, log_dir, model_cache_dir, notes_dir, user_settings_path
+import config.paths
+from config.paths import (
+    app_data_dir,
+    asset_path,
+    is_frozen,
+    log_dir,
+    model_cache_dir,
+    notes_dir,
+    user_settings_path,
+)
+
+REPO_ROOT = Path(config.paths.__file__).resolve().parent.parent
 
 
 @pytest.fixture
@@ -73,3 +84,29 @@ def test_is_frozen_is_true_inside_a_packaged_executable(monkeypatch: pytest.Monk
     monkeypatch.setattr(sys, "frozen", True, raising=False)
 
     assert is_frozen() is True
+
+
+def test_asset_path_points_into_the_source_tree_when_running_from_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+
+    assert asset_path("icons", "check.svg") == REPO_ROOT / "assets" / "icons" / "check.svg"
+
+
+def test_asset_path_finds_a_bundled_file_when_running_from_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+
+    assert asset_path("fonts", "Bangers-Regular.ttf").is_file()
+
+
+def test_asset_path_points_into_the_unpacked_bundle_when_frozen(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    assert asset_path("icons", "check.svg") == tmp_path / "assets" / "icons" / "check.svg"
+
+
+def test_asset_path_with_no_parts_is_the_assets_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+
+    assert asset_path() == REPO_ROOT / "assets"

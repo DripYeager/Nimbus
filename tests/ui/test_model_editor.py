@@ -39,7 +39,7 @@ def api(mocker: MockerFixture) -> Mock:
 
 
 def _pick(editor: ModelEditor, provider: str) -> None:
-    editor._provider_box.setCurrentIndex(editor._provider_box.findData(provider))
+    editor._picker.pick(provider)
 
 
 def test_collect_round_trips_loaded_values(api: Mock) -> None:
@@ -114,7 +114,7 @@ def test_test_connection_fills_models_and_keeps_typed_text(api: Mock) -> None:
     )
     assert [editor._model_box.itemText(i) for i in range(editor._model_box.count())] == ["a", "b"]
     assert editor._model_box.currentText() == "llama3.1:8b"
-    assert editor._test_status.text() == "✓ Connected"
+    assert (editor._test_status.text(), editor._test_status.state()) == ("Connected", "ok")
 
 
 def test_test_connection_shows_failure_as_error(api: Mock) -> None:
@@ -122,7 +122,7 @@ def test_test_connection_shows_failure_as_error(api: Mock) -> None:
     editor = ModelEditor(api)
     editor.load(_view())
     editor._test_connection()
-    assert editor._test_status.property("role") == "error"
+    assert editor._test_status.state() == "error"
 
 
 def test_test_connection_shows_call_error(api: Mock, mocker: MockerFixture) -> None:
@@ -135,3 +135,28 @@ def test_test_connection_shows_call_error(api: Mock, mocker: MockerFixture) -> N
     editor._test_connection()
     assert editor._test_status.text() == "Couldn't reach Nimbus's engine."
     assert editor._test_button.isEnabled()
+
+
+def test_provider_pick_of_current_provider_skips_warning(api: Mock, mocker: MockerFixture) -> None:
+    question = mocker.patch("ui.settings.model_editor.QMessageBox.question", return_value=YES)
+    editor = ModelEditor(api)
+    editor.load(_view())
+    _pick(editor, "ollama")
+    question.assert_not_called()
+
+
+def test_provider_switch_to_cloud_shows_cloud_privacy_state(api: Mock, mocker: MockerFixture) -> None:
+    mocker.patch("ui.settings.model_editor.QMessageBox.question", return_value=YES)
+    editor = ModelEditor(api)
+    editor.load(_view())
+    _pick(editor, "openai")
+    assert editor._privacy_card.property("state") == "cloud"
+
+
+def test_load_hides_previous_test_result(api: Mock) -> None:
+    api.test_provider.return_value = ProviderTestResult(ok=True, message="Connected")
+    editor = ModelEditor(api)
+    editor.load(_view())
+    editor._test_connection()
+    editor.load(_view())
+    assert editor._test_status.isHidden()

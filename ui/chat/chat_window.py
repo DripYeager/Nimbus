@@ -1,16 +1,19 @@
 """
-The window the hotkey summons: a frameless, always-on-top panel with the sky header, the
-conversation (or chat history), and the message box. Owns window behaviour — summon/dismiss
-animation, placement, keyboard shortcuts, status polling — and composes the chat widgets.
+The window the hotkey summons: a frameless, always-on-top night-sky panel with the sky header
+and three pages — the conversation, chat history and Settings — that you move between without
+leaving the window. Owns window behaviour (summon/dismiss animation, placement, page switching,
+keyboard shortcuts, status polling) and composes the pieces.
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QAbstractAnimation, QPoint, Qt, QTimer, pyqtSignal
+from functools import partial
+
+from PyQt6.QtCore import QAbstractAnimation, QPoint, QPropertyAnimation, Qt, QTimer
 from PyQt6.QtGui import QColor, QCursor, QGuiApplication, QKeyEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
-    QFrame,
     QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QSizeGrip,
@@ -28,20 +31,30 @@ from ui.chat.chat_session import ChatSession
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
 from ui.chat.history_panel import HistoryPanel
+from ui.settings.settings_panel import SettingsPanel
+from ui.theme.backdrop import NightBackdrop
 from ui.theme.icons import app_icon
 from ui.theme.motion import build_dismiss_animation, build_summon_animation, stop_animation
-from ui.theme.tokens import CHAT_HEIGHT, CHAT_MIN_HEIGHT, CHAT_WIDTH, SHADOW_ALPHA, SHADOW_BLUR, SHADOW_MARGIN
+from ui.theme.tokens import (
+    CHAT_HEIGHT,
+    CHAT_MIN_HEIGHT,
+    CHAT_WIDTH,
+    PAGE_SLIDE_MS,
+    SHADOW_ALPHA,
+    SHADOW_BLUR,
+    SHADOW_MARGIN,
+)
 
 STATUS_POLL_MS = 2000
 # Placing the window a little above center keeps it clear of the taskbar on short screens.
 VERTICAL_POSITION = 0.42
-FOOTER_TEXT = "Enter to send · Shift+Enter for a new line · Esc to hide"
+FOOTER_TEXT = "Enter to send  ·  Shift+Enter for a new line  ·  Esc to hide"
+CHAT_PAGE, HISTORY_PAGE, SETTINGS_PAGE = 0, 1, 2
+PAGE_TITLES = {HISTORY_PAGE: "History", SETTINGS_PAGE: "Settings"}
 
 
 class ChatWindow(QWidget):
-    """Emits settings_requested when the gear is clicked; everything else is handled here."""
-
-    settings_requested = pyqtSignal()
+    """The whole UI people see day to day."""
 
     def __init__(self, api: ApiClient) -> None:
         super().__init__()
@@ -51,7 +64,9 @@ class ChatWindow(QWidget):
         self._header = ChatHeader()
         self._view = ChatView()
         self._history = HistoryPanel(api)
+        self._settings = SettingsPanel(api)
         self._input = ChatInput()
+        self._hint = QLabel(FOOTER_TEXT)
         self._pages = QStackedWidget()
         self._session = ChatSession(self._view, self._input, api, ChatStream())
 
@@ -62,11 +77,14 @@ class ChatWindow(QWidget):
         self._session.connect_signals()
         self._session.status_received.connect(self._show_status)
         self._header.new_chat_clicked.connect(self._new_chat)
-        self._header.history_clicked.connect(self._show_history)
-        self._header.settings_clicked.connect(self.settings_requested)
+        self._header.history_clicked.connect(self.show_history)
+        self._header.settings_clicked.connect(self.show_settings)
+        self._header.back_clicked.connect(self.show_chat)
         self._header.close_clicked.connect(self.dismiss)
         self._history.opened.connect(self._open_conversation)
-        self._history.back.connect(lambda: self._pages.setCurrentIndex(0))
+        self._settings.back_requested.connect(self.show_chat)
+        # A save can switch between a local and a cloud model; refresh the header badge at once.
+        self._settings.saved.connect(self._poll_status)
         self._status_timer.timeout.connect(self._poll_status)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self._new_chat)
 
@@ -95,7 +113,7 @@ class ChatWindow(QWidget):
         self._poll_status()
 
     def dismiss(self) -> None:
-        """Glides away and hides; the conversation is kept for next time."""
+        """Glides away and hides; the conversation and current page are kept for next time."""
         if not self.isVisible():
             return
         self._status_timer.stop()
@@ -104,6 +122,54 @@ class ChatWindow(QWidget):
         self._animation.finished.connect(self.hide)
         self._animation.start()
 
+    def show_chat(self) -> None:
+        self._go_to(CHAT_PAGE)
+        self._input.focus()
+
+    def show_history(self) -> None:
+        self._history.refresh()
+        self._go_to(HISTORY_PAGE)
+
+    def show_settings(self) -> None:
+        """Opens Settings inside this window; the header's back arrow returns to the chat."""
+        self._settings.load()
+        self._go_to(SETTINGS_PAGE)
+
+    def ask(self, text: str) -> None:
+        """Summons the window and sends text straight away (used by tray shortcuts)."""
+        self.summon()
+        self.show_chat()
+        self._session.send(text)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Esc steps back to the chat from a sub-page, and hides the window from the chat."""
+        if event.key() == Qt.Key.Key_Escape:
+            if self._pages.currentIndex() != CHAT_PAGE:
+                self.show_chat()
+            else:
+                self.dismiss()
+            return
+        super().keyPressEvent(event)
+
+    def _go_to(self, page: int) -> None:
+        """Switches page with a short fade-in, and puts the matching header up."""
+        self._header.show_page(PAGE_TITLES.get(page))
+        if self._pages.currentIndex() == page:
+            return
+        self._pages.setCurrentIndex(page)
+        self._hint.setVisible(page == CHAT_PAGE)
+        target = self._pages.currentWidget()
+        effect = QGraphicsOpacityEffect(target)
+        target.setGraphicsEffect(effect)
+        # Parented to the effect (itself owned by the page), so the fade dies with the page and
+        # can never fire into a widget that has already been destroyed.
+        fade = QPropertyAnimation(effect, b"opacity", effect)
+        fade.setDuration(PAGE_SLIDE_MS)
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.finished.connect(partial(target.setGraphicsEffect, None))
+        fade.start()
+
     def _is_dismissing(self) -> bool:
         return (
             self.isVisible()
@@ -111,17 +177,6 @@ class ChatWindow(QWidget):
             and self._animation is not None
             and (self._animation.state() == QAbstractAnimation.State.Running)
         )
-
-    def ask(self, text: str) -> None:
-        """Summons the window and sends text straight away (used by tray shortcuts)."""
-        self.summon()
-        self._session.send(text)
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key.Key_Escape:
-            self.dismiss()
-            return
-        super().keyPressEvent(event)
 
     def _configure_window(self) -> None:
         flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
@@ -133,36 +188,40 @@ class ChatWindow(QWidget):
         self.setMinimumHeight(CHAT_MIN_HEIGHT + 2 * SHADOW_MARGIN)
 
     def _build_layout(self) -> None:
-        """Panel with a soft shadow: header, pages (chat / history), input, footer."""
-        panel = QFrame(self)
-        panel.setObjectName("ChatPanel")
+        """Backdrop with a soft shadow: header on top, the pages, and a slim footer."""
+        panel = NightBackdrop(self)
         shadow = QGraphicsDropShadowEffect(panel)
         shadow.setBlurRadius(SHADOW_BLUR)
-        shadow.setOffset(0, 8)
+        shadow.setOffset(0, 10)
         shadow.setColor(QColor(0, 0, 0, SHADOW_ALPHA))
         panel.setGraphicsEffect(shadow)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(SHADOW_MARGIN, SHADOW_MARGIN, SHADOW_MARGIN, SHADOW_MARGIN)
         outer.addWidget(panel)
-        self._pages.addWidget(self._view)
-        self._pages.addWidget(self._history)
-        body = QVBoxLayout()
-        body.setContentsMargins(16, 12, 16, 8)
-        body.setSpacing(10)
-        body.addWidget(self._pages, stretch=1)
-        body.addWidget(self._input)
-        body.addLayout(self._footer(panel))
+        self._pages.addWidget(self._chat_page())
+        self._pages.addWidget(_padded(self._history))
+        self._pages.addWidget(self._settings)
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
         column.addWidget(self._header)
-        column.addLayout(body, stretch=1)
+        column.addWidget(self._pages, stretch=1)
+        column.addLayout(self._footer(panel))
+
+    def _chat_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 14, 20, 6)
+        layout.setSpacing(12)
+        layout.addWidget(self._view, stretch=1)
+        layout.addWidget(self._input)
+        return page
 
     def _footer(self, panel: QWidget) -> QHBoxLayout:
-        hint = QLabel(FOOTER_TEXT, panel)
-        hint.setObjectName("FooterHint")
+        self._hint.setObjectName("FooterHint")
         row = QHBoxLayout()
-        row.addWidget(hint)
+        row.setContentsMargins(24, 0, 6, 6)
+        row.addWidget(self._hint)
         row.addStretch()
         row.addWidget(QSizeGrip(panel), alignment=Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)
         return row
@@ -178,16 +237,11 @@ class ChatWindow(QWidget):
         return QPoint(x, max(area.top(), y))
 
     def _new_chat(self) -> None:
-        self._pages.setCurrentIndex(0)
+        self.show_chat()
         self._session.new_chat()
-        self._input.focus()
-
-    def _show_history(self) -> None:
-        self._history.refresh()
-        self._pages.setCurrentIndex(1)
 
     def _open_conversation(self, conversation_id: str) -> None:
-        self._pages.setCurrentIndex(0)
+        self.show_chat()
         self._session.open_conversation(conversation_id)
 
     def _poll_status(self) -> None:
@@ -199,3 +253,12 @@ class ChatWindow(QWidget):
     def _show_status(self, status: IndexStatus, is_cloud: bool) -> None:
         self._header.set_status(status)
         self._header.set_privacy(is_cloud)
+
+
+def _padded(widget: QWidget) -> QWidget:
+    """Wraps a page in the same side margins as the chat page."""
+    holder = QWidget()
+    layout = QVBoxLayout(holder)
+    layout.setContentsMargins(20, 14, 20, 6)
+    layout.addWidget(widget)
+    return holder

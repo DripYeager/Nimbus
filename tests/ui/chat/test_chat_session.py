@@ -4,7 +4,8 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from PyQt6.QtWidgets import QLabel, QPushButton
+from PyQt6.QtCore import QCoreApplication, QEvent
+from PyQt6.QtWidgets import QLabel
 from pytest_mock import MockerFixture
 
 from core.exceptions import NimbusError
@@ -15,7 +16,8 @@ from ui.chat.chat_input import ChatInput
 from ui.chat.chat_session import STILL_LEARNING_ID, ChatSession
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
-from ui.chat.message_widgets import AssistantMessage, ConfirmCard
+from ui.chat.message_cards import ConfirmCard, SourceCard
+from ui.chat.message_widgets import AssistantMessage
 
 
 def _synchronous(fn: Any, ok: Any, err: Any = None) -> None:
@@ -62,14 +64,23 @@ def _is_busy(chat_input: ChatInput) -> bool:
     return not chat_input._send.isEnabled()
 
 
+def _errors(view: ChatView) -> list[str]:
+    return [label.text() for label in view.findChildren(QLabel) if label.objectName() == "ErrorLine"]
+
+
 def test_send_shows_the_message_and_streams_the_reply(
     session: ChatSession, view: ChatView, stream: Mock, chat_input: ChatInput
 ) -> None:
     session.send("Find my resume")
 
     stream.send.assert_called_once_with("Find my resume", None)
-    assert view.currentIndex() == 1
-    assert _is_busy(chat_input)
+    assert (view.currentIndex(), _is_busy(chat_input)) == (1, True)
+
+
+def test_send_shows_the_reply_thinking_straight_away(session: ChatSession, view: ChatView) -> None:
+    session.send("Find my resume")
+
+    assert not view.current_reply._thinking.isHidden()
 
 
 def test_send_continues_the_started_conversation(session: ChatSession, stream: Mock) -> None:
@@ -109,11 +120,11 @@ def test_handle_event_started_reports_status_for_the_header(session: ChatSession
 def test_handle_event_started_flags_an_unfinished_index(session: ChatSession, view: ChatView) -> None:
     session._handle_event("started", _started(content_files=4, indexed_files=1, pending_files=3))
 
-    chip = view.current_reply._chips[STILL_LEARNING_ID]
-    assert "Still learning your files (25%)" in chip.text()
+    step = view.current_reply._steps[STILL_LEARNING_ID]
+    assert "Still learning your files (25%)" in step._text.text()
 
 
-def test_handle_event_started_adds_no_chip_when_indexing_is_done(session: ChatSession, view: ChatView) -> None:
+def test_handle_event_started_adds_no_step_when_indexing_is_done(session: ChatSession, view: ChatView) -> None:
     session._handle_event("started", _started(content_files=4, indexed_files=4))
 
     assert view._current is None
@@ -126,12 +137,12 @@ def test_handle_event_token_streams_into_the_reply(session: ChatSession, view: C
     assert view.current_reply._markdown == "Hello there"
 
 
-def test_handle_event_tool_shows_and_updates_one_chip(session: ChatSession, view: ChatView) -> None:
+def test_handle_event_tool_shows_and_updates_one_step(session: ChatSession, view: ChatView) -> None:
     session._handle_event("tool", {"call_id": "t1", "label": "Searching files", "status": "running"})
     session._handle_event("tool", {"call_id": "t1", "label": "Searching files", "status": "done"})
 
-    chip = view.current_reply._chips["t1"]
-    assert (len(view.current_reply._chips), chip.property("status")) == (1, "done")
+    steps = view.current_reply._steps
+    assert (len(steps), steps["t1"]._text.property("status")) == (1, "done")
 
 
 def test_handle_event_sources_adds_source_cards(session: ChatSession, view: ChatView) -> None:
@@ -139,15 +150,14 @@ def test_handle_event_sources_adds_source_cards(session: ChatSession, view: Chat
 
     session._handle_event("sources", {"sources": sources})
 
-    cards = [b for b in view.current_reply.findChildren(QPushButton) if b.objectName() == "SourceCard"]
-    assert [c.toolTip() for c in cards] == ["C:/Docs/cv.pdf"]
+    cards = view.current_reply.findChildren(SourceCard)
+    assert [c.toolTip() for c in cards] == ["Open C:/Docs/cv.pdf"]
 
 
 def test_handle_event_error_shows_the_message(session: ChatSession, view: ChatView) -> None:
     session._handle_event("error", {"message": "Model offline"})
 
-    errors = [label.text() for label in view.current_reply.findChildren(QLabel) if label.objectName() == "ErrorLine"]
-    assert errors == ["⚠  Model offline"]
+    assert _errors(view) == ["Model offline"]
 
 
 def test_handle_event_ignores_unknown_events(session: ChatSession, view: ChatView) -> None:
@@ -188,6 +198,14 @@ def test_confirmation_answer_resumes_the_turn(
     )
 
 
+def test_confirmation_answer_shows_a_thinking_reply(session: ChatSession, view: ChatView) -> None:
+    card = _confirm(session, view)
+
+    card.decided.emit(True, False)
+
+    assert not view.current_reply._thinking.isHidden()
+
+
 def test_confirmation_answer_locks_the_input(session: ChatSession, view: ChatView, chat_input: ChatInput) -> None:
     card = _confirm(session, view)
     session._finish()
@@ -205,11 +223,20 @@ def test_finish_unlocks_the_input_and_closes_the_reply(
 
     session._finish()
 
-    assert not _is_busy(chat_input)
-    assert view._current is None
+    assert (_is_busy(chat_input), view._current) == (False, None)
 
 
-def test_fail_shows_the_error_and_unlocks_the_input(
+def test_finish_drops_a_reply_that_never_got_content(session: ChatSession, view: ChatView) -> None:
+    session.send("hi")
+
+    session._finish()
+
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+
+    assert view._content.findChildren(AssistantMessage) == []
+
+
+def test_fail_keeps_the_error_on_a_reply_with_no_text(
     session: ChatSession, view: ChatView, chat_input: ChatInput
 ) -> None:
     session.send("hi")
@@ -217,7 +244,17 @@ def test_fail_shows_the_error_and_unlocks_the_input(
 
     session._fail("Couldn't reach Nimbus's engine.")
 
-    assert any(label.objectName() == "ErrorLine" for label in reply.findChildren(QLabel))
+    assert view._layout.indexOf(reply) >= 0
+    assert [label.text() for label in reply.findChildren(QLabel) if label.objectName() == "ErrorLine"] == [
+        "Couldn't reach Nimbus's engine."
+    ]
+
+
+def test_fail_unlocks_the_input(session: ChatSession, chat_input: ChatInput) -> None:
+    session.send("hi")
+
+    session._fail("Couldn't reach Nimbus's engine.")
+
     assert not _is_busy(chat_input)
 
 
@@ -250,8 +287,7 @@ def test_open_conversation_shows_a_load_error(session: ChatSession, view: ChatVi
 
     session.open_conversation("missing")
 
-    errors = [label.text() for label in view.findChildren(QLabel) if label.objectName() == "ErrorLine"]
-    assert errors == ["⚠  Chat not found"]
+    assert _errors(view) == ["Chat not found"]
 
 
 def test_cancel_stops_the_stream_and_unlocks_the_input(

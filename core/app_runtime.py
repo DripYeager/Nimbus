@@ -21,6 +21,7 @@ from core.service_container import AppServices
 from ui.api_client import ApiClient
 from ui.desktop_shell import DesktopShell
 from ui.single_instance import notify_running_instance
+from ui.theme.fonts import load_bundled_fonts
 from ui.theme.icons import app_icon
 from ui.theme.stylesheet import build_stylesheet
 
@@ -115,5 +116,6 @@ def _build_qt_app() -> QApplication:
     app.setApplicationName("Nimbus")
     app.setQuitOnLastWindowClosed(False)
     app.setWindowIcon(app_icon())
+    load_bundled_fonts()
     app.setStyleSheet(build_stylesheet())
     return app

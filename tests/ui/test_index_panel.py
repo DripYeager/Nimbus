@@ -65,3 +65,17 @@ def test_index_panel_shows_error_when_engine_unreachable(mocker: MockerFixture) 
     panel.refresh()
     assert panel._status.text() == "No engine"
     assert panel._status.property("role") == "error"
+
+
+def test_index_panel_refresh_charges_orb_while_busy(api: Mock) -> None:
+    api.index_status.return_value = IndexStatus(content_files=10, indexed_files=4, pending_files=6)
+    panel = IndexPanel(api)
+    panel.refresh()
+    assert panel._is_working
+
+
+def test_index_panel_refresh_rests_orb_when_paused(api: Mock) -> None:
+    api.index_status.return_value = IndexStatus(content_files=10, indexed_files=4, pending_files=6, is_paused=True)
+    panel = IndexPanel(api)
+    panel.refresh()
+    assert not panel._is_working

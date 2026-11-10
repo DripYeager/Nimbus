@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QPushButton
 
-from ui.settings.label_roles import set_role, set_variant, styled_label
+from ui.settings.label_roles import set_role, set_state, set_variant, styled_label
 
 
 def test_styled_label_sets_role() -> None:
@@ -19,3 +19,9 @@ def test_set_variant_sets_variant() -> None:
     button = QPushButton("Next")
     set_variant(button, "primary")
     assert button.property("variant") == "primary"
+
+
+def test_set_state_sets_state() -> None:
+    label = styled_label("Saved")
+    set_state(label, "success")
+    assert label.property("state") == "success"

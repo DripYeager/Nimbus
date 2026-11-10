@@ -17,7 +17,6 @@ class Collaborators(SimpleNamespace):
     hotkey: MagicMock
     instances: MagicMock
     wizard_cls: MagicMock
-    settings_window_cls: MagicMock
     settings: SimpleNamespace
 
 
@@ -34,7 +33,6 @@ def parts(mocker: MockerFixture) -> Collaborators:
         hotkey=hotkey,
         instances=mocker.patch("ui.desktop_shell.InstanceServer").return_value,
         wizard_cls=mocker.patch("ui.desktop_shell.OnboardingWizard"),
-        settings_window_cls=mocker.patch("ui.desktop_shell.SettingsWindow"),
         settings=settings,
     )
 
@@ -112,28 +110,20 @@ def test_finish_onboarding_summons_the_chat(shell: DesktopShell, parts: Collabor
     assert shell._wizard is None
 
 
-def test_open_settings_creates_and_shows_the_window(shell: DesktopShell, parts: Collaborators) -> None:
+def test_open_settings_summons_the_chat_window_on_its_settings_page(shell: DesktopShell, parts: Collaborators) -> None:
     shell.open_settings()
 
-    window = parts.settings_window_cls.return_value
-    window.open_settings.assert_called_once()
-    window.activateWindow.assert_called_once()
+    parts.chat.summon.assert_called_once()
+    parts.chat.show_settings.assert_called_once()
 
 
-def test_open_settings_reuses_an_open_window(shell: DesktopShell, parts: Collaborators) -> None:
-    shell.open_settings()
-    shell.open_settings()
+def test_tray_settings_item_opens_the_settings_page(shell: DesktopShell, parts: Collaborators) -> None:
+    shell.start()
+    handler = parts.tray.settings_requested.connect.call_args.args[0]
 
-    parts.settings_window_cls.assert_called_once()
+    handler()
 
-
-def test_open_settings_creates_a_new_window_after_the_old_one_closed(shell: DesktopShell, parts: Collaborators) -> None:
-    shell.open_settings()
-    shell._forget_settings_window()
-
-    shell.open_settings()
-
-    assert parts.settings_window_cls.call_count == 2
+    parts.chat.show_settings.assert_called_once()
 
 
 def test_settings_changed_rebinds_a_new_hotkey(shell: DesktopShell, parts: Collaborators) -> None:

@@ -1,13 +1,14 @@
 """
-The "which brain should Nimbus use?" editor: provider, its connection fields, the model, a
-connection test, and a plain statement of where questions go. Owns editing model settings in
-memory; saving them and storing the API key are the caller's job.
+The "which brain should Nimbus use?" editor: provider cards, that provider's connection fields,
+the model, a connection test, and a plain statement of where questions go. Owns editing model
+settings in memory; saving them and storing the API key are the caller's job.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -23,14 +24,13 @@ from models.api import ProviderTestResult, SettingsView
 from models.chat import ProviderConfig, ProviderName
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
-from ui.settings.label_roles import set_role, styled_label
+from ui.settings.label_roles import set_state, styled_label
+from ui.settings.provider_picker import LOCAL_PROVIDER, ProviderPicker
+from ui.settings.section_layout import CARD_ROW_SPACING, GAP, GROUP_SPACING, SettingsCard, group_header, icon_label
+from ui.settings.status_pill import StatusPill
+from ui.theme.line_icons import line_icon, line_pixmap
+from ui.theme.tokens import GI_ORANGE, ICON_SIZE, SCOUTER_GREEN, TEXT
 
-PROVIDER_LABELS: dict[ProviderName, str] = {
-    "ollama": "Ollama — runs on this PC, private",
-    "openai": "OpenAI",
-    "anthropic": "Anthropic — Claude",
-    "openai_compatible": "Custom OpenAI-compatible server",
-}
 PROVIDER_DISPLAY_NAMES: dict[ProviderName, str] = {
     "ollama": "Ollama",
     "openai": "OpenAI",
@@ -43,11 +43,11 @@ MODEL_SETTING_KEYS: dict[ProviderName, str] = {
     "anthropic": "anthropic_model",
     "openai_compatible": "compatible_model",
 }
-LOCAL_PROVIDER: ProviderName = "ollama"
 LOCAL_PRIVACY_NOTE = "Answers are generated on this PC. Nothing leaves your machine."
 CLOUD_PRIVACY_NOTE = "Questions and the file excerpts needed to answer them are sent to {provider}."
 SAVED_KEY_PLACEHOLDER = "Saved — leave blank to keep it"
 NEW_KEY_PLACEHOLDER = "Paste your API key"
+MODEL_PLACEHOLDER = "Type a model name, or test the connection to list them"
 CLOUD_WARNING_TITLE = "Use a cloud model?"
 CLOUD_WARNING = (
     "With {provider}, your questions and the parts of your files needed to answer them leave "
@@ -64,43 +64,73 @@ class ModelEditor(QWidget):
         self._values: dict[str, Any] = {}
         self._has_api_key: dict[str, bool] = {}
         self._current: ProviderName = LOCAL_PROVIDER
-        self._provider_box = QComboBox()
-        for name, label in PROVIDER_LABELS.items():
-            self._provider_box.addItem(label, name)
+        self._picker = ProviderPicker()
+        self._picker.set_provider(LOCAL_PROVIDER)
         self._host_edit = QLineEdit()
         self._base_url_edit = QLineEdit()
         self._base_url_edit.setPlaceholderText("http://localhost:8000/v1")
         self._key_edit = QLineEdit()
         self._key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self._model_box = QComboBox()
+        self._model_box.setObjectName("ModelBox")
         self._model_box.setEditable(True)
+        self._model_box.lineEdit().setPlaceholderText(MODEL_PLACEHOLDER)
         self._test_button = QPushButton("Test connection")
-        self._test_status = styled_label("", "muted", wrap=True)
+        self._test_button.setIcon(line_icon("zap", TEXT, ICON_SIZE - 2))
+        self._test_button.setIconSize(QSize(ICON_SIZE - 2, ICON_SIZE - 2))
+        self._test_status = StatusPill()
+        self._privacy_icon = icon_label("shield-check", SCOUTER_GREEN)
         self._privacy_label = styled_label("", "muted", wrap=True)
+        self._privacy_card = SettingsCard()
         self._form = QFormLayout()
         self._build_layout()
-        self._provider_box.currentIndexChanged.connect(self._on_provider_picked)
+        self._picker.picked.connect(self._on_provider_picked)
         self._test_button.clicked.connect(self._test_connection)
 
     def _build_layout(self) -> None:
-        """Provider and its fields in a form, then the test row and the privacy note."""
-        self._form.addRow("Provider", self._provider_box)
-        self._form.addRow("Ollama address", self._host_edit)
-        self._form.addRow("Server URL", self._base_url_edit)
-        self._form.addRow("API key", self._key_edit)
-        self._form.addRow("Model", self._model_box)
-        test_row = QHBoxLayout()
-        test_row.addWidget(self._test_button)
-        test_row.addWidget(self._test_status, 1)
+        """Provider cards, then a connection card, then the privacy note."""
         layout = QVBoxLayout(self)
-        layout.addLayout(self._form)
-        layout.addLayout(test_row)
-        layout.addSpacing(8)
-        layout.addWidget(self._privacy_label)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(GAP)
+        layout.addWidget(group_header("Provider", "Pick where answers are written."))
+        layout.addWidget(self._picker)
+        layout.addSpacing(GROUP_SPACING - GAP)
+        layout.addWidget(group_header("Connection"))
+        layout.addWidget(self._build_connection_card())
+        layout.addSpacing(GAP)
+        layout.addWidget(self._build_privacy_card())
         layout.addStretch(1)
 
+    def _build_connection_card(self) -> SettingsCard:
+        """Labels sit above their fields, so long URLs get the card's full width."""
+        self._form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
+        self._form.setVerticalSpacing(GAP)
+        self._form.addRow(styled_label("Ollama address", "muted"), self._host_edit)
+        self._form.addRow(styled_label("Server URL", "muted"), self._base_url_edit)
+        self._form.addRow(styled_label("API key", "muted"), self._key_edit)
+        self._form.addRow(styled_label("Model", "muted"), self._model_box)
+        test_row = QHBoxLayout()
+        test_row.setSpacing(CARD_ROW_SPACING)
+        test_row.addWidget(self._test_button)
+        test_row.addWidget(self._test_status, 1)
+        card = SettingsCard()
+        card.body.addLayout(self._form)
+        card.body.addSpacing(GAP // 2)
+        card.body.addLayout(test_row)
+        return card
+
+    def _build_privacy_card(self) -> SettingsCard:
+        card = self._privacy_card
+        card.setObjectName("PrivacyCard")
+        row = QHBoxLayout()
+        row.setSpacing(CARD_ROW_SPACING)
+        row.addWidget(self._privacy_icon)
+        row.addWidget(self._privacy_label, 1)
+        card.body.addLayout(row)
+        return card
+
     def provider(self) -> ProviderName:
-        return self._provider_box.currentData()
+        return self._picker.provider()
 
     def load(self, view: SettingsView) -> None:
         """Fills the fields from saved settings without triggering the cloud warning."""
@@ -109,9 +139,9 @@ class ModelEditor(QWidget):
         self._host_edit.setText(str(self._values.get("ollama_host", "")))
         self._base_url_edit.setText(str(self._values.get("compatible_base_url", "")))
         self._current = self._values.get("llm_provider", LOCAL_PROVIDER)
-        self._provider_box.blockSignals(True)
-        self._provider_box.setCurrentIndex(self._provider_box.findData(self._current))
-        self._provider_box.blockSignals(False)
+        self._picker.set_provider(self._current)
+        self._key_edit.clear()
+        self._test_status.clear()
         self._show_provider(self._current)
 
     def collect(self) -> tuple[dict[str, Any], str | None]:
@@ -133,13 +163,12 @@ class ModelEditor(QWidget):
                 updates[key] = self._values[key]
         return updates, self._key_edit.text().strip() or None
 
-    def _on_provider_picked(self) -> None:
+    def _on_provider_picked(self, picked: ProviderName) -> None:
         """Confirms a move off the local model, then swaps the fields to the new provider."""
-        picked = self.provider()
-        if self._current == LOCAL_PROVIDER and picked != LOCAL_PROVIDER and not self._confirm_cloud(picked):
-            self._provider_box.blockSignals(True)
-            self._provider_box.setCurrentIndex(self._provider_box.findData(self._current))
-            self._provider_box.blockSignals(False)
+        if picked == self._current:
+            return
+        if self._current == LOCAL_PROVIDER and not self._confirm_cloud(picked):
+            self._picker.set_provider(self._current)
             return
         self._remember_model(self._current)
         self._current = picked
@@ -164,16 +193,22 @@ class ModelEditor(QWidget):
         self._key_edit.setPlaceholderText(SAVED_KEY_PLACEHOLDER if has_key else NEW_KEY_PLACEHOLDER)
         self._model_box.clear()
         self._model_box.setEditText(str(self._values.get(MODEL_SETTING_KEYS[provider], "")))
+        self._show_privacy(provider)
+
+    def _show_privacy(self, provider: ProviderName) -> None:
+        """A green shield for the local model; an orange globe and a plain warning for the cloud."""
+        set_state(self._privacy_card, "local" if provider == LOCAL_PROVIDER else "cloud")
         if provider == LOCAL_PROVIDER:
+            self._privacy_icon.setPixmap(line_pixmap("shield-check", SCOUTER_GREEN, ICON_SIZE))
             self._privacy_label.setText(LOCAL_PRIVACY_NOTE)
         else:
+            self._privacy_icon.setPixmap(line_pixmap("globe", GI_ORANGE, ICON_SIZE))
             self._privacy_label.setText(CLOUD_PRIVACY_NOTE.format(provider=PROVIDER_DISPLAY_NAMES[provider]))
 
     def _test_connection(self) -> None:
         config = self._unsaved_config()
         self._test_button.setEnabled(False)
-        self._test_status.setText("Testing…")
-        set_role(self._test_status, "muted")
+        self._test_status.show_status("Testing…", "busy")
         run_in_background(lambda: self._api.test_provider(config), self._show_test_result, self._show_test_error)
 
     def _unsaved_config(self) -> ProviderConfig:
@@ -194,10 +229,8 @@ class ModelEditor(QWidget):
         self._model_box.clear()
         self._model_box.addItems(result.models)
         self._model_box.setEditText(typed)
-        self._test_status.setText(f"✓ {result.message}" if result.ok else result.message)
-        set_role(self._test_status, "muted" if result.ok else "error")
+        self._test_status.show_status(result.message, "ok" if result.ok else "error")
 
     def _show_test_error(self, message: str) -> None:
         self._test_button.setEnabled(True)
-        self._test_status.setText(message)
-        set_role(self._test_status, "error")
+        self._test_status.show_status(message, "error")
