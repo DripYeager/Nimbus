@@ -7,12 +7,12 @@ python-dotenv==1.2.2
 fastapi==0.141.1
 uvicorn==0.52.1
 
-# Document parsing — MarkItDown for Office/Outlook formats only (no audio, YouTube or cloud
+# Document parsing, MarkItDown for Office/Outlook formats only (no audio, YouTube or cloud
 # extras), pdfium's text layer for PDFs
 markitdown[docx,pptx,xlsx,xls,outlook]==0.1.7
 pypdfium2==5.12.1
 
-# OCR for scanned PDFs uses the engine built into Windows — nothing to download or install
+# OCR for scanned PDFs uses the engine built into Windows, nothing to download or install
 winrt-runtime==4.1.0
 winrt-Windows.Foundation==4!10.0.28000.2957
 winrt-Windows.Globalization==4!10.0.28000.2957

@@ -1,7 +1,7 @@
 """
 Runs indexing for the whole app: scans the user's sources into the file catalog, queues
 changed files for content indexing, reacts to watcher events and settings changes, and
-reports progress. Coordinates the catalog, queue, worker and vector store — it never parses,
+reports progress. Coordinates the catalog, queue, worker and vector store, it never parses,
 embeds or stores anything itself.
 """
 
@@ -44,7 +44,7 @@ class IndexService:
 
     def start(self, embedding_model: str) -> None:
         """Re-queues anything left pending last session, starts the worker, and kicks off a
-        background rescan. Returns immediately — nothing here blocks the app from opening."""
+        background rescan. Returns immediately, nothing here blocks the app from opening."""
         if self._store.ensure_compatible(embedding_model):
             self._catalog.requeue_all()
         for path, modified_ts in self._catalog.pending_files():
@@ -63,7 +63,7 @@ class IndexService:
 
     def rebuild(self) -> None:
         """Re-reads every file's contents from scratch, e.g. after a parser upgrade. The stored
-        chunks are dropped first — otherwise the indexer's unchanged-contents check would skip
+        chunks are dropped first, otherwise the indexer's unchanged-contents check would skip
         every file and the rebuild would re-read nothing. The worker is held meanwhile, so a
         file it was halfway through can't land its chunks after the drop."""
         with self._worker.held():
@@ -111,7 +111,7 @@ class IndexService:
         self._apply_plan(plan_sync([scanned], snapshot, self._rules, set()), urgent=True)
 
     def path_removed(self, path: Path) -> None:
-        """Watcher hook for a deleted/moved-away path — a file, or a whole folder."""
+        """Watcher hook for a deleted/moved-away path, a file, or a whole folder."""
         self._queue.discard(path)
         self._catalog.remove([path])
         self._store.delete_by_path(str(path))
@@ -203,7 +203,7 @@ class IndexService:
 
     def _apply_plan(self, plan: SyncPlan, urgent: bool = False) -> None:
         """Writes one scan's decisions to the catalog, queue and store. urgent puts the queued
-        files ahead of everything else — for files the user just touched."""
+        files ahead of everything else, for files the user just touched."""
         self._catalog.upsert(plan.upserts)
         for path, modified_ts in plan.to_queue:
             self._queue.push(path, modified_ts, urgent=urgent)

@@ -1,5 +1,5 @@
 """
-Talks to a local Ollama server — the default, fully local LLM backend: plain completions,
+Talks to a local Ollama server, the default, fully local LLM backend: plain completions,
 tool-calling chat turns, and model listing. Does not know about prompts, retrieval, or what tools
 do; message-format conversion lives in ollama_messages.py.
 """
@@ -20,7 +20,7 @@ from models.chat import ChatMessage, TextDelta, ToolCall, ToolSpec
 logger = get_logger(__name__)
 
 # Ollama wraps a bad response as ResponseError and "connection refused" as a bare
-# ConnectionError, but doesn't wrap everything else (timeouts, DNS failures) — those
+# ConnectionError, but doesn't wrap everything else (timeouts, DNS failures), those
 # still surface as raw httpx errors, so httpx.HTTPError is needed to catch the rest.
 OLLAMA_ERRORS = (ollama.RequestError, ollama.ResponseError, ConnectionError, httpx.HTTPError)
 

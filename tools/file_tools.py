@@ -1,6 +1,6 @@
 """
 Read-only file lookups: rank indexed files by relevance to a query, and read a file's size and
-timestamps from disk. Owns these lookups only — no LLM calls, no writes, and no decisions about
+timestamps from disk. Owns these lookups only; no LLM calls, no writes, and no decisions about
 which folders are allowed (callers check that first).
 """
 
@@ -15,7 +15,7 @@ from models.schema import CatalogMatch, FileMetadata, SearchResult, SourceRef
 
 DEFAULT_FILE_RESULTS = 5
 # Several top chunks can come from the same file, so we oversample chunks before deduplicating
-# down to distinct files — otherwise a single dominant file could crowd out the top_k file count.
+# down to distinct files, otherwise a single dominant file could crowd out the top_k file count.
 CHUNK_OVERSAMPLE_FACTOR = 4
 
 
@@ -29,7 +29,12 @@ def rank_unique_files(chunks: list[SearchResult]) -> list[SourceRef]:
     """Deduplicates chunks down to one entry per file, ranked by relevance (highest score first)."""
     best_per_file = _best_chunk_per_file(chunks)
     ranked = sorted(best_per_file.values(), key=lambda chunk: chunk.score, reverse=True)
-    return [SourceRef(file_name=c.file_name, file_path=c.file_path, score=c.score) for c in ranked]
+    return [SourceRef(file_name=c.file_name, file_path=c.file_path, score=c.score, page=c.page) for c in ranked]
+
+
+def page_label(page: int | None) -> str:
+    """ " (p. 12)" for a known page, so answers can cite it; nothing otherwise."""
+    return f" (p. {page})" if page is not None else ""
 
 
 def get_metadata(path: Path) -> FileMetadata | None:

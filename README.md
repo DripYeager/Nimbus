@@ -13,7 +13,7 @@
 <p align="center">
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB">
   <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4">
-  <img alt="Tests: 1,100+" src="https://img.shields.io/badge/tests-1%2C100%2B%20passing-2BB673">
+  <img alt="Tests: 1,400+" src="https://img.shields.io/badge/tests-1%2C400%2B%20passing-2BB673">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-FFC940">
 </p>
 
@@ -34,6 +34,9 @@ Press **Ctrl+Space** in any app and Nimbus glides up, ready for a request:
 | *"open spotify"* | Launches the app straight away (Start Menu, registry and Store apps are all discovered) |
 | *"Open the Wi-Fi settings"* · *"How's my battery?"* | Opens Windows Settings pages and reports system status |
 | *"Remember that the project deadline is the 14th"* | Saves a note it can search later |
+| Right-click a file in Explorer, *Ask Nimbus about this* | Opens with the file attached and one-click questions ready |
+| Copy some text, then summon Nimbus | Offers *Use what I copied*, so you can ask about text from any app |
+| Click the scan button and drag over part of the screen | Reads it with Windows OCR and answers about it ("what does this error mean?") |
 
 Anything that **launches or writes** shows an approval card first: *Allow*, *Always allow*, or *Don't*.
 
@@ -42,6 +45,9 @@ Anything that **launches or writes** shows an approval card first: *Allow*, *Alw
 - **Bring your own model.** Ollama (local), OpenAI, Anthropic (Claude), or any OpenAI-compatible server, switchable in Settings without a restart. API keys are stored in **Windows Credential Manager**, never in plain-text files.
 - **Private by default.** Search, embeddings, OCR, chat history and notes never leave the machine. A **Local / Cloud** badge shows where answers are generated, and switching to a cloud model asks first.
 - **Usable from the first second.** A two-tier index makes every file findable *by name* within seconds, while contents are indexed in the background, newest files first. Questions are never blocked by indexing.
+- **Answers you can check.** PDF answers cite the page, and clicking the source opens the PDF right at that page (Edge, Chrome, Acrobat and SumatraPDF are supported).
+- **Search inside images.** Screenshots, scans and photos of whiteboards are read with the OCR engine built into Windows, so their text is searchable too.
+- **Works with slow local models.** A heartbeat keeps the connection alive while a local model thinks, a live indicator shows it's working, and a stop button ends a reply at any time. Switching chats never interrupts a running answer.
 - **You decide what it learns.** Pick folders, mark any folder "names only", choose file types, set a size limit and exclude patterns, all from the Settings window.
 - **Built for locked-down work laptops.** No admin rights, no services, no keyboard hooks: the hotkey uses the Windows `RegisterHotKey` API, data lives in `%APPDATA%`, and the API server binds to `127.0.0.1` only.
 - **Small and fast.** No PyTorch and no separate database server. The whole search index is one SQLite file, and the standalone release is about 120 MB zipped.
@@ -182,7 +188,7 @@ models/     Pydantic data contracts shared across layers
 tools/      Tools the agent can call: files, apps, system actions, notes
 ui/         Chat window, Settings, onboarding, tray, hotkey, theme
 scripts/    Retrieval benchmark, CLI indexer, release build
-tests/      1,100+ tests mirroring the source tree, fully offline
+tests/      1,400+ tests mirroring the source tree, fully offline
 ```
 
 ## Development
@@ -208,9 +214,9 @@ are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Roadmap
 
-What's planned next (asking about the clipboard or a screenshot, an Explorer right-click action,
-searchable screenshots, page-level PDF citations, reranking and more) is in
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+Asking about the clipboard or a screenshot, the Explorer right-click action, searchable
+images and page-level PDF citations have shipped. What's next (reranking, browser history,
+Outlook, voice, an MCP server and more) is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## About the name
 

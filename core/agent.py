@@ -1,7 +1,7 @@
 """
 The assistant loop: lets the model call tools until it can answer, streaming its words and
 each tool step as events. Pauses before any action tool the user hasn't pre-approved, and
-resumes once they decide. Owns the loop only — tools, prompts, persistence and the HTTP layer
+resumes once they decide. Owns the loop only; tools, prompts, persistence and the HTTP layer
 live elsewhere.
 """
 
@@ -32,11 +32,11 @@ logger = get_logger(__name__)
 
 # How much history the model sees; older turns stay saved but stop costing tokens.
 CONTEXT_MESSAGES = 30
-# A tool result bigger than this is almost always a whole document the model asked for —
+# A tool result bigger than this is almost always a whole document the model asked for,
 # trimming keeps one call from blowing a small local model's context window.
 MAX_TOOL_RESULT_CHARS = 12000
 DECLINED_MESSAGE = "The user declined this action. Don't retry it unless they ask again."
-STEP_LIMIT_MESSAGE = "\n\n_I stopped here after several steps — ask me to continue if you need more._"
+STEP_LIMIT_MESSAGE = "\n\n_I stopped here after several steps. Ask me to continue if you need more._"
 
 FallbackAnswer = Callable[[str], tuple[Iterator[str], list[SourceRef]]]
 

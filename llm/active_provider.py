@@ -30,7 +30,7 @@ class ActiveProvider:
         self._lock = threading.Lock()
 
     def reload(self) -> None:
-        """Rebuilds the backend from current settings — call after a provider/model/key change."""
+        """Rebuilds the backend from current settings, call after a provider/model/key change."""
         backend = get_provider(get_settings())
         with self._lock:
             self._backend = backend
@@ -54,7 +54,7 @@ class ActiveProvider:
         return self._current().is_available()
 
     def _metered(self) -> LLMProvider:
-        """The backend, after charging one call to today's usage — or refusing if capped."""
+        """The backend, after charging one call to today's usage, or refusing if capped."""
         cap = get_settings().daily_llm_call_cap
         if cap is not None and self._meter.calls_today() >= cap:
             raise UsageCapReachedError(

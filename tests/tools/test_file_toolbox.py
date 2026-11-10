@@ -173,7 +173,7 @@ def test_find_files_by_name_lists_matches_with_sources(toolbox: FileToolbox, cat
 
     result = toolbox.find_files_by_name({"name": "plan"})
 
-    assert result.content.startswith("1. plan.txt — ")
+    assert result.content.startswith("1. plan.txt: ")
     assert "2.0 KB" in result.content
     assert result.sources[0].file_name == "plan.txt"
 

@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterator
 from config.settings import get_settings
 from config.settings_store import save_user_settings
 from core.agent import Agent, pending_tool_calls
+from core.attachments import attach
 from core.conversation_store import ConversationStore
 from core.exceptions import NimbusError
 from core.fast_path import FastPath
@@ -58,8 +59,10 @@ class ChatService:
         self._store.require(conversation_id)
         yield self._started(conversation_id)
         self._skip_unanswered_actions(conversation_id)
-        user_message = ChatMessage(role="user", content=request.text)
-        fast = self._fast_path.try_answer(request.text)
+        content = attach(request.text, request.attachment) if request.attachment else request.text
+        user_message = ChatMessage(role="user", content=content)
+        # A question about an attachment always needs the model, never a canned shortcut.
+        fast = None if request.attachment else self._fast_path.try_answer(request.text)
         if fast is not None:
             self._store.append(conversation_id, [user_message, ChatMessage(role="assistant", content=fast.text)])
             yield ChatToken(text=fast.text)
@@ -101,7 +104,7 @@ class ChatService:
 
     def _skip_unanswered_actions(self, conversation_id: str) -> None:
         """A new message while an approval card is still open means the user moved on. The
-        waiting calls get a "skipped" result — otherwise they'd run on the next turn, and model
+        waiting calls get a "skipped" result, otherwise they'd run on the next turn, and model
         APIs reject a history with tool calls that never got an answer."""
         pending = pending_tool_calls(self._store.load(conversation_id))
         if pending:

@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 from pytest_mock import MockerFixture
 
-from core.exceptions import AutostartError
+from core.exceptions import AutostartError, ExplorerMenuError
 from models.api import UsageView
 from ui.api_client import ApiClient
 from ui.settings.general_tab import GeneralTab, describe_usage
@@ -87,3 +87,33 @@ def test_collect_reflects_switched_action(api: Mock) -> None:
     tab.load(VALUES)
     tab._action_rows["open_website"].switch.setChecked(True)
     assert tab.collect()["auto_approved_tools"] == ["open_app", "open_website", "save_note"]
+
+
+def test_explorer_toggle_adds_the_menu_entry_immediately(api: Mock, mocker: MockerFixture) -> None:
+    enable = mocker.patch("ui.settings.general_tab.enable_explorer_menu")
+    tab = GeneralTab(api)
+    tab.load({})
+
+    tab._explorer_row.switch.setChecked(True)
+
+    enable.assert_called_once()
+
+
+def test_explorer_toggle_reverts_and_explains_on_failure(api: Mock, mocker: MockerFixture) -> None:
+    mocker.patch("ui.settings.general_tab.enable_explorer_menu", side_effect=ExplorerMenuError("Registry locked"))
+    tab = GeneralTab(api)
+    tab.load({})
+
+    tab._explorer_row.switch.setChecked(True)
+
+    assert not tab._explorer_row.switch.isChecked()
+    assert (tab._explorer_error.text(), tab._explorer_error.isHidden()) == ("Registry locked", False)
+
+
+def test_load_shows_the_real_explorer_menu_state(api: Mock, mocker: MockerFixture) -> None:
+    mocker.patch("ui.settings.general_tab.is_explorer_menu_enabled", return_value=True)
+    tab = GeneralTab(api)
+
+    tab.load({})
+
+    assert tab._explorer_row.switch.isChecked()

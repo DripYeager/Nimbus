@@ -1,4 +1,4 @@
-# Nimbus — Architecture
+# Nimbus, Architecture
 
 This document explains how Nimbus is put together and why. For setup and house style, see
 [`CONTRIBUTING.md`](../CONTRIBUTING.md).
@@ -168,7 +168,7 @@ Values from a 1.x `.env` are migrated automatically (`config/legacy_settings.py`
 - Nimbus never modifies, moves or deletes user files; the only writes are its own notes.
 - Launching apps, opening files/URLs and saving notes require an explicit click unless the
   user pre-approves that tool.
-- Logs record paths, counts and durations — never file contents, prompts or keys.
+- Logs record paths, counts and durations, never file contents, prompts or keys.
 
 ## 9. Testing
 

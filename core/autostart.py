@@ -1,6 +1,6 @@
 """
 Starts Nimbus when the user signs in to Windows, via a shortcut in their per-user Startup
-folder — no registry edits and no admin rights. Owns that shortcut only; launching the app
+folder, no registry edits and no admin rights. Owns that shortcut only; launching the app
 itself is main.py's job.
 """
 
@@ -77,7 +77,7 @@ def disable_autostart() -> None:
     logger.info("Disabled autostart", extra={"shortcut": str(path)})
 
 
-def _launch_command() -> tuple[str, str]:
+def launch_command() -> tuple[str, str]:
     """(target, arguments): the packaged exe itself, or windowless Python running main.py."""
     if is_frozen():
         return sys.executable, ""
@@ -86,7 +86,7 @@ def _launch_command() -> tuple[str, str]:
 
 def _write_shortcut(path: Path) -> None:
     """Writes the .lnk through the Windows Script Host COM object."""
-    target, arguments = _launch_command()
+    target, arguments = launch_command()
     shortcut = Dispatch("WScript.Shell").CreateShortcut(str(path))
     shortcut.TargetPath = target
     shortcut.Arguments = arguments

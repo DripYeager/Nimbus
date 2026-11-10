@@ -1,32 +1,31 @@
 """
-The scrolling conversation area: shows the welcome screen for a new chat, then stacks user
-bubbles, replies and confirmation cards, keeping the newest one in view. Layout only — it never
+The scrolling conversation area: the welcome screen for a new chat, or the column of messages
+for the chat on screen, keeping the newest message in view. A column whose reply is still
+running can be set aside (detach) and brought back later (attach). Layout only; it never
 decides what to say.
 """
 
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QScrollArea, QStackedWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QScrollArea, QStackedWidget, QWidget
 
 from models.chat import ChatMessage
+from ui.chat.conversation_column import ConversationColumn
 from ui.chat.empty_state import EmptyState
 from ui.chat.message_cards import ConfirmCard
-from ui.chat.message_widgets import AssistantMessage, UserBubble
+from ui.chat.message_widgets import AssistantMessage
 
-MESSAGE_SPACING = 18
-# Long lines are hard to read; past this the conversation column stops growing.
-MAX_COLUMN_WIDTH = 720
+WELCOME_PAGE, CONVERSATION_PAGE = 0, 1
 
 
 class ChatView(QStackedWidget):
-    """Page 0 is the welcome screen; page 1 is the conversation."""
+    """Page 0 is the welcome screen; page 1 is the conversation column."""
 
     suggestion_clicked = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._current: AssistantMessage | None = None
         empty = EmptyState(self)
         empty.suggestion_clicked.connect(self.suggestion_clicked)
         self.addWidget(empty)
@@ -35,16 +34,9 @@ class ChatView(QStackedWidget):
         self._scroll.viewport().setAutoFillBackground(False)
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._content = QWidget()
-        self._content.setObjectName("ChatContent")
-        self._content.setMaximumWidth(MAX_COLUMN_WIDTH)
-        self._layout = QVBoxLayout(self._content)
-        self._layout.setContentsMargins(4, 8, 12, 8)
-        self._layout.setSpacing(MESSAGE_SPACING)
-        self._layout.addStretch()
-        self._scroll.setWidget(self._content)
         self._scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.addWidget(self._scroll)
+        self._column = self._install(self._new_column())
         # Owned by the view, so a pending scroll can never outlive it.
         self._scroll_timer = QTimer(self)
         self._scroll_timer.setSingleShot(True)
@@ -53,61 +45,67 @@ class ChatView(QStackedWidget):
         self._scroll.verticalScrollBar().rangeChanged.connect(self._stick_to_bottom)
 
     @property
+    def column(self) -> ConversationColumn:
+        """The conversation on screen."""
+        return self._column
+
+    @property
     def current_reply(self) -> AssistantMessage:
-        """The reply being streamed, created on first use."""
-        if self._current is None:
-            self._current = AssistantMessage(self._content)
-            self._append(self._current)
-        return self._current
+        return self._column.current_reply
 
     def begin_reply(self) -> None:
-        """Shows a fresh reply in its thinking state straight away, before anything streams."""
-        self.current_reply.start_thinking()
+        self._column.begin_reply()
 
     def clear(self) -> None:
         """Back to the welcome screen with an empty conversation."""
-        while self._layout.count() > 1:
-            item = self._layout.takeAt(0)
-            if item.widget() is not None:
-                item.widget().deleteLater()
-        self._current = None
-        self.setCurrentIndex(0)
+        self._column.clear()
+        self.setCurrentIndex(WELCOME_PAGE)
 
-    def add_user_message(self, text: str) -> None:
-        """Shows the user's message and starts a fresh reply slot after it."""
-        self.end_reply()
-        self._append(UserBubble(text, self._content))
+    def add_user_message(self, text: str, attachments: tuple[str, ...] = ()) -> None:
+        self._column.add_user_message(text, attachments)
 
     def end_reply(self) -> None:
-        """Closes the current reply; one that never got any content is removed."""
-        if self._current is None:
-            return
-        self._current.stop_thinking()
-        if self._current.is_empty():
-            self._layout.removeWidget(self._current)
-            self._current.deleteLater()
-        self._current = None
+        self._column.end_reply()
 
     def add_confirmation(self, description: str) -> ConfirmCard:
-        self.end_reply()
-        card = ConfirmCard(description, self._content)
-        self._append(card)
-        return card
+        return self._column.add_confirmation(description)
 
     def load_history(self, messages: list[ChatMessage]) -> None:
-        """Re-renders a saved conversation."""
-        self.clear()
-        for message in messages:
-            if message.role == "user":
-                self.add_user_message(message.content)
-            elif message.content.strip():
-                self.current_reply.set_text(message.content)
-                self.end_reply()
+        self._column.load_history(messages)
+        self.setCurrentIndex(CONVERSATION_PAGE if self._column.has_messages() else WELCOME_PAGE)
 
-    def _append(self, widget: QWidget) -> None:
-        """Adds widget above the bottom stretch and switches to the conversation page."""
-        self._layout.insertWidget(self._layout.count() - 1, widget)
-        self.setCurrentIndex(1)
+    def detach(self) -> ConversationColumn:
+        """Takes the column off screen, still alive and still updatable, and shows a fresh,
+        empty one in its place."""
+        column = self._column
+        self._scroll.takeWidget()
+        column.setParent(self)
+        column.hide()
+        self._column = self._install(self._new_column())
+        self.setCurrentIndex(WELCOME_PAGE)
+        return column
+
+    def attach(self, column: ConversationColumn) -> None:
+        """Puts a detached column back on screen, discarding the one shown now."""
+        shown = self._scroll.takeWidget()
+        if shown is not None:
+            shown.deleteLater()
+        self._column = self._install(column)
+        column.show()
+        self.setCurrentIndex(CONVERSATION_PAGE if column.has_messages() else WELCOME_PAGE)
+
+    def _new_column(self) -> ConversationColumn:
+        column = ConversationColumn()
+        column.content_added.connect(self._show_conversation)
+        return column
+
+    def _install(self, column: ConversationColumn) -> ConversationColumn:
+        self._scroll.setWidget(column)
+        return column
+
+    def _show_conversation(self) -> None:
+        if self.sender() is self._column:
+            self.setCurrentIndex(CONVERSATION_PAGE)
 
     def _stick_to_bottom(self, _minimum: int, _maximum: int) -> None:
         """Follows new content down, after Qt has finished laying it out."""

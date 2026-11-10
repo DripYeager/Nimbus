@@ -1,6 +1,6 @@
 """
 Finds the chunks most relevant to a query by fusing two rankings: vector search (meaning) and
-full-text search (exact words like "INV-2231" or a person's name). Owns relevance only — does
+full-text search (exact words like "INV-2231" or a person's name). Owns relevance only; does
 not call the LLM or decide what to do with the results.
 """
 
@@ -43,7 +43,7 @@ class Retriever:
         return fuse_rankings([semantic, keyword])[:top_k]
 
     def retrieve_semantic_only(self, query: str, top_k: int = DEFAULT_TOP_K) -> list[SearchResult]:
-        """Vector search alone — kept for the retrieval benchmark's before/after comparison."""
+        """Vector search alone, kept for the retrieval benchmark's before/after comparison."""
         return self._store.search(self._embedder.embed_query(query), top_k=top_k)
 
 

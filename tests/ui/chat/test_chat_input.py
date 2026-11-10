@@ -4,7 +4,7 @@ import pytest
 from PyQt6.QtCore import QAbstractAnimation, Qt
 from PyQt6.QtTest import QTest
 
-from ui.chat.chat_input import FIELD_PADDING_PX, LINE_HEIGHT_PX, MAX_LINES, MIN_LINES, ChatInput
+from ui.chat.chat_input import FIELD_PADDING_PX, LINE_HEIGHT_PX, MAX_LINES, MIN_LINES, SEND_TIP, STOP_TIP, ChatInput
 
 
 @pytest.fixture
@@ -85,10 +85,31 @@ def test_set_busy_blocks_sending_and_keeps_the_text(chat_input: ChatInput, sent:
     assert (sent, chat_input._field.toPlainText()) == ([], "queued question")
 
 
-def test_set_busy_disables_the_send_button(chat_input: ChatInput) -> None:
+def test_set_busy_turns_the_send_button_into_stop(chat_input: ChatInput) -> None:
     chat_input.set_busy(True)
 
-    assert not chat_input._send.isEnabled()
+    assert (chat_input.is_busy(), chat_input._send.toolTip()) == (True, STOP_TIP)
+
+
+def test_set_busy_false_turns_the_button_back_into_send(chat_input: ChatInput) -> None:
+    chat_input.set_busy(True)
+
+    chat_input.set_busy(False)
+
+    assert (chat_input.is_busy(), chat_input._send.toolTip()) == (False, SEND_TIP)
+
+
+def test_button_click_while_busy_requests_a_stop(chat_input: ChatInput) -> None:
+    stops: list[None] = []
+    sent: list[str] = []
+    chat_input.stop_requested.connect(lambda: stops.append(None))
+    chat_input.submitted.connect(sent.append)
+    chat_input.set_text("typed ahead")
+    chat_input.set_busy(True)
+
+    chat_input._send.click()
+
+    assert (stops, sent) == ([None], [])
 
 
 def test_set_busy_pulses_the_aura(chat_input: ChatInput) -> None:

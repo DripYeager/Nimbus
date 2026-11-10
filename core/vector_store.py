@@ -1,5 +1,5 @@
 """
-The only module that touches the search index — every read or write of indexed chunks goes
+The only module that touches the search index, every read or write of indexed chunks goes
 through here. One SQLite file holds the chunk rows, their embeddings (a sqlite-vec table, for
 meaning) and an FTS5 full-text table (for exact words like names, IDs and codes). Does not
 parse, chunk or embed anything; it just persists and retrieves chunks.
@@ -35,7 +35,7 @@ logger = get_logger(__name__)
 
 # Bump when the layout changes; a mismatch (or a different embedding model) triggers a clean
 # rebuild instead of mixing incompatible vectors.
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 DELETE_BATCH_SIZE = 200
 READER_MMAP_BYTES = 256 * 1024 * 1024
 READER_CACHE_KIB = 64 * 1024
@@ -90,7 +90,7 @@ class VectorStore:
         return was_reset
 
     def upsert_chunks(self, chunks: list[IndexedChunk]) -> None:
-        """Replaces every row for each chunk's file with the new set — a changed file's chunk
+        """Replaces every row for each chunk's file with the new set, a changed file's chunk
         boundaries can shift, so a partial merge would leave stale rows behind."""
         if not chunks:
             return
@@ -150,7 +150,7 @@ class VectorStore:
             self._delete(f"path_key IN ({', '.join('?' * len(keys))})", tuple(keys), f"{len(keys)} file(s)")
 
     def delete_under(self, root: Path) -> None:
-        """Removes every chunk of every file below root — for a removed source folder."""
+        """Removes every chunk of every file below root, for a removed source folder."""
         prefix = folder_prefix(root)
         self._delete("substr(path_key, 1, ?) = ?", (len(prefix), prefix), str(root))
 
@@ -187,14 +187,14 @@ class VectorStore:
     def _transaction(self) -> Iterator[sqlite3.Connection]:
         """The writer connection inside one transaction, under the write lock."""
         if self._writer is None:
-            raise IndexingError("The search index isn't open yet — call connect() first.")
+            raise IndexingError("The search index isn't open yet. Call connect() first.")
         with self._write_lock, self._writer:
             yield self._writer
 
     def _read(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple]:
         """Runs one read on the reader connection."""
         if self._reader is None:
-            raise IndexingError("The search index isn't open yet — call connect() first.")
+            raise IndexingError("The search index isn't open yet. Call connect() first.")
         with self._read_lock:
             try:
                 return self._reader.execute(sql, params).fetchall()
@@ -224,7 +224,7 @@ def _insert_chunk(conn: sqlite3.Connection, chunk: IndexedChunk) -> None:
     """Writes one chunk's row, its embedding and its full-text entry under one rowid."""
     rowid = conn.execute(
         "INSERT INTO chunks (id, file_path, path_key, file_name, file_type, content_hash, chunk_index, "
-        "chunk_text, created_at, modified_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "chunk_text, page, created_at, modified_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             chunk.id,
             chunk.file_path,
@@ -234,6 +234,7 @@ def _insert_chunk(conn: sqlite3.Connection, chunk: IndexedChunk) -> None:
             chunk.content_hash,
             chunk.chunk_index,
             chunk.chunk_text,
+            chunk.page,
             chunk.created_at.timestamp(),
             chunk.modified_at.timestamp(),
             chunk.indexed_at.timestamp(),
@@ -257,13 +258,14 @@ def _delete_where(conn: sqlite3.Connection, where: str, params: tuple[Any, ...])
 
 def _to_result(row: tuple, score: float) -> SearchResult:
     """Converts a (CHUNK_COLUMNS..., raw score) row into a SearchResult."""
-    chunk_id, file_path, file_name, file_type, chunk_index, chunk_text, modified_at = row[:7]
+    chunk_id, file_path, file_name, file_type, chunk_index, chunk_text, modified_at, page = row[:8]
     return SearchResult(
         chunk_id=chunk_id,
         chunk_text=chunk_text,
         file_path=file_path,
         file_name=file_name,
         score=score,
+        page=page,
         metadata={
             "file_type": file_type,
             "chunk_index": chunk_index,

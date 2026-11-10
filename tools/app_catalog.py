@@ -1,7 +1,7 @@
 """
 Discovers the apps a user can launch (Start Menu shortcuts, App Paths registry entries and
-Store apps) and keeps them in a cached, fuzzy-searchable catalog. Does not launch anything —
-that belongs to app_launcher.py — and only ever reads the registry, never writes to it.
+Store apps) and keeps them in a cached, fuzzy-searchable catalog. Does not launch anything,
+that belongs to app_launcher.py, and only ever reads the registry, never writes to it.
 """
 
 from __future__ import annotations
@@ -193,7 +193,7 @@ class AppCatalog:
         self._write_cache(entries)
 
     def entries(self) -> list[AppEntry]:
-        """A snapshot copy of the current catalog — empty until the first load finishes."""
+        """A snapshot copy of the current catalog, empty until the first load finishes."""
         with self._lock:
             return list(self._entries)
 

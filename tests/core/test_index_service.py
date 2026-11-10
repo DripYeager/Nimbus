@@ -24,16 +24,16 @@ from tests.core.index_service_helpers import (
 
 def test_rescan_catalogs_content_and_name_only_files(service: IndexService, docs: Path, catalog: FileCatalog) -> None:
     write_file(docs / "notes.txt")
-    write_file(docs / "photo.jpg")
+    write_file(docs / "song.mp3")
 
     service.rescan()
 
-    assert catalog_statuses(catalog) == {"notes.txt": CatalogStatus.PENDING, "photo.jpg": CatalogStatus.NAME_ONLY}
+    assert catalog_statuses(catalog) == {"notes.txt": CatalogStatus.PENDING, "song.mp3": CatalogStatus.NAME_ONLY}
 
 
 def test_rescan_queues_only_content_files(service: IndexService, docs: Path) -> None:
     notes = write_file(docs / "notes.txt")
-    write_file(docs / "photo.jpg")
+    write_file(docs / "song.mp3")
 
     service.rescan()
 

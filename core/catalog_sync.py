@@ -1,7 +1,7 @@
 """
 Compares what's on disk with what the catalog remembers and decides what changed: new or
 modified files to (re)index, files that became name-only, and files that disappeared. Pure
-decision-making over scan results — does not touch disk, the catalog, or the vector store.
+decision-making over scan results, does not touch disk, the catalog, or the vector store.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from core.index_rules import IndexRules
 from models.schema import CatalogEntry, CatalogStatus, ScannedFile, SyncPlan
 
 # A finished file stays finished until it changes on disk; a failed one isn't retried on every
-# launch either — only when it changes, or on an explicit rebuild.
+# launch either, only when it changes, or on an explicit rebuild.
 SETTLED_STATUSES = frozenset({CatalogStatus.INDEXED, CatalogStatus.FAILED})
 
 
@@ -68,7 +68,7 @@ def _plan_one(file: ScannedFile, existing: CatalogEntry | None, rules: IndexRule
 
 
 def _is_unchanged(file: ScannedFile, existing: CatalogEntry) -> bool:
-    """Same size and mtime — the same signal every backup and sync tool trusts."""
+    """Same size and mtime, the same signal every backup and sync tool trusts."""
     return existing.size_bytes == file.size_bytes and existing.modified_ts == file.modified_ts
 
 

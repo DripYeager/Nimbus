@@ -1,7 +1,7 @@
 """
 The system tray icon and its menu: open the chat, see indexing progress, pause/resume,
 rebuild, open Settings, quit. Built on Qt's own tray support so the whole UI runs on one
-toolkit and one thread. Owns tray UI only — it asks the API for status and emits signals for
+toolkit and one thread. Owns tray UI only; it asks the API for status and emits signals for
 everything else.
 """
 
@@ -33,6 +33,7 @@ class TrayIcon(QObject):
 
     summon_requested = pyqtSignal()
     settings_requested = pyqtSignal()
+    capture_requested = pyqtSignal()
     quit_requested = pyqtSignal()
 
     def __init__(self, api: ApiClient) -> None:
@@ -75,6 +76,7 @@ class TrayIcon(QObject):
         """Open, status line, pause/resume, rebuild, settings, quit."""
         menu = QMenu()
         menu.addAction(_menu_icon("cloud"), "Open Nimbus", self.summon_requested.emit)
+        menu.addAction(_menu_icon("scan"), "Ask about something on screen", self.capture_requested.emit)
         menu.addSeparator()
         self._status_action = menu.addAction(_menu_icon("zap"), "Checking index…")
         self._status_action.setEnabled(False)
@@ -89,7 +91,7 @@ class TrayIcon(QObject):
     def _show_status(self, status: IndexStatus) -> None:
         """Updates the tooltip, the menu's status line and the pause item's label."""
         text = describe_status(status)
-        self._tray.setToolTip(f"{TOOLTIP_TITLE} — {text}")
+        self._tray.setToolTip(f"{TOOLTIP_TITLE}: {text}")
         self._status_action.setText(text)
         self._is_paused = status.is_paused
         self._pause_action.setText("Resume indexing" if status.is_paused else "Pause indexing")

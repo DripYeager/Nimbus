@@ -1,6 +1,6 @@
 """
 The chat window's slice of the stylesheet: header, messages, cards, composer and history.
-QSS text only — selectors match the object names and properties the chat widgets set.
+QSS text only, selectors match the object names and properties the chat widgets set.
 """
 
 from __future__ import annotations
@@ -64,6 +64,13 @@ QLabel#ConfirmText {{ font-size: 14px; }}
 QPushButton#SuggestionCard {{ background: rgba(17, 26, 46, 0.85); border: 1px solid {BORDER}; border-radius: 14px;
     padding: 12px 14px; text-align: left; font-weight: 500; color: {TEXT}; }}
 QPushButton#SuggestionCard:hover {{ border-color: {GI_ORANGE}; background: {SURFACE_RAISED}; }}
+QPushButton#AttachmentOffer, QPushButton#AttachmentSuggestion {{ background: {SURFACE}; border: 1px solid {BORDER};
+    border-radius: 13px; padding: 5px 12px; color: {TEXT}; font-size: 12px; }}
+QPushButton#AttachmentOffer:hover, QPushButton#AttachmentSuggestion:hover {{ border-color: {GI_ORANGE}; }}
+QPushButton#AttachmentPill, QPushButton#AttachmentPill:disabled {{ background: {SURFACE_RAISED};
+    border: 1px solid {GI_ORANGE}; border-radius: 13px; padding: 5px 12px; color: {CLOUD_GOLD};
+    font-size: 12px; font-weight: 600; }}
+QLabel#AttachmentTag {{ color: {TEXT_ON_ORANGE}; font-size: 12px; font-weight: 600; }}
 QLabel#EmptyTitle {{ color: {CLOUD_GOLD}; }}
 QLabel#EmptySubtitle {{ font-size: 14px; color: {TEXT_MUTED}; }}
 """
@@ -75,6 +82,7 @@ QPushButton#SendButton {{ border: none; border-radius: 19px; padding: 0;
 QPushButton#SendButton:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #FFD866,
     stop:1 #FF9A3C); }}
 QPushButton#SendButton:disabled {{ background: {SURFACE_HOVER}; }}
+QLabel#StoppedLine {{ color: {TEXT_FAINT}; font-size: 12px; font-style: italic; }}
 QLabel#FooterHint {{ color: {TEXT_FAINT}; font-size: 11px; }}
 """
 

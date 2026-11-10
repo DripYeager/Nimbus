@@ -1,7 +1,7 @@
 """
 The welcome screen of a new chat: the golden cloud cruising across a patch of sky with speed
 lines trailing behind it, a comic-style "WHERE TO?" headline, and a grid of suggestion cards.
-Display only — a clicked suggestion is reported through suggestion_clicked.
+Display only, a clicked suggestion is reported through suggestion_clicked.
 """
 
 from __future__ import annotations

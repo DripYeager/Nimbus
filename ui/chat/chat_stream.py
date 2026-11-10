@@ -1,7 +1,7 @@
 """
 Streams one chat request (a new message, or the answer to a confirmation card) from the local
 API and re-emits each SSE event as a Qt signal on the GUI thread. Owns HTTP/SSE plumbing and
-cancellation only — it has no opinion on how events are displayed.
+cancellation only; it has no opinion on how events are displayed.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from config.settings import get_settings
 from core.logger import get_logger
 from core.sse import parse_sse_events
+from models.chat import Attachment
 
 logger = get_logger(__name__)
 
@@ -28,7 +29,7 @@ STALLED_MESSAGE = "Nimbus's engine stopped responding. Try again, or restart Nim
 
 class ChatStream(QObject):
     """One request at a time; starting a new one cancels the previous. Each request carries an
-    id, and anything a cancelled request had already queued for the GUI thread is dropped —
+    id, and anything a cancelled request had already queued for the GUI thread is dropped,
     otherwise a stale token could land in the next reply."""
 
     event_received = pyqtSignal(str, dict)
@@ -46,9 +47,12 @@ class ChatStream(QObject):
         self._relay_failed.connect(self._deliver_failed)
         self._relay_finished.connect(self._deliver_finished)
 
-    def send(self, text: str, conversation_id: str | None) -> None:
-        """Streams the reply to a new message."""
-        self._start("/chat", {"text": text, "conversation_id": conversation_id})
+    def send(self, text: str, conversation_id: str | None, attachment: Attachment | None = None) -> None:
+        """Streams the reply to a new message, with whatever was attached to it."""
+        body: dict[str, Any] = {"text": text, "conversation_id": conversation_id}
+        if attachment is not None:
+            body["attachment"] = attachment.model_dump()
+        self._start("/chat", body)
 
     def answer_confirmation(self, conversation_id: str, decision: dict[str, Any]) -> None:
         """Streams the rest of a turn after the user approved or declined an action."""

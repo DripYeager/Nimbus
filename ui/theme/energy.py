@@ -1,7 +1,7 @@
 """
 The "ki" pieces of the theme, all code-drawn and original: a glowing energy orb that pulses
 while Nimbus is working, and a scouter-style power-level readout for indexing progress.
-Painting and their own idle animation only — callers decide when they show.
+Painting and their own idle animation only, callers decide when they show.
 """
 
 from __future__ import annotations

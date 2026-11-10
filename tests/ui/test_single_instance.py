@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import QApplication
 from pytest_mock import MockerFixture
 
 import ui.single_instance as single_instance
-from ui.single_instance import InstanceServer, notify_running_instance
+from ui.single_instance import ASK_PREFIX, InstanceServer, notify_running_instance
 
 
 def _wait_for(condition: Callable[[], bool], timeout: float = 2.0) -> bool:
@@ -81,3 +81,14 @@ def test_instance_server_ignores_unknown_messages(server: InstanceServer, mocker
 
     assert received == []
     connection.disconnectFromServer.assert_called_once()
+
+
+def test_instance_server_emits_ask_requested_with_the_file(server: InstanceServer, mocker: MockerFixture) -> None:
+    asked: list[str] = []
+    server.ask_requested.connect(asked.append)
+    connection = mocker.Mock()
+    connection.readAll.return_value = ASK_PREFIX + "C:/Docs/Résumé.pdf".encode()
+
+    server._read(connection)
+
+    assert asked == ["C:/Docs/Résumé.pdf"]

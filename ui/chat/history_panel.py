@@ -1,7 +1,7 @@
 """
 The chat-history page: a search box and recent conversations, newest first, each with its own
 delete button. Loads the list from the API in the background and filters it as you type.
-Display and selection only — the window handles navigation.
+Display and selection only; the window handles navigation.
 """
 
 from __future__ import annotations

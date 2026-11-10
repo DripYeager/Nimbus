@@ -1,6 +1,6 @@
 """
 Prompt text: the assistant's system prompt, plus templates for summarizing and for answering
-from retrieved excerpts when a model can't use tools. Owns prompt wording only — does not call
+from retrieved excerpts when a model can't use tools. Owns prompt wording only; it does not call
 the LLM or know about retrieval mechanics.
 """
 
@@ -21,13 +21,18 @@ How to work:
 - Use tools to find facts. Never invent file names, paths, contents, or results.
 - To answer about the user's documents, search first (search_files for topics, \
 find_files_by_name for names), then read_file the best match if you need detail.
-- When you open or launch something, call the tool — never claim you did it otherwise.
+- When you open or launch something, call the tool. Never claim you did it otherwise.
 - If a tool says the user declined, accept it and don't retry the same action.
 - Answer in short, plain Markdown. Name the files you used. If you couldn't find something, \
-say so plainly and suggest what the user could try."""
+say so plainly and suggest what the user could try.
+- A message can end with an <attachment> block: a file, copied text or a screenshot the user \
+handed you. Answer about it directly; don't search for it or try to open it.
+- When a search result shows a page, cite it with the file, like (Report.pdf, p. 12).
+- Write in plain sentences. Never use em dashes or en dashes; use a comma, colon or full stop."""
 
 SUMMARIZE_PROMPT = """Summarize the following document in 5 concise bullet points. \
-Focus on concrete facts, decisions, and numbers — skip generic filler.
+Focus on concrete facts, decisions, and numbers, and skip generic filler. \
+Never use em dashes or en dashes.
 
 Document:
 {text}
@@ -35,7 +40,8 @@ Document:
 Summary:"""
 
 QA_PROMPT = """Answer the question using only the context below. If the context doesn't \
-contain the answer, say so plainly instead of guessing. Cite the source file for each claim.
+contain the answer, say so plainly instead of guessing. Cite the source file for each claim. \
+Never use em dashes or en dashes.
 
 Context:
 {context}
@@ -58,5 +64,10 @@ def build_summarize_prompt(text: str) -> str:
 
 def build_qa_prompt(question: str, chunks: list[SearchResult]) -> str:
     """Fills the QA template with retrieved chunks as context for the question."""
-    context = "\n\n".join(f"[{chunk.file_name}] {chunk.chunk_text}" for chunk in chunks)
+    context = "\n\n".join(f"[{_cite(chunk)}] {chunk.chunk_text}" for chunk in chunks)
     return QA_PROMPT.format(context=context, question=question)
+
+
+def _cite(chunk: SearchResult) -> str:
+    """How an excerpt is labelled in the prompt: the file name, plus its page when known."""
+    return f"{chunk.file_name}, p. {chunk.page}" if chunk.page is not None else chunk.file_name

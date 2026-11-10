@@ -1,6 +1,6 @@
 """
 The Ollama setup card on the Model page: says whether Ollama is installed, running and has the
-chosen model, and offers the one button that gets you to the next step — Get Ollama, Start
+chosen model, and offers the one button that gets you to the next step, Get Ollama, Start
 Ollama, or Download the model (with live progress). Owns that card's display and polling; the
 work itself happens in the engine (core/ollama_setup.py).
 """
@@ -25,7 +25,7 @@ PROGRESS_STEPS = 1000
 
 
 def describe_ollama(status: OllamaStatus, model: str) -> tuple[str, str, str | None]:
-    """(headline, detail, button text or None) for one status — the card's whole copy."""
+    """(headline, detail, button text or None) for one status, the card's whole copy."""
     if status.pulling:
         percent = f" · {status.pull_percent:.0f}%" if status.pull_percent is not None else ""
         return f"Downloading {status.pulling}{percent}", "This runs once; you can keep using Nimbus.", None
@@ -34,7 +34,7 @@ def describe_ollama(status: OllamaStatus, model: str) -> tuple[str, str, str | N
     if not status.installed:
         return (
             "Ollama isn't installed",
-            "It's a free app that runs models on this PC. It installs for your user only, no admin needed.",
+            "It's a free app that runs models on this PC. It installs for your user only; no admin needed.",
             "Get Ollama",
         )
     if not status.running:
@@ -44,7 +44,7 @@ def describe_ollama(status: OllamaStatus, model: str) -> tuple[str, str, str | N
     if not status.has_model:
         return (
             f"{model} isn't downloaded yet",
-            "About 4–5 GB for an 8B model. One click, no terminal.",
+            "About 4 to 5 GB for an 8B model. One click, no terminal.",
             f"Download {model}",
         )
     return "Ready", f"Ollama is running and {model} is downloaded. Everything stays on this PC.", None

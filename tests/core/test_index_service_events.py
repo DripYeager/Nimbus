@@ -78,11 +78,11 @@ def test_path_changed_queues_a_saved_file_ahead_of_the_backlog(service: IndexSer
 def test_path_changed_catalogs_a_names_only_file_without_queueing_it(
     service: IndexService, docs: Path, catalog: FileCatalog
 ) -> None:
-    photo = write_file(docs / "photo.jpg")
+    photo = write_file(docs / "song.mp3")
 
     service.path_changed(photo)
 
-    assert catalog_statuses(catalog) == {"photo.jpg": CatalogStatus.NAME_ONLY}
+    assert catalog_statuses(catalog) == {"song.mp3": CatalogStatus.NAME_ONLY}
     assert drain_queue(service) == []
 
 
@@ -114,18 +114,18 @@ def test_path_changed_scans_a_whole_folder_moved_into_a_source(
     service: IndexService, docs: Path, catalog: FileCatalog
 ) -> None:
     write_file(docs / "Imported" / "a.txt")
-    write_file(docs / "Imported" / "deep" / "b.jpg")
+    write_file(docs / "Imported" / "deep" / "b.mp3")
 
     service.path_changed(docs / "Imported")
 
-    assert catalog_statuses(catalog) == {"a.txt": CatalogStatus.PENDING, "b.jpg": CatalogStatus.NAME_ONLY}
+    assert catalog_statuses(catalog) == {"a.txt": CatalogStatus.PENDING, "b.mp3": CatalogStatus.NAME_ONLY}
 
 
 def test_source_summaries_reports_counts_per_source(
     configure: Callable[..., None], make_service: ServiceFactory, docs: Path, tmp_path: Path
 ) -> None:
     write_file(docs / "a.txt")
-    write_file(docs / "b.jpg")
+    write_file(docs / "b.mp3")
     configure(IndexSource(path=docs), IndexSource(path=tmp_path / "Missing", include_contents=False))
     service = make_service()
     start_and_index(service, expected_indexed=1)

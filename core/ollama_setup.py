@@ -1,7 +1,7 @@
 """
 Helps someone get a local model running without touching a terminal: finds the Ollama install,
 starts it if it's installed but not running, and downloads ("pulls") a model in the background
-while tracking progress. Owns setup only — chatting with the model is llm/ollama_provider.py.
+while tracking progress. Owns setup only, chatting with the model is llm/ollama_provider.py.
 """
 
 from __future__ import annotations

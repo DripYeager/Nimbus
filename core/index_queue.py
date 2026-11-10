@@ -2,7 +2,7 @@
 A de-duplicating priority queue of files waiting for content indexing. Files the user just
 touched (watcher events) jump the line; otherwise the most recently modified files go first,
 so this week's documents are searchable long before a ten-year-old archive is. Owns ordering
-only — does not index anything.
+only; does not index anything.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ class IndexQueue:
             return None
 
     def discard(self, path: Path) -> None:
-        """Drops path if it's waiting — e.g. it was deleted before the worker reached it."""
+        """Drops path if it's waiting, e.g. it was deleted before the worker reached it."""
         with self._condition:
             self._paths.pop(path_key(path), None)
 

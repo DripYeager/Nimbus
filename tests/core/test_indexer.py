@@ -13,6 +13,7 @@ from core.embedder import Embedder
 from core.exceptions import IndexingError, ParsingError
 from core.indexer import Indexer, hash_file
 from core.vector_store import VectorStore
+from models.schema import DocumentPage
 
 
 @pytest.fixture
@@ -32,7 +33,9 @@ def embedder(mocker: MockerFixture) -> Mock:
 @pytest.fixture
 def parsed_text(mocker: MockerFixture) -> Mock:
     """Stands in for the parser so these tests exercise the pipeline, not file formats."""
-    return mocker.patch("core.indexer.extract_document_text", return_value="one two three four five")
+    return mocker.patch(
+        "core.indexer.extract_document_pages", return_value=[DocumentPage(number=None, text="one two three four five")]
+    )
 
 
 @pytest.fixture
@@ -93,7 +96,7 @@ def test_index_file_reindexes_when_the_content_hash_changed(
 def test_index_file_clears_old_rows_when_no_text_is_extracted(
     note: Path, store: Mock, embedder: Mock, parsed_text: Mock
 ) -> None:
-    parsed_text.return_value = "   "
+    parsed_text.return_value = [DocumentPage(number=None, text="   ")]
 
     assert Indexer(store, embedder).index_file(note) == 0
     store.delete_by_path.assert_called_once_with(str(note))
@@ -140,3 +143,12 @@ def test_hash_file_streams_a_file_larger_than_one_block(tmp_path: Path, monkeypa
 def test_hash_file_raises_indexing_error_for_a_missing_file(tmp_path: Path) -> None:
     with pytest.raises(IndexingError):
         hash_file(tmp_path / "gone.bin")
+
+
+def test_index_file_tags_each_chunk_with_its_page(store: Mock, embedder: Mock, parsed_text: Mock, note: Path) -> None:
+    parsed_text.return_value = [DocumentPage(number=1, text="first page"), DocumentPage(number=4, text="fourth page")]
+
+    Indexer(store, embedder).index_file(note)
+
+    [chunks] = store.upsert_chunks.call_args.args
+    assert [(c.page, c.chunk_text) for c in chunks] == [(1, "first page"), (4, "fourth page")]

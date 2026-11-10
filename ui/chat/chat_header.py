@@ -36,6 +36,8 @@ WORDMARK_GLOW_ALPHA = 45
 BADGE_HEIGHT = 24
 PAGE_TITLE_PX = 26
 WHITE = "#FFFFFF"
+MINIMIZE_TIP = "Minimize (Esc) · Nimbus keeps working, and comes back right where you left it"
+CLOSE_TIP = "Close · Nimbus stays in the tray and opens on a fresh chat screen next time"
 
 
 class ChatHeader(SkyHeader):
@@ -44,6 +46,8 @@ class ChatHeader(SkyHeader):
     new_chat_clicked = pyqtSignal()
     history_clicked = pyqtSignal()
     settings_clicked = pyqtSignal()
+    capture_clicked = pyqtSignal()
+    minimize_clicked = pyqtSignal()
     close_clicked = pyqtSignal()
     back_clicked = pyqtSignal()
 
@@ -121,10 +125,12 @@ class ChatHeader(SkyHeader):
         row.addWidget(self._badge, alignment=Qt.AlignmentFlag.AlignVCenter)
         row.addSpacing(6)
         for icon, tip, signal in (
+            ("scan", "Ask about something on screen", self.capture_clicked),
             ("plus", "New chat (Ctrl+N)", self.new_chat_clicked),
             ("history", "Chat history", self.history_clicked),
             ("settings", "Settings", self.settings_clicked),
-            ("x", "Hide (Esc)", self.close_clicked),
+            ("minus", MINIMIZE_TIP, self.minimize_clicked),
+            ("x", CLOSE_TIP, self.close_clicked),
         ):
             row.addWidget(_header_button(icon, tip, signal, mode))
         return mode
@@ -138,7 +144,8 @@ class ChatHeader(SkyHeader):
         row.addWidget(_header_button("arrow-left", "Back to chat (Esc)", self.back_clicked, mode))
         row.addWidget(self._page_title)
         row.addStretch()
-        row.addWidget(_header_button("x", "Hide", self.close_clicked, mode))
+        row.addWidget(_header_button("minus", MINIMIZE_TIP, self.minimize_clicked, mode))
+        row.addWidget(_header_button("x", CLOSE_TIP, self.close_clicked, mode))
         return mode
 
     def _title_column(self, parent: QWidget) -> QVBoxLayout:

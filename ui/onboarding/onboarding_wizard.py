@@ -52,12 +52,12 @@ TEXT_COLUMN_WIDTH = 520
 STEP_CAPTIONS = ["Welcome", "Folders", "Model", "Hotkey", "Done"]
 WELCOME_TEXT = (
     "I'm a private assistant for your files and apps. Ask me to find a document, sum up a PDF, "
-    "or open something — from anywhere, with a single hotkey. I learn your folders in the "
+    "or open something, from anywhere, with a single hotkey. I learn your folders in the "
     "background, and you stay in charge of what I read and where your questions go."
 )
 FINISH_TEXT = (
     "Nimbus is ready to use right now. It will keep learning your folders quietly in the "
-    "background — file names first, then their contents — so answers get better over the next "
+    "background (file names first, then their contents), so answers get better over the next "
     "few minutes. You can change any of this later in Settings."
 )
 SAVE_FAILED_TITLE = "Couldn't finish setup"
@@ -268,7 +268,7 @@ class OnboardingWizard(QWidget):
         self.close()
 
     def _apply_autostart_choice(self) -> None:
-        """A failed shortcut shouldn't undo a finished setup — say so and carry on."""
+        """A failed shortcut shouldn't undo a finished setup, say so and carry on."""
         try:
             apply_autostart(self._autostart_row.switch.isChecked())
         except AutostartError as e:

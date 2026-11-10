@@ -15,6 +15,7 @@ from tools.file_tools import (
     CHUNK_OVERSAMPLE_FACTOR,
     find_files,
     get_metadata,
+    page_label,
     rank_unique_files,
     source_ref_for,
     source_ref_for_match,
@@ -110,3 +111,7 @@ def test_source_ref_for_match_keeps_the_match_score() -> None:
     )
 
     assert source_ref_for_match(match) == SourceRef(file_name="a.pdf", file_path="C:/a.pdf", score=88.0)
+
+
+def test_page_label_names_a_known_page() -> None:
+    assert (page_label(12), page_label(None)) == (" (p. 12)", "")

@@ -1,17 +1,19 @@
 """
-The General settings section: the summon hotkey, starting at sign-in, the daily model-call cap
-and which actions run without asking. Owns editing these values in memory — except autostart,
-which takes effect the moment it's toggled because it isn't an engine setting.
+The General settings section: the summon hotkey, starting at sign-in, the File Explorer menu
+entry, the daily model-call cap and which actions run without asking. Owns editing these values
+in memory, except autostart and the Explorer entry, which take effect the moment they're
+toggled because they're Windows settings, not engine ones.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtWidgets import QSpinBox, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QAbstractButton, QSpinBox, QVBoxLayout, QWidget
 
 from core.autostart import disable_autostart, enable_autostart, is_autostart_enabled
-from core.exceptions import AutostartError
+from core.exceptions import AutostartError, ExplorerMenuError
+from core.explorer_menu import disable_explorer_menu, enable_explorer_menu, is_explorer_menu_enabled
 from core.logger import get_logger
 from models.api import UsageView
 from ui.api_client import ApiClient
@@ -52,6 +54,14 @@ def apply_autostart(enabled: bool) -> None:
         disable_autostart()
 
 
+def apply_explorer_menu(enabled: bool) -> None:
+    """Adds or removes the right-click entry; raises ExplorerMenuError when Windows refuses."""
+    if enabled:
+        enable_explorer_menu()
+    else:
+        disable_explorer_menu()
+
+
 def describe_usage(usage: UsageView) -> str:
     calls = usage.calls_today
     return f"{calls:,} model call{'' if calls == 1 else 's'} today"
@@ -68,6 +78,13 @@ class GeneralTab(QWidget):
         self._autostart_switch = self._autostart_row.switch
         self._autostart_error = styled_label("", "error", wrap=True)
         self._autostart_error.hide()
+        self._explorer_row = ToggleRow(
+            "Ask Nimbus from File Explorer",
+            icon="folder-open",
+            hint="Right-click any file. On Windows 11: Show more options.",
+        )
+        self._explorer_error = styled_label("", "error", wrap=True)
+        self._explorer_error.hide()
         self._cap_box = QSpinBox()
         self._cap_box.setRange(0, MAX_DAILY_CALLS)
         self._cap_box.setSpecialValueText(NO_LIMIT_TEXT)
@@ -77,6 +94,7 @@ class GeneralTab(QWidget):
         self._action_rows = {tool: ToggleRow(label, icon=icon) for tool, (label, icon) in ACTION_ROWS.items()}
         self._build_layout()
         self._autostart_switch.toggled.connect(self._on_autostart_toggled)
+        self._explorer_row.switch.toggled.connect(self._on_explorer_toggled)
 
     def _build_layout(self) -> None:
         layout = QVBoxLayout(self)
@@ -101,6 +119,9 @@ class GeneralTab(QWidget):
         card.body.addWidget(divider())
         card.body.addWidget(self._autostart_row)
         card.body.addWidget(self._autostart_error)
+        card.body.addWidget(divider())
+        card.body.addWidget(self._explorer_row)
+        card.body.addWidget(self._explorer_error)
         return card
 
     def _build_actions_card(self) -> SettingsCard:
@@ -118,10 +139,10 @@ class GeneralTab(QWidget):
         approved = set(values.get("auto_approved_tools", []))
         for tool, row in self._action_rows.items():
             row.switch.setChecked(tool in approved)
-        self._autostart_switch.blockSignals(True)
-        self._autostart_switch.setChecked(is_autostart_enabled())
-        self._autostart_switch.blockSignals(False)
+        _set_quietly(self._autostart_switch, is_autostart_enabled())
+        _set_quietly(self._explorer_row.switch, is_explorer_menu_enabled())
         self._autostart_error.hide()
+        self._explorer_error.hide()
         run_in_background(self._api.usage, self._show_usage)
 
     def collect(self) -> dict[str, Any]:
@@ -141,13 +162,30 @@ class GeneralTab(QWidget):
             apply_autostart(enabled)
         except AutostartError as e:
             logger.warning("Autostart change failed", extra={"enabled": enabled, "error": str(e)})
-            self._autostart_switch.blockSignals(True)
-            self._autostart_switch.setChecked(not enabled)
-            self._autostart_switch.blockSignals(False)
+            _set_quietly(self._autostart_switch, not enabled)
             self._autostart_error.setText(str(e))
             self._autostart_error.show()
             return
         self._autostart_error.hide()
 
+    def _on_explorer_toggled(self, enabled: bool) -> None:
+        """Same as autostart: immediate, and undone on screen if Windows refuses."""
+        try:
+            apply_explorer_menu(enabled)
+        except ExplorerMenuError as e:
+            logger.warning("Explorer menu change failed", extra={"enabled": enabled, "error": str(e)})
+            _set_quietly(self._explorer_row.switch, not enabled)
+            self._explorer_error.setText(str(e))
+            self._explorer_error.show()
+            return
+        self._explorer_error.hide()
+
     def _show_usage(self, usage: UsageView) -> None:
         self._usage_label.setText(describe_usage(usage))
+
+
+def _set_quietly(switch: QAbstractButton, checked: bool) -> None:
+    """Moves a switch without firing its toggled handler."""
+    switch.blockSignals(True)
+    switch.setChecked(checked)
+    switch.blockSignals(False)

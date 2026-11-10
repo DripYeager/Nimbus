@@ -1,6 +1,6 @@
 """
 The UI's typed client for Nimbus's local API (everything except chat streaming, which lives in
-chat/chat_stream.py). Plain blocking calls — run slow ones through background_call so the
+chat/chat_stream.py). Plain blocking calls, run slow ones through background_call so the
 window never freezes. Owns HTTP plumbing and error translation only.
 """
 

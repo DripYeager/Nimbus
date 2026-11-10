@@ -12,6 +12,7 @@ from core.conversation_store import ConversationStore
 from core.exceptions import ConversationNotFoundError, ProviderError
 from core.fast_path import FastAnswer, FastPath
 from models.chat import (
+    Attachment,
     ChatDone,
     ChatEvent,
     ChatFailed,
@@ -264,3 +265,15 @@ def test_confirm_ignores_always_allow_on_a_decline(
 def test_confirm_raises_for_an_unknown_conversation(service: ChatService) -> None:
     with pytest.raises(ConversationNotFoundError):
         list(service.confirm("missing", ConfirmRequest(call_id="c1", approved=True)))
+
+
+def test_send_gives_the_agent_the_attached_text_and_skips_the_fast_path(
+    service: ChatService, agent: FakeAgent, fast_path: FastPath
+) -> None:
+    request = ChatRequest(text="Translate this", attachment=Attachment(name="Copied text", text="Bonjour"))
+
+    list(service.send(request))
+
+    [(messages, _)] = agent.runs
+    assert "Bonjour" in messages[-1].content
+    fast_path.try_answer.assert_not_called()

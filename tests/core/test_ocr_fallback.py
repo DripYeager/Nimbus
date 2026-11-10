@@ -10,7 +10,14 @@ from pytest_mock import MockerFixture
 
 import core.ocr_fallback as ocr_module
 from core.exceptions import ParsingError
-from core.ocr_fallback import MAX_OCR_PAGES, _fit, _get_engine, _ocr_page, extract_text_with_ocr
+from core.ocr_fallback import (
+    MAX_OCR_PAGES,
+    _fit,
+    _get_engine,
+    _ocr_page,
+    extract_text_from_image,
+    extract_text_with_ocr,
+)
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -135,3 +142,48 @@ def test_get_engine_logs_once_when_windows_has_no_ocr_language(
     assert _get_engine() is None
     assert _get_engine() is None
     assert sum("Windows OCR isn't available" in r.getMessage() for r in caplog.records) == 1
+
+
+def _text_image(path: Path, text: str) -> Path:
+    from PIL import ImageDraw, ImageFont
+
+    image = Image.new("RGB", (900, 240), "white")
+    try:
+        font = ImageFont.truetype("arial.ttf", 48)
+    except OSError:
+        font = ImageFont.load_default()
+    ImageDraw.Draw(image).text((30, 90), text, fill="black", font=font)
+    image.save(path)
+    return path
+
+
+@pytest.mark.skipif(not _windows_ocr_available(), reason="Windows has no OCR language installed here")
+def test_extract_text_from_image_reads_a_screenshot(tmp_path: Path) -> None:
+    image = _text_image(tmp_path / "error.png", "Invoice 4821 is overdue")
+
+    assert "Invoice 4821" in extract_text_from_image(image)
+
+
+def test_extract_text_from_image_skips_icons(tmp_path: Path, mocker: MockerFixture) -> None:
+    engine = mocker.patch("core.ocr_fallback._get_engine")
+    icon = tmp_path / "icon.png"
+    Image.new("RGB", (64, 64), "white").save(icon)
+
+    assert extract_text_from_image(icon) == ""
+    engine.assert_not_called()
+
+
+def test_extract_text_from_image_returns_empty_without_an_engine(tmp_path: Path, mocker: MockerFixture) -> None:
+    mocker.patch("core.ocr_fallback._get_engine", return_value=None)
+    image = tmp_path / "big.png"
+    Image.new("RGB", (400, 400), "white").save(image)
+
+    assert extract_text_from_image(image) == ""
+
+
+def test_extract_text_from_image_raises_for_a_broken_file(tmp_path: Path) -> None:
+    broken = tmp_path / "broken.png"
+    broken.write_bytes(b"not an image")
+
+    with pytest.raises(ParsingError, match="Couldn't open image"):
+        extract_text_from_image(broken)

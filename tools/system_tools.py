@@ -1,7 +1,7 @@
 """
 Small Windows actions the agent can take on the user's behalf: open a file, folder or web page,
 show a file in Explorer, jump to a Settings page, and read basic machine status. Does not
-launch apps (app_launcher.py) and never changes a system setting itself — it only opens the page.
+launch apps (app_launcher.py) and never changes a system setting itself, it only opens the page.
 """
 
 from __future__ import annotations
@@ -178,7 +178,7 @@ def _compact_setting_name(name: str) -> str:
 
 
 def _match_setting_page(page: str) -> str | None:
-    """The SETTINGS_PAGES key for page — exact after normalizing, else the best fuzzy match."""
+    """The SETTINGS_PAGES key for page, exact after normalizing, else the best fuzzy match."""
     wanted = _compact_setting_name(page)
     if not wanted:
         return None

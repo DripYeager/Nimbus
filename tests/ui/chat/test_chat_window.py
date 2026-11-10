@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 from PyQt6.QtCore import QAbstractAnimation, QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import QToolButton, QWidget
+from PyQt6.QtWidgets import QPushButton, QToolButton, QWidget
 from pytest_mock import MockerFixture
 
 from models.api import SettingsView
@@ -163,14 +163,26 @@ def test_other_keys_do_not_dismiss(mocker: MockerFixture, window: ChatWindow) ->
     dismiss.assert_not_called()
 
 
-def test_close_button_dismisses_the_window(window: ChatWindow) -> None:
+def test_minimize_button_hides_the_window_and_keeps_the_page(window: ChatWindow) -> None:
     window.summon()
     _finish_animation(window)
+    window.show_settings()
 
-    _header_button(window, "Hide").click()
+    [b for b in window._header.findChildren(QToolButton) if b.toolTip().startswith("Minimize")][-1].click()
     _finish_animation(window)
 
-    assert not window.isVisible()
+    assert (window.isVisible(), window._pages.currentIndex()) == (False, SETTINGS_PAGE)
+
+
+def test_close_button_hides_the_window_and_returns_to_the_chat(window: ChatWindow) -> None:
+    window.summon()
+    _finish_animation(window)
+    window.show_settings()
+
+    [b for b in window._header.findChildren(QToolButton) if b.toolTip().startswith("Close")][-1].click()
+    _finish_animation(window)
+
+    assert (window.isVisible(), window._pages.currentIndex()) == (False, CHAT_PAGE)
 
 
 def test_settings_button_opens_settings_inside_the_window(window: ChatWindow) -> None:
@@ -237,7 +249,7 @@ def test_new_chat_button_resets_the_conversation(window: ChatWindow, stream: Mag
 
     _header_button(window, "New chat").click()
 
-    stream.cancel.assert_called()
+    stream.cancel.assert_not_called()
     assert window._view.currentIndex() == 0
 
 
@@ -245,7 +257,7 @@ def test_ask_summons_and_sends(window: ChatWindow, stream: MagicMock) -> None:
     window.ask("How's my battery?")
 
     assert window.isVisible()
-    stream.send.assert_called_once_with("How's my battery?", None)
+    stream.send.assert_called_once_with("How's my battery?", None, None)
 
 
 def test_poll_status_ignores_errors(mocker: MockerFixture, window: ChatWindow) -> None:
@@ -280,3 +292,20 @@ def test_switching_pages_repaints_the_whole_window(window: ChatWindow, mocker: M
     window.show_chat()
 
     assert repaint.call_count == 2
+
+
+def test_ask_about_file_opens_a_new_chat_with_the_file_attached(window: ChatWindow) -> None:
+    window.ask_about_file("C:/Docs/Q3 report.pdf")
+
+    assert window.isVisible()
+    assert [b.text() for b in window._attachments.findChildren(QPushButton)][0] == "Q3 report.pdf"
+
+
+def test_capture_screen_hides_the_window_first(window: ChatWindow, mocker: MockerFixture) -> None:
+    later = mocker.patch("ui.chat.chat_window.QTimer.singleShot")
+    window.summon()
+
+    window.capture_screen()
+
+    assert not window.isVisible()
+    later.assert_called_once()

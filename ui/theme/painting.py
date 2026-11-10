@@ -1,7 +1,7 @@
 """
 Code-drawn artwork: the golden cloud (logo, tray icon, thinking glyph), the sky header with
 its speed-line streaks, the glowing aura around the input, and the power-level meter. Pure
-painting — none of these widgets owns layout or decides when it animates.
+painting, none of these widgets owns layout or decides when it animates.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ _STREAKS = ((0.12, 0.30, 0.22), (0.55, 0.22, 0.30), (0.30, 0.62, 0.18), (0.72, 0
 
 
 def cloud_path(rect: QRectF, with_tail: bool = True) -> QPainterPath:
-    """A cloud fitted into rect, optionally trailing a swept tail to the right — the 'just
+    """A cloud fitted into rect, optionally trailing a swept tail to the right, the 'just
     arrived at speed' silhouette that gives the logo its motion."""
     body_width = rect.width() * (0.78 if with_tail else 1.0)
     scale_x, scale_y = body_width / 100.0, rect.height() / 60.0

@@ -43,7 +43,7 @@ class ToggleSwitch(QAbstractButton):
         return QSize(TRACK_WIDTH, TRACK_HEIGHT)
 
     def setChecked(self, checked: bool) -> None:
-        """Programmatic changes jump straight to the end position — no animation on load."""
+        """Programmatic changes jump straight to the end position, no animation on load."""
         super().setChecked(checked)
         self._slide.stop()
         self._position = 1.0 if checked else 0.0

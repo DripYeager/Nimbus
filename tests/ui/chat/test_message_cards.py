@@ -15,7 +15,7 @@ from ui.theme.line_icons import line_pixmap
 @pytest.fixture
 def open_url(mocker: MockerFixture) -> Mock:
     """Clicking a source card must never open a real file in tests."""
-    return mocker.patch("ui.chat.message_cards.QDesktopServices.openUrl")
+    return mocker.patch("ui.source_opener.QDesktopServices.openUrl")
 
 
 @pytest.fixture
@@ -116,3 +116,29 @@ def test_decide_ignores_a_second_click(card: ConfirmCard, decisions: list[tuple[
     _button(card, "Don't").click()
 
     assert decisions == [(True, False)]
+
+
+def test_confirm_card_reopen_unlocks_the_buttons(qapp: object) -> None:
+    card = ConfirmCard("Open Notepad")
+    card._decide(True, False)
+
+    card.reopen()
+
+    assert card.is_open() and all(b.isEnabled() for b in card.findChildren(QPushButton))
+
+
+def test_source_card_shows_the_cited_page(qapp: object) -> None:
+    card = SourceCard(SourceRef(file_name="cv.pdf", file_path="C:/Docs/cv.pdf", score=0.9, page=3))
+
+    labels = [label.text() for label in card.findChildren(QLabel)]
+
+    assert any(text.endswith("p. 3") for text in labels)
+
+
+def test_source_card_click_opens_the_pdf_at_its_page(mocker: MockerFixture) -> None:
+    opener = mocker.patch("ui.chat.message_cards.open_source")
+    card = SourceCard(SourceRef(file_name="cv.pdf", file_path="C:/Docs/cv.pdf", score=0.9, page=3))
+
+    card.click()
+
+    opener.assert_called_once_with("C:/Docs/cv.pdf", 3)

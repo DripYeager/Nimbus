@@ -1,5 +1,5 @@
 """
-Turns text into vectors with a local ONNX embedding model (fastembed) — the only place Nimbus
+Turns text into vectors with a local ONNX embedding model (fastembed), the only place Nimbus
 embeds text. No torch, no GPU, no network after the one-time model download. Does not know
 about files, chunks, or the vector store.
 """
@@ -21,7 +21,7 @@ EMBED_BATCH_SIZE = 32
 
 
 class Embedder:
-    """Wraps a loaded fastembed model. Documents and queries are embedded differently — bge
+    """Wraps a loaded fastembed model. Documents and queries are embedded differently, bge
     models expect a short instruction prefix on queries, which query_embed adds for us."""
 
     def __init__(self, model_name: str, threads: int) -> None:

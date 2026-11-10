@@ -1,6 +1,6 @@
 """
 HTTP routes for chatting: send a message, answer a confirmation card, and browse or delete
-saved conversations. Routes only delegate — the chat service does the work.
+saved conversations. Routes only delegate, the chat service does the work.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def list_conversations(services: AppServices = Depends(get_services)) -> list[Co
 
 @router.get("/conversations/{conversation_id}")
 def get_conversation(conversation_id: str, services: AppServices = Depends(get_services)) -> list[ChatMessage]:
-    """The visible messages of a chat — user turns and the assistant's written answers."""
+    """The visible messages of a chat, user turns and the assistant's written answers."""
     messages = services.conversations.load(conversation_id)
     return [m for m in messages if m.role == "user" or (m.role == "assistant" and m.content.strip())]
 

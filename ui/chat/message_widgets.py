@@ -1,5 +1,5 @@
 """
-The two kinds of message on screen: the user's orange speech bubble, and Nimbus's reply — an
+The two kinds of message on screen: the user's orange speech bubble, and Nimbus's reply, an
 energy-orb avatar that pulses while it's thinking, the activity steps, the streamed Markdown
 answer, source cards and a copy button. Display only; neither talks to the API.
 """
@@ -13,11 +13,12 @@ from PyQt6.QtGui import QDesktopServices, QFont, QFontMetrics, QGuiApplication, 
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QTextBrowser, QToolButton, QVBoxLayout, QWidget
 
 from models.schema import SourceRef
+from ui.chat.answer_style import remove_dashes
 from ui.chat.message_cards import SourceCard, ToolStep
 from ui.chat.thinking_indicator import ThinkingIndicator
 from ui.theme.energy import EnergyOrb
-from ui.theme.line_icons import line_icon
-from ui.theme.tokens import SUCCESS, TEXT, TEXT_MUTED
+from ui.theme.line_icons import line_icon, line_pixmap
+from ui.theme.tokens import SUCCESS, TEXT, TEXT_MUTED, TEXT_ON_ORANGE
 
 MAX_SOURCE_CARDS = 6
 ANSWER_PADDING_PX = 6
@@ -28,13 +29,15 @@ BUBBLE_TEXT_SLACK_PX = 8
 USER_TEXT_PX = 14
 AVATAR_SIZE = 34
 COPY_ICON_SIZE = 15
+TAG_ICON_SIZE = 13
 COPIED_FEEDBACK_MS = 1500
+STOPPED_TEXT = "Stopped."
 
 
 class UserBubble(QWidget):
-    """The user's message, right-aligned in a gi-orange bubble."""
+    """The user's message, right-aligned in a gi-orange bubble, with a tag for each attachment."""
 
-    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+    def __init__(self, text: str, parent: QWidget | None = None, attachments: tuple[str, ...] = ()) -> None:
         super().__init__(parent)
         bubble = QFrame(self)
         bubble.setObjectName("UserBubble")
@@ -48,6 +51,8 @@ class UserBubble(QWidget):
         inner = QVBoxLayout(bubble)
         inner.setContentsMargins(16, 10, 16, 10)
         inner.addWidget(label)
+        for name in attachments:
+            inner.addLayout(_attachment_tag(name, bubble))
         bubble.setMaximumWidth(USER_BUBBLE_MAX_WIDTH)
         row = QHBoxLayout(self)
         row.setContentsMargins(60, 0, 0, 0)
@@ -129,7 +134,7 @@ class AssistantMessage(QWidget):
         self._markdown += token
         self._answer.show()
         self._copy.show()
-        self._answer.setMarkdown(self._markdown)
+        self._answer.setMarkdown(remove_dashes(self._markdown))
 
     def set_text(self, markdown: str) -> None:
         self._markdown = ""
@@ -163,6 +168,14 @@ class AssistantMessage(QWidget):
         label.setWordWrap(True)
         self._content.addWidget(label)
 
+    def mark_stopped(self) -> None:
+        """Ends the reply where it is, with a quiet note that the user stopped it."""
+        self.stop_thinking()
+        self._has_error = True
+        label = QLabel(STOPPED_TEXT, self)
+        label.setObjectName("StoppedLine")
+        self._content.addWidget(label)
+
     def _author_row(self) -> QHBoxLayout:
         """ "Nimbus · 10:42" with the copy button at the far end."""
         author = QLabel("Nimbus", self)
@@ -179,9 +192,23 @@ class AssistantMessage(QWidget):
 
     def _copy_answer(self) -> None:
         """Copies the answer's Markdown and flashes a check mark."""
-        QGuiApplication.clipboard().setText(self._markdown)
+        QGuiApplication.clipboard().setText(remove_dashes(self._markdown))
         self._copy.setIcon(line_icon("check", SUCCESS, COPY_ICON_SIZE))
         self._copied_reset.start()
+
+
+def _attachment_tag(name: str, parent: QWidget) -> QHBoxLayout:
+    """A paperclip and the attachment's name, inside the user's bubble."""
+    icon = QLabel(parent)
+    icon.setPixmap(line_pixmap("paperclip", TEXT_ON_ORANGE, TAG_ICON_SIZE))
+    label = QLabel(name, parent)
+    label.setObjectName("AttachmentTag")
+    row = QHBoxLayout()
+    row.setSpacing(6)
+    row.addWidget(icon)
+    row.addWidget(label)
+    row.addStretch()
+    return row
 
 
 def _copy_icon() -> QIcon:

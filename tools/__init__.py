@@ -1,4 +1,4 @@
-"""Tools the assistant can call — file search and reading, app launching, system actions, notes."""
+"""Tools the assistant can call, file search and reading, app launching, system actions, notes."""
 
 from __future__ import annotations
 

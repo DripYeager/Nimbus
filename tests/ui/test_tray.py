@@ -57,6 +57,7 @@ def test_setup_builds_the_full_menu(tray: TrayIcon) -> None:
 
     assert texts == [
         "Open Nimbus",
+        "Ask about something on screen",
         "Ready · 40 files known",
         "Pause indexing",
         "Rebuild index",
@@ -74,7 +75,7 @@ def test_setup_shows_the_pause_icon_while_indexing_runs(tray: TrayIcon) -> None:
 
 
 def test_setup_shows_the_current_status_in_the_tooltip(tray: TrayIcon) -> None:
-    assert tray._tray.toolTip() == f"{TOOLTIP_TITLE} — Ready · 40 files known"
+    assert tray._tray.toolTip() == f"{TOOLTIP_TITLE}: Ready · 40 files known"
 
 
 def test_setup_keeps_the_status_line_disabled(tray: TrayIcon) -> None:

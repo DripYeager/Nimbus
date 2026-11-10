@@ -1,6 +1,6 @@
 """
 Defines the domain exception hierarchy used across Nimbus.
-Does not catch or log exceptions — callers catch these and decide how to respond.
+Does not catch or log exceptions, callers catch these and decide how to respond.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ class ParsingError(NimbusError):
 
 
 class UnsupportedFileTypeError(ParsingError):
-    """No converter exists for this file's type — expected for some files, not a real failure."""
+    """No converter exists for this file's type, expected for some files, not a real failure."""
 
 
 class QueryError(NimbusError):
@@ -63,8 +63,12 @@ class ConversationNotFoundError(NimbusError):
 
 
 class StartupError(NimbusError):
-    """Nimbus can't run at all — e.g. its local API couldn't claim its port."""
+    """Nimbus can't run at all, e.g. its local API couldn't claim its port."""
 
 
 class AutostartError(NimbusError):
     """The Startup-folder shortcut couldn't be created or removed."""
+
+
+class ExplorerMenuError(NimbusError):
+    """The File Explorer right-click entry couldn't be added or removed."""

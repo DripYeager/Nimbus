@@ -1,6 +1,6 @@
 """
 Runs a blocking call (an API request, a provider test) on Qt's thread pool and delivers the
-result — or the error message — back on the GUI thread. Owns thread hand-off only.
+result, or the error message, back on the GUI thread. Owns thread hand-off only.
 """
 
 from __future__ import annotations

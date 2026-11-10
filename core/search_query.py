@@ -1,7 +1,7 @@
 """
 Turns a user's question into a full-text (FTS5) query: keeps the meaningful words, drops
 filler like "what" and "the", and quotes each word so codes such as "INV-2231" match exactly.
-Pure text processing — does not run the query.
+Pure text processing, does not run the query.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 # Words common enough to match nearly every chunk. Leaving them in makes BM25 score the
-# whole index for every question — slow on a big index and no help to ranking.
+# whole index for every question, slow on a big index and no help to ranking.
 _STOP_WORDS_TEXT = """
     a about above after again all also am an and any are as at be because been before being
     below between both but by can could did do does doing down during each few for from

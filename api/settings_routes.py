@@ -71,7 +71,7 @@ def test_provider(config: ProviderConfig) -> ProviderTestResult:
     if config.model and models and config.model not in models:
         message = f"Connected, but {config.model!r} isn't available. Pick one of the listed models."
         return ProviderTestResult(ok=False, message=message, models=models)
-    return ProviderTestResult(ok=True, message=f"Connected — {len(models)} model(s) available.", models=models)
+    return ProviderTestResult(ok=True, message=f"Connected. {len(models)} model(s) available.", models=models)
 
 
 @router.get("/usage")

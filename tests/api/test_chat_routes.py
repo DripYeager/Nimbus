@@ -94,14 +94,14 @@ def test_get_conversation_hides_tool_messages_and_empty_tool_call_turns(
         ChatMessage(role="user", content="open spotify"),
         ChatMessage(role="assistant", tool_calls=[ToolCall(id="t1", name="open_app")]),
         ChatMessage(role="tool", content="Opened Spotify.", tool_call_id="t1", tool_name="open_app"),
-        ChatMessage(role="assistant", content="Done — Spotify is open."),
+        ChatMessage(role="assistant", content="Done, Spotify is open."),
     ]
 
     response = client.get("/conversations/c1")
 
     assert [(m["role"], m["content"]) for m in response.json()] == [
         ("user", "open spotify"),
-        ("assistant", "Done — Spotify is open."),
+        ("assistant", "Done, Spotify is open."),
     ]
 
 

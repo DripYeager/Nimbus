@@ -19,7 +19,7 @@ from core.retriever import Retriever
 from llm.provider import LLMProvider
 from models.chat import ToolResult
 from models.schema import CatalogMatch
-from tools.file_tools import get_metadata, rank_unique_files, source_ref_for, source_ref_for_match
+from tools.file_tools import get_metadata, page_label, rank_unique_files, source_ref_for, source_ref_for_match
 from tools.registry import (
     Tool,
     ToolRegistry,
@@ -45,7 +45,7 @@ SEARCH_FILES = tool_spec(
 )
 FIND_BY_NAME = tool_spec(
     "find_files_by_name",
-    "Find files by (part of) their name, any file type — including photos, installers and archives.",
+    "Find files by (part of) their name, any file type, including photos, installers and archives.",
     object_schema({"name": string_param("File name or part of it"), "limit": integer_param("Max files")}, ["name"]),
 )
 LIST_RECENT = tool_spec(
@@ -92,7 +92,8 @@ class FileToolbox:
             return ToolResult(content="No indexed file matched that. Try find_files_by_name or other words.")
         excerpts = {c.file_path: c.chunk_text for c in reversed(chunks)}
         lines = [
-            f"{i}. {f.file_name} — {f.file_path}\n   {_excerpt(excerpts[f.file_path])}" for i, f in enumerate(files, 1)
+            f"{i}. {f.file_name}{page_label(f.page)}: {f.file_path}\n   {_excerpt(excerpts[f.file_path])}"
+            for i, f in enumerate(files, 1)
         ]
         return ToolResult(content="\n".join(lines), sources=files)
 
@@ -121,7 +122,7 @@ class FileToolbox:
         path = self._resolve(args["path"])
         max_words = max(1, min(int(args.get("max_words", DEFAULT_READ_WORDS)), MAX_READ_WORDS))
         text, truncated = read_document_excerpt(path, max_words)
-        suffix = "\n\n[truncated — use summarize_file for the whole document]" if truncated else ""
+        suffix = "\n\n[truncated; use summarize_file for the whole document]" if truncated else ""
         body = text or "(no text could be extracted)"
         return ToolResult(content=f"{path.name}:\n{body}{suffix}", sources=[source_ref_for(path)])
 
@@ -173,7 +174,7 @@ class FileToolbox:
 def _matches_result(matches: list[CatalogMatch]) -> ToolResult:
     """Formats catalog matches as a numbered list plus clickable sources."""
     lines = [
-        f"{i}. {m.file_name} — {m.file_path} ({_size(m.size_bytes)}, modified {m.modified_at:%Y-%m-%d %H:%M})"
+        f"{i}. {m.file_name}: {m.file_path} ({_size(m.size_bytes)}, modified {m.modified_at:%Y-%m-%d %H:%M})"
         for i, m in enumerate(matches, 1)
     ]
     sources = [source_ref_for_match(m) for m in matches]

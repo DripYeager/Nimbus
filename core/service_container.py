@@ -1,7 +1,7 @@
 """
 Builds every engine service once and wires them together: storage, indexing, the file
 watcher, the app catalog, the model provider, tools and the assistant. Also starts, stops and
-re-configures them as a unit. The composition root for the engine — no UI, no HTTP.
+re-configures them as a unit. The composition root for the engine, no UI, no HTTP.
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ class AppServices:
         self.catalog.close()
 
     def add_settings_listener(self, listener: SettingsListener) -> None:
-        """Registers a callback for after settings change — e.g. the UI rebinding the hotkey."""
+        """Registers a callback for after settings change, e.g. the UI rebinding the hotkey."""
         self._settings_listeners.append(listener)
 
     def apply_settings(self) -> None:

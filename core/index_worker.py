@@ -1,7 +1,7 @@
 """
 The single background thread that drains the index queue: indexes one file at a time,
 records the outcome in the catalog, and pauses on request. Owns the worker loop and its
-pause state only — choosing what gets queued is the index service's job.
+pause state only, choosing what gets queued is the index service's job.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ class IndexWorker:
     @contextmanager
     def held(self) -> Iterator[None]:
         """Waits for the file in progress to finish and keeps the worker from writing another
-        until the block exits — for changes that must not interleave with an index write."""
+        until the block exits, for changes that must not interleave with an index write."""
         with self._index_lock:
             yield
 
@@ -121,7 +121,7 @@ class IndexWorker:
             self._catalog.set_status(path, CatalogStatus.FAILED, error=str(e)[:500])
         except Exception as e:
             # A library error nobody wrapped (or the file vanishing mid-index) must not kill the
-            # only worker thread — that would silently stop all indexing until a restart.
+            # only worker thread, that would silently stop all indexing until a restart.
             logger.exception("Unexpected error indexing file", extra={"path": str(path)})
             self._catalog.set_status(path, CatalogStatus.FAILED, error=str(e)[:500])
         finally:

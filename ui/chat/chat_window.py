@@ -1,6 +1,6 @@
 """
 The window the hotkey summons: a frameless, always-on-top night-sky panel with the sky header
-and three pages — the conversation, chat history and Settings — that you move between without
+and three pages, the conversation, chat history and Settings, that you move between without
 leaving the window. Owns window behaviour (summon/dismiss animation, placement, page switching,
 keyboard shortcuts, status polling) and composes the pieces.
 """
@@ -8,7 +8,7 @@ keyboard shortcuts, status polling) and composes the pieces.
 from __future__ import annotations
 
 from PyQt6.QtCore import QAbstractAnimation, QPoint, Qt, QTimer
-from PyQt6.QtGui import QCursor, QGuiApplication, QKeyEvent, QKeySequence, QPainter, QPaintEvent, QShortcut
+from PyQt6.QtGui import QCursor, QGuiApplication, QKeyEvent, QKeySequence, QPainter, QPaintEvent, QPixmap, QShortcut
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -21,12 +21,15 @@ from PyQt6.QtWidgets import (
 from models.schema import IndexStatus
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
+from ui.chat.attachment_bar import AttachmentBar
+from ui.chat.attachment_flow import AttachmentFlow
 from ui.chat.chat_header import ChatHeader
 from ui.chat.chat_input import ChatInput
 from ui.chat.chat_session import ChatSession
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
 from ui.chat.history_panel import HistoryPanel
+from ui.screen_capture import RegionCapture, save_capture
 from ui.settings.settings_panel import SettingsPanel
 from ui.theme.backdrop import NightBackdrop
 from ui.theme.icons import app_icon
@@ -41,6 +44,8 @@ from ui.theme.tokens import (
 )
 
 STATUS_POLL_MS = 2000
+# Long enough for the window's fade-out to leave the screen before it's photographed.
+CAPTURE_DELAY_MS = 250
 # Placing the window a little above center keeps it clear of the taskbar on short screens.
 VERTICAL_POSITION = 0.42
 FOOTER_TEXT = "Enter to send  ·  Shift+Enter for a new line  ·  Esc to hide"
@@ -66,6 +71,9 @@ class ChatWindow(QWidget):
         self._panel = NightBackdrop(self)
         self._shadow = SoftShadow(RADIUS_WINDOW)
         self._session = ChatSession(self._view, self._input, api, ChatStream())
+        self._attachments = AttachmentBar()
+        self._flow = AttachmentFlow(self._attachments, self._session)
+        self._capture: RegionCapture | None = None
 
     def setup(self) -> None:
         """Builds the window and wires every signal."""
@@ -73,11 +81,14 @@ class ChatWindow(QWidget):
         self._build_layout()
         self._session.connect_signals()
         self._session.status_received.connect(self._show_status)
+        self._flow.connect_signals()
+        self._header.capture_clicked.connect(self.capture_screen)
         self._header.new_chat_clicked.connect(self._new_chat)
         self._header.history_clicked.connect(self.show_history)
         self._header.settings_clicked.connect(self.show_settings)
         self._header.back_clicked.connect(self.show_chat)
-        self._header.close_clicked.connect(self.dismiss)
+        self._header.minimize_clicked.connect(self.dismiss)
+        self._header.close_clicked.connect(self.close_to_tray)
         self._history.opened.connect(self._open_conversation)
         self._settings.back_requested.connect(self.show_chat)
         # A save can switch between a local and a cloud model; refresh the header badge at once.
@@ -106,6 +117,7 @@ class ChatWindow(QWidget):
         self.raise_()
         self.activateWindow()
         self._input.focus()
+        self._flow.offer_clipboard()
         self._status_timer.start(STATUS_POLL_MS)
         self._poll_status()
 
@@ -119,6 +131,12 @@ class ChatWindow(QWidget):
         self._animation.finished.connect(self.hide)
         self._animation.start()
 
+    def close_to_tray(self) -> None:
+        """Hides like minimize, but the next summon opens on the chat page. A running reply
+        keeps going either way; only the stop button ends one."""
+        self.dismiss()
+        self._go_to(CHAT_PAGE)
+
     def show_chat(self) -> None:
         self._go_to(CHAT_PAGE)
         self._input.focus()
@@ -131,6 +149,17 @@ class ChatWindow(QWidget):
         """Opens Settings inside this window; the header's back arrow returns to the chat."""
         self._settings.load()
         self._go_to(SETTINGS_PAGE)
+
+    def ask_about_file(self, path: str) -> None:
+        """File Explorer's "Ask Nimbus about this": a new chat with the file attached."""
+        self.summon()
+        self._new_chat()
+        self._flow.attach_file(path)
+
+    def capture_screen(self) -> None:
+        """Hides the window, lets the user box part of the screen, and attaches that capture."""
+        self.hide()
+        QTimer.singleShot(CAPTURE_DELAY_MS, self._start_capture)
 
     def ask(self, text: str) -> None:
         """Summons the window and sends text straight away (used by tray shortcuts)."""
@@ -149,13 +178,9 @@ class ChatWindow(QWidget):
         super().keyPressEvent(event)
 
     def _go_to(self, page: int) -> None:
-        """Switches page and puts the matching header up.
-
-        This translucent, frameless window doesn't reliably repaint on Windows when its layout
-        shifts or something in it uses a graphics effect: the header kept showing the previous
-        page's title after Back. So nothing in the window uses one (shadows and glows are
-        painted by hand), there's no fade, the footer hint keeps its space when hidden, and the
-        whole window is repainted after every switch."""
+        """Switches page and puts the matching header up. This translucent window doesn't
+        reliably repaint on Windows after a layout shift or with graphics effects, so there are
+        none, the footer hint keeps its space when hidden, and the window repaints each switch."""
         self._header.show_page(PAGE_TITLES.get(page))
         self._pages.setCurrentIndex(page)
         self._hint.setVisible(page == CHAT_PAGE)
@@ -166,6 +191,18 @@ class ChatWindow(QWidget):
         painter = QPainter(self)
         self._shadow.paint(painter, self.size(), self._panel.geometry())
         painter.end()
+
+    def _start_capture(self) -> None:
+        self._capture = RegionCapture()
+        self._capture.captured.connect(self._attach_capture)
+        self._capture.cancelled.connect(self.summon)
+        self._capture.start()
+
+    def _attach_capture(self, image: QPixmap) -> None:
+        self._capture = None
+        self.summon()
+        self.show_chat()
+        self._flow.attach_screenshot(save_capture(image))
 
     def _is_dismissing(self) -> bool:
         return (
@@ -207,6 +244,7 @@ class ChatWindow(QWidget):
         layout.setContentsMargins(20, 14, 20, 6)
         layout.setSpacing(12)
         layout.addWidget(self._view, stretch=1)
+        layout.addWidget(self._attachments)
         layout.addWidget(self._input)
         return page
 

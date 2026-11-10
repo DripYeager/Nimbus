@@ -1,6 +1,6 @@
 """
 Walks a source folder and yields every file worth cataloging, pruning excluded folders
-before descending into them. Only stats files — never opens or reads them, and doesn't
+before descending into them. Only stats files, never opens or reads them, and doesn't
 decide what to do with what it finds.
 """
 
@@ -36,7 +36,7 @@ def scan_source(root: Path, rules: IndexRules) -> Iterator[ScannedFile]:
 
 
 def _list_directory(directory: Path) -> list[os.DirEntry[str]]:
-    """Lists one folder, treating an unreadable one as empty — a locked folder on a work
+    """Lists one folder, treating an unreadable one as empty, a locked folder on a work
     laptop is normal, not an error worth stopping the scan for."""
     try:
         with os.scandir(directory) as entries:

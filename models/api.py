@@ -1,5 +1,5 @@
 """
-Request and response bodies used only at the HTTP boundary — settings views, provider tests,
+Request and response bodies used only at the HTTP boundary, settings views, provider tests,
 key updates and app launches. Validation only; the engine never imports these.
 """
 

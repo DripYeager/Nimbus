@@ -39,7 +39,7 @@ def _stream_handlers() -> list[logging.Handler]:
 
 
 def _nimbus_handlers() -> list[logging.Handler]:
-    """Root handlers Nimbus attached — pytest adds its own log-capture handlers alongside."""
+    """Root handlers Nimbus attached, pytest adds its own log-capture handlers alongside."""
     return [h for h in logging.getLogger().handlers if type(h) in (logging.StreamHandler, RotatingFileHandler)]
 
 

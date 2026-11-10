@@ -1,6 +1,6 @@
 """
-Parses Server-Sent Events frames — "event: name" and "data: json" lines separated by blank
-lines — into (event_name, payload) pairs. Pure text parsing; knows nothing about HTTP
+Parses Server-Sent Events frames, "event: name" and "data: json" lines separated by blank
+lines, into (event_name, payload) pairs. Pure text parsing; knows nothing about HTTP
 transport, Qt, or what any payload means.
 """
 

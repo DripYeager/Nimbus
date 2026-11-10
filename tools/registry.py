@@ -1,7 +1,7 @@
 """
 The catalogue of tools the assistant may call: each tool's model-facing spec, the function that
 runs it, whether it needs the user's go-ahead first, and how to describe a call in plain words.
-Owns lookup and safe execution only — the tools themselves live in their own modules.
+Owns lookup and safe execution only; the tools themselves live in their own modules.
 """
 
 from __future__ import annotations

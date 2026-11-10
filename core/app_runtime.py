@@ -1,6 +1,6 @@
 """
 Boots and supervises the whole process: the Qt application, the engine services, the local
-API server on its own thread, and the desktop UI — then shuts them all down cleanly on Quit.
+API server on its own thread, and the desktop UI, then shuts them all down cleanly on Quit.
 Owns process lifecycle only; what each piece does lives in its own module.
 """
 
@@ -18,6 +18,7 @@ import api.server as server_module
 from config.paths import user_settings_path
 from config.settings import get_settings
 from core.exceptions import StartupError
+from core.launch_args import ask_path_from
 from core.logger import get_logger, log_file_path
 from core.service_container import AppServices
 from ui.api_client import ApiClient
@@ -50,14 +51,17 @@ class AppRuntime:
     def start(self) -> int:
         """Runs Nimbus until Quit; returns the process exit code."""
         self._qt_app = _build_qt_app()
-        if notify_running_instance():
+        ask_path = ask_path_from(sys.argv)
+        if notify_running_instance(ask_path):
             logger.info("Nimbus is already running; asked it to show itself")
             return 0
         try:
             self._start_engine_and_ui()
+            if ask_path is not None and self._shell is not None:
+                self._shell.ask_about_file(ask_path)
         except Exception as e:
             # Don't leave the API thread, the watcher or the hotkey running behind a dead process,
-            # and say why — a windowed build has no console, so it would otherwise just vanish.
+            # and say why, a windowed build has no console, so it would otherwise just vanish.
             logger.exception("Nimbus failed to start")
             self.shutdown()
             _show_startup_error(e)

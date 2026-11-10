@@ -49,6 +49,8 @@ class DesktopShell(QObject):
         self._tray.quit_requested.connect(self._on_quit)
         self._hotkey.summoned.connect(self._chat.toggle)
         self._instances.summon_requested.connect(self._chat.summon)
+        self._instances.ask_requested.connect(self.ask_about_file)
+        self._tray.capture_requested.connect(self._chat.capture_screen)
         self._instances.listen()
         self.settings_changed.connect(self._apply_hotkey)
         hotkey_ready = self._register_hotkey()
@@ -62,6 +64,11 @@ class DesktopShell(QObject):
         self._hotkey.stop()
         self._tray.hide()
         self._chat.hide()
+
+    def ask_about_file(self, path: str) -> None:
+        """A file sent from File Explorer's right-click menu; ignored until setup is done."""
+        if get_settings().onboarding_complete:
+            self._chat.ask_about_file(path)
 
     def open_settings(self) -> None:
         """Summons the chat window on its Settings page."""

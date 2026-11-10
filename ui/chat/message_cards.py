@@ -1,6 +1,6 @@
 """
 The small cards inside a reply: a tool step ("✓ Searched your files"), a source-file card that
-opens the file, and the approve/decline card for actions. Display only — clicks are reported
+opens the file, and the approve/decline card for actions. Display only, clicks are reported
 through signals or handed to the OS to open.
 """
 
@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from models.schema import SourceRef
+from ui.source_opener import open_source
 from ui.theme.line_icons import line_icon, line_pixmap
 from ui.theme.tokens import CLOUD_GOLD, DANGER, GI_ORANGE, SUCCESS, TEXT_FAINT, TEXT_ON_GOLD
 
@@ -75,15 +75,17 @@ class SourceCard(QPushButton):
         super().__init__(parent)
         self.setObjectName("SourceCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip(f"Open {source.file_path}")
+        page = f" at page {source.page}" if source.page is not None else ""
+        self.setToolTip(f"Open {source.file_path}{page}")
         self.setMaximumWidth(SOURCE_CARD_MAX_WIDTH)
         self._path = source.file_path
+        self._page = source.page
         path = Path(source.file_path)
         icon = QLabel(self)
         icon.setPixmap(line_pixmap(FILE_ICONS.get(path.suffix.lower(), "file"), GI_ORANGE, SOURCE_ICON_SIZE))
         name = QLabel(source.file_name, self)
         name.setObjectName("SourceName")
-        folder = QLabel(path.parent.name or str(path.parent), self)
+        folder = QLabel(_where(path, source.page), self)
         folder.setObjectName("SourceFolder")
         text = QVBoxLayout()
         text.setSpacing(0)
@@ -101,7 +103,13 @@ class SourceCard(QPushButton):
         self.clicked.connect(self._open)
 
     def _open(self) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(self._path))
+        open_source(self._path, self._page)
+
+
+def _where(path: Path, page: int | None) -> str:
+    """The folder a source lives in, and the page the answer came from when known."""
+    folder = path.parent.name or str(path.parent)
+    return f"{folder}  ·  p. {page}" if page is not None else folder
 
 
 class ConfirmCard(QFrame):
@@ -112,6 +120,7 @@ class ConfirmCard(QFrame):
     def __init__(self, description: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("ConfirmCard")
+        self._open = True
         title_icon = QLabel(self)
         title_icon.setPixmap(line_pixmap("zap", GI_ORANGE, STEP_ICON_SIZE))
         title = QLabel("NIMBUS WANTS TO", self)
@@ -148,10 +157,22 @@ class ConfirmCard(QFrame):
         button.clicked.connect(lambda: self._decide(approved, always))
         self._buttons.addWidget(button)
 
+    def is_open(self) -> bool:
+        """True until the user has answered."""
+        return self._open
+
+    def reopen(self) -> None:
+        """Unlocks the card again when its answer couldn't be sent."""
+        self._set_locked(False)
+
     def _decide(self, approved: bool, always: bool) -> None:
         """Locks the card so a double click can't answer twice, then reports the choice."""
+        self._set_locked(True)
+        self.decided.emit(approved, always)
+
+    def _set_locked(self, locked: bool) -> None:
+        self._open = not locked
         for index in range(self._buttons.count()):
             widget = self._buttons.itemAt(index).widget()
             if widget is not None:
-                widget.setEnabled(False)
-        self.decided.emit(approved, always)
+                widget.setEnabled(not locked)

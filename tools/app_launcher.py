@@ -1,6 +1,6 @@
 """
-Launches an app picked from the app catalog. Does not discover or match apps — that's
-app_catalog.py — and never elevates: everything starts with the user's own rights.
+Launches an app picked from the app catalog. Does not discover or match apps, that's
+app_catalog.py, and never elevates: everything starts with the user's own rights.
 """
 
 from __future__ import annotations
@@ -35,6 +35,6 @@ def launch_app(entry: AppEntry) -> None:
     except OSError as e:
         raise AppLaunchError(
             f"Couldn't launch {entry.name} from {entry.launch_target}: {e}. "
-            "It may have been uninstalled or moved — refresh the app catalog and try again."
+            "It may have been uninstalled or moved. Refresh the app catalog and try again."
         ) from e
     logger.info("Launched app", extra={"app": entry.name, "source": entry.source})

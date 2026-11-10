@@ -1,6 +1,6 @@
 """
 Converts the neutral chat shapes in models/chat.py to and from Anthropic's Messages API format.
-Does not call the API — anthropic_provider.py owns the client and the streaming.
+Does not call the API, anthropic_provider.py owns the client and the streaming.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def to_anthropic_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
             _append_tool_result(converted, message)
         elif message.role == "assistant":
             # The API rejects an empty assistant turn, and the model does occasionally end a turn
-            # with no text — replaying that one would break every later message in the chat.
+            # with no text, replaying that one would break every later message in the chat.
             if message.content or message.tool_calls:
                 converted.append({"role": "assistant", "content": _assistant_content(message)})
         else:

@@ -1,5 +1,5 @@
 """
-A rounded result pill — icon plus short message — for outcomes like a connection test. Owns
+A rounded result pill, icon plus short message, for outcomes like a connection test. Owns
 showing one state at a time (busy, ok, error); what the message says is the caller's call.
 """
 

@@ -31,7 +31,7 @@ MISSING_KEY_PLACEHOLDER = "missing-api-key"
 
 
 class OpenAIProvider:
-    """Implements LLMProvider against OpenAI's chat completions API, or — given a base_url — any
+    """Implements LLMProvider against OpenAI's chat completions API, or, given a base_url, any
     OpenAI-compatible server (DeepInfra, LM Studio, vLLM)."""
 
     def __init__(self, api_key: str | None, model: str, base_url: str | None = None) -> None:

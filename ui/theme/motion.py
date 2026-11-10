@@ -1,6 +1,6 @@
 """
 Builds the UI's animations: the window gliding in on summon and away on dismiss, the header's
-speed-line sweep, the thinking glyph's bob, and the input aura's pulse. Construction only —
+speed-line sweep, the thinking glyph's bob, and the input aura's pulse. Construction only,
 callers start them and must keep a reference, since an unreferenced animation is garbage-
 collected mid-run.
 """
@@ -33,7 +33,7 @@ BOB_SAMPLES = 16
 
 
 def build_summon_animation(window: QObject, final_pos: QPoint, header: SkyHeader) -> QParallelAnimationGroup:
-    """Glides up into final_pos while fading in, with the header's streaks sweeping past —
+    """Glides up into final_pos while fading in, with the header's streaks sweeping past,
     a quick arrival that settles without overshoot."""
     start_pos = QPoint(final_pos.x(), final_pos.y() + SUMMON_RISE_PX)
     group = QParallelAnimationGroup(window)
@@ -44,7 +44,7 @@ def build_summon_animation(window: QObject, final_pos: QPoint, header: SkyHeader
 
 
 def build_dismiss_animation(window: QObject, start_pos: QPoint) -> QParallelAnimationGroup:
-    """The mirror of summon, slightly faster — leaving should feel immediate."""
+    """The mirror of summon, slightly faster, leaving should feel immediate."""
     end_pos = QPoint(start_pos.x(), start_pos.y() + SUMMON_RISE_PX)
     group = QParallelAnimationGroup(window)
     group.addAnimation(_animate(window, b"pos", (start_pos, end_pos), DISMISS_MS))

@@ -1,6 +1,6 @@
 """
 Converts the neutral chat shapes in models/chat.py to and from Ollama's chat format.
-Does not call the server — ollama_provider.py owns the client and the streaming.
+Does not call the server, ollama_provider.py owns the client and the streaming.
 """
 
 from __future__ import annotations

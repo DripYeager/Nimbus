@@ -10,8 +10,8 @@ import json
 from typing import Any
 
 DEEPINFRA_BASE_URL = "https://api.deepinfra.com/v1/openai"
-# 1.x's .env.example shipped these values. They were defaults, not choices — and 512-word chunks
-# overflow the 2.x embedding model's 512-token window — so they're dropped in favour of the new
+# 1.x's .env.example shipped these values. They were defaults, not choices, and 512-word chunks
+# overflow the 2.x embedding model's 512-token window, so they're dropped in favour of the new
 # defaults rather than carried forward.
 V1_DEFAULTS = {"embedding_model": "all-MiniLM-L6-v2", "max_chunk_size": "512", "chunk_overlap": "50"}
 LEGACY_KEYS = ("deepinfra_api_key", "deepinfra_model", "watched_dirs")

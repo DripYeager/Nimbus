@@ -43,7 +43,7 @@ def save_note(title: str, body: str) -> Path:
     """
     title, body = title.strip(), body.strip()
     if not title and not body:
-        raise ToolError("Can't save an empty note — give it a title or some text.")
+        raise ToolError("Can't save an empty note. Give it a title or some text.")
     title = title or _derive_title(body)
     path = _unique_note_path(notes_dir(), title)
     try:

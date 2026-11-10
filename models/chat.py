@@ -1,6 +1,6 @@
 """
 Defines the provider-neutral chat, tool-calling and streamed-event shapes shared by the LLM
-providers, the agent loop, the API and the chat window. Validation only, no behaviour.
+providers, the agent loop, the API and the chat window. Validation only; no behaviour.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ ProviderName = Literal["ollama", "openai", "anthropic", "openai_compatible"]
 
 
 class ProviderConfig(BaseModel):
-    """Everything needed to build one provider — from saved settings, or from unsaved values
+    """Everything needed to build one provider, from saved settings, or from unsaved values
     the user is trying out with "Test connection"."""
 
     name: ProviderName
@@ -70,9 +70,19 @@ class ConversationSummary(BaseModel):
     updated_at: datetime
 
 
+class Attachment(BaseModel):
+    """Something the user handed Nimbus with a question: a file (by path, any folder, since the
+    user picked it themselves) or a piece of text, such as what they copied."""
+
+    name: str
+    path: str | None = None
+    text: str | None = None
+
+
 class ChatRequest(BaseModel):
     text: str
     conversation_id: str | None = None
+    attachment: Attachment | None = None
 
 
 class ConfirmRequest(BaseModel):

@@ -48,7 +48,7 @@ def test_plan_sync_never_queues_a_file_in_a_names_only_source(root: Path) -> Non
 
 
 def test_plan_sync_catalogs_an_unsupported_type_by_name_only(root: Path) -> None:
-    plan = plan_sync([_scanned(root / "photo.jpg")], {}, _rules(IndexSource(path=root)), set())
+    plan = plan_sync([_scanned(root / "song.mp3")], {}, _rules(IndexSource(path=root)), set())
 
     assert [e.status for e in plan.upserts] == [CatalogStatus.NAME_ONLY]
     assert plan.to_queue == []
@@ -106,9 +106,9 @@ def test_plan_sync_drops_content_of_a_pending_file_that_became_names_only(root: 
 def test_plan_sync_records_every_scanned_key_in_seen(root: Path) -> None:
     seen: set[str] = set()
 
-    plan_sync([_scanned(root / "A.txt"), _scanned(root / "b.jpg")], {}, _rules(IndexSource(path=root)), seen)
+    plan_sync([_scanned(root / "A.txt"), _scanned(root / "b.mp3")], {}, _rules(IndexSource(path=root)), seen)
 
-    assert seen == {path_key(root / "A.txt"), path_key(root / "b.jpg")}
+    assert seen == {path_key(root / "A.txt"), path_key(root / "b.mp3")}
 
 
 def test_find_vanished_returns_cataloged_files_not_seen_this_scan(root: Path) -> None:
@@ -124,7 +124,7 @@ def test_find_vanished_returns_cataloged_files_not_seen_this_scan(root: Path) ->
 
 def test_find_vanished_keeps_files_under_a_temporarily_missing_source(root: Path, tmp_path: Path) -> None:
     unplugged = tmp_path / "USB"
-    snapshot = _cataloged(unplugged / "photo.jpg", CatalogStatus.NAME_ONLY)
+    snapshot = _cataloged(unplugged / "song.mp3", CatalogStatus.NAME_ONLY)
 
     vanished = find_vanished(snapshot, set(), _rules(IndexSource(path=root), IndexSource(path=unplugged)))
 

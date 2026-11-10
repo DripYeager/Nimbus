@@ -104,7 +104,7 @@ def test_requeue_all_resets_indexed_and_failed_but_not_name_only(catalog: FileCa
         [
             _entry(DOCS / "done.txt", CatalogStatus.INDEXED),
             _entry(DOCS / "broken.txt", CatalogStatus.FAILED),
-            _entry(DOCS / "photo.jpg", CatalogStatus.NAME_ONLY),
+            _entry(DOCS / "song.mp3", CatalogStatus.NAME_ONLY),
         ]
     )
 
@@ -127,7 +127,7 @@ def test_status_counts_under_counts_each_status_below_a_folder(catalog: FileCata
     catalog.upsert(
         [
             _entry(DOCS / "a.txt", CatalogStatus.INDEXED),
-            _entry(DOCS / "b.jpg", CatalogStatus.NAME_ONLY),
+            _entry(DOCS / "b.mp3", CatalogStatus.NAME_ONLY),
             _entry(DOCS / "c.pdf", CatalogStatus.PENDING),
             _entry(Path("C:/Users/me/Docs2/c.txt"), CatalogStatus.INDEXED),
         ]

@@ -1,6 +1,6 @@
 """
 Data shapes returned by the system and note tools: a machine status snapshot and a saved-note hit.
-Does not gather any of this data — tools/system_tools.py and tools/note_tools.py fill these in.
+Does not gather any of this data, tools/system_tools.py and tools/note_tools.py fill these in.
 """
 
 from __future__ import annotations

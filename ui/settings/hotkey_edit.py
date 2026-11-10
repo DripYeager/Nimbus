@@ -23,7 +23,7 @@ _MODIFIERS: tuple[tuple[Qt.KeyboardModifier, str], ...] = (
 )
 FUNCTION_KEY_COUNT = 12
 KEYCAP_MIN_WIDTH = 200
-UNSUPPORTED_HINT = "Use Ctrl, Alt, Shift or Win together with a letter, a digit, Space or F1–F12."
+UNSUPPORTED_HINT = "Use Ctrl, Alt, Shift or Win together with a letter, a digit, Space or F1 to F12."
 CAPTURE_TOOLTIP = "Click, then press the keys you want to use"
 
 
@@ -49,7 +49,7 @@ def to_hotkey_string(sequence: QKeySequence) -> str:
     Converts a recorded chord to the stored hotkey format.
 
     Returns "" for anything Nimbus can't register: an empty or multi-chord sequence, a chord
-    without a modifier, or a key outside letters, digits, Space and F1–F12.
+    without a modifier, or a key outside letters, digits, Space and F1 to F12.
     """
     if sequence.count() != 1:
         return ""

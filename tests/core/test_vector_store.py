@@ -312,3 +312,12 @@ def test_close_is_safe_to_call_twice(store: VectorStore) -> None:
 
     with pytest.raises(IndexingError):
         store.count()
+
+
+def test_search_returns_the_page_a_chunk_came_from(store: VectorStore) -> None:
+    chunk = _chunk("C:/Docs/contract.pdf", text="termination clause").model_copy(update={"page": 12})
+    store.upsert_chunks([chunk])
+
+    [result] = store.search(NORTH, top_k=1)
+
+    assert result.page == 12

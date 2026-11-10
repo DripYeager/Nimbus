@@ -43,6 +43,7 @@ CATEGORY_CHIPS: dict[FileCategory, tuple[str, str]] = {
     FileCategory.TEXT: ("Text && Markdown", "notebook-pen"),
     FileCategory.CODE: ("Code", "app-window"),
     FileCategory.EMAIL: ("Email", "mail"),
+    FileCategory.IMAGES: ("Text in images", "file-image"),
 }
 CATEGORY_COLUMNS = 4
 CHIP_HEIGHT = 32
@@ -53,7 +54,7 @@ SIZE_BOX_WIDTH = 110
 EXCLUDE_BOX_HEIGHT = 88
 EXCLUDE_PLACEHOLDER = "One pattern per line, e.g.\n*.iso\nArchive"
 FOLDERS_HINT = "Switch off “Read contents” to keep a folder searchable by file name only."
-NO_FOLDERS_TEXT = "No folders yet — add one so Nimbus has something to learn."
+NO_FOLDERS_TEXT = "No folders yet. Add one so Nimbus has something to learn."
 PROGRESS_REFRESH_MS = 2000
 # Re-exported for callers that format a folder's status line without a row.
 __all__ = ["SourcesEditor", "describe_source_counts"]

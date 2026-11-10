@@ -1,7 +1,7 @@
 """
 Provides a single, centralized logging setup for the whole application: an INFO-level stream
 to stdout and a size-capped rotating file in the per-user data folder, so a background daemon
-without a visible console still leaves a trail. Does not decide what to log or at what level —
+without a visible console still leaves a trail. Does not decide what to log or at what level,
 callers request a logger and log at the level they choose.
 """
 
@@ -23,7 +23,7 @@ LOG_BACKUP_COUNT = 3
 QUIET_LIBRARIES = ("httpx", "httpcore", "huggingface_hub")
 
 # message/asctime are added to a record by Formatter.format() itself, not present on a fresh
-# record — but with two handlers sharing one record, the first handler's format() call bakes
+# record, but with two handlers sharing one record, the first handler's format() call bakes
 # them into record.__dict__ before the second handler's format() ever runs. Excluding them here
 # explicitly means correctness doesn't depend on which handler runs first.
 _STANDARD_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime"}
@@ -31,7 +31,7 @@ _configured = False
 
 
 class _ContextFormatter(logging.Formatter):
-    """Appends any extra={...} fields from a log call — otherwise they're silently dropped."""
+    """Appends any extra={...} fields from a log call, otherwise they're silently dropped."""
 
     def format(self, record: logging.LogRecord) -> str:
         extras = {k: v for k, v in record.__dict__.items() if k not in _STANDARD_RECORD_ATTRS}

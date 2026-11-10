@@ -108,7 +108,7 @@ def test_require_raises_with_an_actionable_message(store: ConversationStore) -> 
 
 
 def test_create_raises_before_connect(tmp_path: Path) -> None:
-    with pytest.raises(NimbusError, match="call connect"):
+    with pytest.raises(NimbusError, match="Call connect"):
         ConversationStore(tmp_path / "conversations.db").create("hi")
 
 

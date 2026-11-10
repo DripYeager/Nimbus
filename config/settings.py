@@ -1,6 +1,6 @@
 """
 Loads and validates all application configuration. Values come from, in priority order: the
-Settings window's saved JSON file, environment variables, then .env — so a choice made in the
+Settings window's saved JSON file, environment variables, then .env, so a choice made in the
 UI always wins over a developer's .env. Does not contain business logic or write anything;
 saving lives in settings_store.py.
 """
@@ -33,7 +33,7 @@ def _expanded(path: str | Path) -> Path:
 
 
 def _default_sources() -> list[IndexSource]:
-    """Downloads, Desktop and Documents, contents included — what most people mean by 'my files'."""
+    """Downloads, Desktop and Documents, contents included, what most people mean by 'my files'."""
     return [IndexSource(path=_expanded(p)) for p in DEFAULT_SOURCE_DIRS]
 
 
@@ -96,7 +96,7 @@ class Settings(BaseSettings):
 
     @property
     def api_base_url(self) -> str:
-        """The loopback-only base URL every API client should call — never a raw host string."""
+        """The loopback-only base URL every API client should call, never a raw host string."""
         return f"http://127.0.0.1:{self.api_port}"
 
     @property
@@ -113,7 +113,7 @@ class Settings(BaseSettings):
 
     @property
     def is_cloud_provider(self) -> bool:
-        """True when answers are generated off this machine — drives the privacy badge."""
+        """True when answers are generated off this machine, drives the privacy badge."""
         return self.llm_provider in CLOUD_PROVIDERS
 
     @model_validator(mode="before")
@@ -141,7 +141,7 @@ def get_settings() -> Settings:
 
 
 def reload_settings() -> Settings:
-    """Drops the cached Settings and re-reads every source — called after the UI saves a change."""
+    """Drops the cached Settings and re-reads every source, called after the UI saves a change."""
     global _settings
     _settings = None
     return get_settings()

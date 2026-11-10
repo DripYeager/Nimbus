@@ -1,7 +1,8 @@
 """
 The message box at the bottom of the chat: a pill-shaped composer whose border glows like
-charging ki while Nimbus is working, a growing text field, and a round send button. Enter
-sends, Shift+Enter adds a line. Input only — it emits what the user typed and nothing else.
+charging ki while Nimbus is working, a growing text field, and a round button that sends, or
+stops the reply while one is running. Enter sends, Shift+Enter adds a line. Input only; it
+emits what the user asked for and nothing else.
 """
 
 from __future__ import annotations
@@ -21,6 +22,10 @@ FIELD_PADDING_PX = 14
 SEND_BUTTON_SIZE = 38
 SEND_ICON_SIZE = 18
 SPARK_ICON_SIZE = 18
+STOP_ICON_SIZE = 14
+SEND_TIP = "Send (Enter)"
+STOP_TIP = "Stop the reply"
+ELSEWHERE_PLACEHOLDER = "Nimbus is still answering in another chat. You can send once it's done."
 
 
 class _MessageField(QPlainTextEdit):
@@ -37,13 +42,16 @@ class _MessageField(QPlainTextEdit):
 
 
 class ChatInput(AuraFrame):
-    """Emits submitted(text) when the user sends a non-empty message."""
+    """Emits submitted(text) when the user sends a non-empty message, and stop_requested when
+    they press the button while a reply is running."""
 
     submitted = pyqtSignal(str)
+    stop_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._aura: QAbstractAnimation | None = None
+        self._busy = False
         self._field = _MessageField(self)
         self._field.setObjectName("ChatInput")
         self._field.setPlaceholderText(PLACEHOLDER_TEXT)
@@ -55,18 +63,16 @@ class ChatInput(AuraFrame):
         spark.setPixmap(line_pixmap("sparkles", GI_ORANGE, SPARK_ICON_SIZE))
         self._send = QPushButton(self)
         self._send.setObjectName("SendButton")
-        self._send.setIcon(line_icon("arrow-up", TEXT_ON_ORANGE, SEND_ICON_SIZE))
-        self._send.setIconSize(QSize(SEND_ICON_SIZE, SEND_ICON_SIZE))
         self._send.setFixedSize(SEND_BUTTON_SIZE, SEND_BUTTON_SIZE)
         self._send.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._send.setToolTip("Send (Enter)")
-        self._send.clicked.connect(self._submit)
+        self._send.clicked.connect(self._on_button)
         row = QHBoxLayout(self)
         row.setContentsMargins(16, 7, 7, 7)
         row.setSpacing(10)
         row.addWidget(spark, alignment=Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self._field, stretch=1)
         row.addWidget(self._send, alignment=Qt.AlignmentFlag.AlignBottom)
+        self._show_button_mode()
         self._fit_height()
 
     def focus(self) -> None:
@@ -75,9 +81,18 @@ class ChatInput(AuraFrame):
     def set_text(self, text: str) -> None:
         self._field.setPlainText(text)
 
+    def set_answering_elsewhere(self, elsewhere: bool) -> None:
+        """Explains why sending is blocked while a reply runs in a chat that isn't on screen."""
+        self._field.setPlaceholderText(ELSEWHERE_PLACEHOLDER if elsewhere else PLACEHOLDER_TEXT)
+
+    def is_busy(self) -> bool:
+        return self._busy
+
     def set_busy(self, busy: bool) -> None:
-        """While busy: pulse the border glow and block sending another message."""
-        self._send.setEnabled(not busy)
+        """While busy: pulse the border glow, turn the send button into a stop button, and
+        block sending another message (typing ahead is still fine)."""
+        self._busy = busy
+        self._show_button_mode()
         stop_animation(self._aura)
         if busy:
             self._aura = build_aura_animation(self)
@@ -86,9 +101,25 @@ class ChatInput(AuraFrame):
             self._aura = None
             self.glow = 0.0
 
+    def _on_button(self) -> None:
+        if self._busy:
+            self.stop_requested.emit()
+        else:
+            self._submit()
+
+    def _show_button_mode(self) -> None:
+        """An up arrow to send, or a square to stop, like any modern chat app."""
+        if self._busy:
+            self._send.setIcon(line_icon("square", TEXT_ON_ORANGE, STOP_ICON_SIZE))
+            self._send.setIconSize(QSize(STOP_ICON_SIZE, STOP_ICON_SIZE))
+        else:
+            self._send.setIcon(line_icon("arrow-up", TEXT_ON_ORANGE, SEND_ICON_SIZE))
+            self._send.setIconSize(QSize(SEND_ICON_SIZE, SEND_ICON_SIZE))
+        self._send.setToolTip(STOP_TIP if self._busy else SEND_TIP)
+
     def _submit(self) -> None:
         text = self._field.toPlainText().strip()
-        if not text or not self._send.isEnabled():
+        if not text or self._busy:
             return
         self._field.clear()
         self.submitted.emit(text)

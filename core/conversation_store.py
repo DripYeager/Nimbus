@@ -105,7 +105,7 @@ class ConversationStore:
 
     def _connection(self) -> sqlite3.Connection:
         if self._conn is None:
-            raise NimbusError("Chat history isn't open yet — call connect() first.")
+            raise NimbusError("Chat history isn't open yet. Call connect() first.")
         return self._conn
 
 
