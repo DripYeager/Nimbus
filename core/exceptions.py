@@ -62,5 +62,9 @@ class ConversationNotFoundError(NimbusError):
     """A chat ID doesn't exist (any more)."""
 
 
+class StartupError(NimbusError):
+    """Nimbus can't run at all — e.g. its local API couldn't claim its port."""
+
+
 class AutostartError(NimbusError):
     """The Startup-folder shortcut couldn't be created or removed."""

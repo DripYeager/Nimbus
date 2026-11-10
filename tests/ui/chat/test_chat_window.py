@@ -266,3 +266,17 @@ def test_summon_during_dismiss_brings_the_window_back(window: ChatWindow) -> Non
     _finish_animation(window)
 
     assert window.isVisible()
+
+
+def test_switching_pages_never_shifts_the_layout(window: ChatWindow) -> None:
+    """A layout shift in this translucent window left the old header on screen after Back."""
+    assert window._hint.sizePolicy().retainSizeWhenHidden()
+
+
+def test_switching_pages_repaints_the_whole_window(window: ChatWindow, mocker: MockerFixture) -> None:
+    repaint = mocker.patch.object(window, "update")
+
+    window.show_settings()
+    window.show_chat()
+
+    assert repaint.call_count == 2

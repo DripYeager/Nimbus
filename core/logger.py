@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from config.paths import log_dir
 
@@ -63,13 +64,16 @@ def _configure_root_logger() -> None:
     _configured = True
 
 
+def log_file_path() -> Path:
+    """Where the current log file lives, so error messages can point people at it."""
+    return log_dir() / LOG_FILE_NAME
+
+
 def _build_file_handler() -> RotatingFileHandler:
     """Creates the log folder if needed and returns a size-capped rotating handler over nimbus.log."""
-    directory = log_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    return RotatingFileHandler(
-        directory / LOG_FILE_NAME, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8"
-    )
+    path = log_file_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return RotatingFileHandler(path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8")
 
 
 def get_logger(name: str) -> logging.Logger:

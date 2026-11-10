@@ -97,7 +97,7 @@ class Agent:
 
     def _fallback_turn(self, messages: list[ChatMessage], sources: list[SourceRef]) -> Iterator[ChatEvent]:
         """Answers the latest question from retrieved excerpts, without tools."""
-        question = next((m.content for m in reversed(messages) if m.role == "user"), "")
+        question = next(m.content for m in reversed(messages) if m.role == "user")
         tokens, found = self._fallback(question)
         sources.extend(found)
         text = ""

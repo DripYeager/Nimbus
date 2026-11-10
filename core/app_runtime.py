@@ -12,11 +12,13 @@ import threading
 import time
 
 import uvicorn
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 import api.server as server_module
+from config.paths import user_settings_path
 from config.settings import get_settings
-from core.logger import get_logger
+from core.exceptions import StartupError
+from core.logger import get_logger, log_file_path
 from core.service_container import AppServices
 from ui.api_client import ApiClient
 from ui.desktop_shell import DesktopShell
@@ -30,6 +32,7 @@ logger = get_logger(__name__)
 SERVER_START_TIMEOUT_SECONDS = 15.0
 SERVER_POLL_SECONDS = 0.05
 SERVER_JOIN_TIMEOUT_SECONDS = 5.0
+STARTUP_FAILED_EXIT_CODE = 1
 # Lets Windows group the taskbar/tray entries under Nimbus's own icon instead of Python's.
 APP_USER_MODEL_ID = "Nimbus.DesktopAssistant"
 
@@ -52,11 +55,13 @@ class AppRuntime:
             return 0
         try:
             self._start_engine_and_ui()
-        except Exception:
-            # Don't leave the API thread, the watcher or the hotkey running behind a dead process.
+        except Exception as e:
+            # Don't leave the API thread, the watcher or the hotkey running behind a dead process,
+            # and say why — a windowed build has no console, so it would otherwise just vanish.
             logger.exception("Nimbus failed to start")
             self.shutdown()
-            raise
+            _show_startup_error(e)
+            return STARTUP_FAILED_EXIT_CODE
         logger.info("Nimbus started", extra={"port": get_settings().api_port})
         return self._qt_app.exec()
 
@@ -102,10 +107,21 @@ class AppRuntime:
             # Every window talks to the engine through this API, so running on without it would
             # only show a UI where nothing works.
             port = get_settings().api_port
-            logger.error(
-                "The local API didn't start. Check that no other program is using the port.", extra={"port": port}
+            raise StartupError(
+                f"Nimbus's engine couldn't start on port {port}. Another program may be using it; "
+                f'set "api_port" in {user_settings_path()} or close that program, then start Nimbus again.'
             )
-            raise RuntimeError(f"Nimbus's local API couldn't start on port {port}.")
+
+
+def _show_startup_error(error: Exception) -> None:
+    """Tells the user why Nimbus closed, with the log location for anything unexpected."""
+    if isinstance(error, StartupError):
+        message = str(error)
+    else:
+        # Some exceptions carry no message; the class name is still better than a blank.
+        reason = str(error) or type(error).__name__
+        message = f"Nimbus couldn't start: {reason}\n\nDetails are in {log_file_path()}."
+    QMessageBox.critical(None, "Nimbus", message)
 
 
 def _build_qt_app() -> QApplication:

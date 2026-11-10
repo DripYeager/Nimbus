@@ -7,13 +7,10 @@ keyboard shortcuts, status polling) and composes the pieces.
 
 from __future__ import annotations
 
-from functools import partial
-
-from PyQt6.QtCore import QAbstractAnimation, QPoint, QPropertyAnimation, Qt, QTimer
+from PyQt6.QtCore import QAbstractAnimation, QPoint, Qt, QTimer
 from PyQt6.QtGui import QColor, QCursor, QGuiApplication, QKeyEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QGraphicsDropShadowEffect,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QSizeGrip,
@@ -39,7 +36,6 @@ from ui.theme.tokens import (
     CHAT_HEIGHT,
     CHAT_MIN_HEIGHT,
     CHAT_WIDTH,
-    PAGE_SLIDE_MS,
     SHADOW_ALPHA,
     SHADOW_BLUR,
     SHADOW_MARGIN,
@@ -152,23 +148,16 @@ class ChatWindow(QWidget):
         super().keyPressEvent(event)
 
     def _go_to(self, page: int) -> None:
-        """Switches page with a short fade-in, and puts the matching header up."""
+        """Switches page and puts the matching header up.
+
+        This translucent, frameless window doesn't reliably repaint on Windows when its layout
+        shifts or a page carries an opacity effect: the header kept showing the previous page's
+        title after Back. So there's no fade, the footer hint keeps its space when hidden, and
+        the whole window is repainted after every switch."""
         self._header.show_page(PAGE_TITLES.get(page))
-        if self._pages.currentIndex() == page:
-            return
         self._pages.setCurrentIndex(page)
         self._hint.setVisible(page == CHAT_PAGE)
-        target = self._pages.currentWidget()
-        effect = QGraphicsOpacityEffect(target)
-        target.setGraphicsEffect(effect)
-        # Parented to the effect (itself owned by the page), so the fade dies with the page and
-        # can never fire into a widget that has already been destroyed.
-        fade = QPropertyAnimation(effect, b"opacity", effect)
-        fade.setDuration(PAGE_SLIDE_MS)
-        fade.setStartValue(0.0)
-        fade.setEndValue(1.0)
-        fade.finished.connect(partial(target.setGraphicsEffect, None))
-        fade.start()
+        self.update()
 
     def _is_dismissing(self) -> bool:
         return (
@@ -219,6 +208,9 @@ class ChatWindow(QWidget):
 
     def _footer(self, panel: QWidget) -> QHBoxLayout:
         self._hint.setObjectName("FooterHint")
+        policy = self._hint.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        self._hint.setSizePolicy(policy)
         row = QHBoxLayout()
         row.setContentsMargins(24, 0, 6, 6)
         row.addWidget(self._hint)

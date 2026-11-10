@@ -153,3 +153,27 @@ def test_try_answer_falls_through_for_a_compound_request(fast_path: FastPath, ac
 def test_try_answer_falls_through_for_a_question(fast_path: FastPath, actions: Mock) -> None:
     assert fast_path.try_answer("what did the contract say about notice periods?") is None
     actions.best_app_match.assert_not_called()
+
+
+def test_try_answer_find_leaves_out_files_from_unshared_folders(
+    fast_path: FastPath, catalog: Mock, actions: Mock
+) -> None:
+    catalog.search_names.return_value = [_match("C:/Private/report.pdf", 98), _match("C:/Docs/report.pdf", 95)]
+    actions.is_shared.side_effect = lambda path: "Private" not in str(path)
+
+    answer = fast_path.try_answer("find report.pdf")
+
+    assert [s.file_path for s in answer.sources] == ["C:/Docs/report.pdf"]
+
+
+def test_try_answer_find_fills_its_list_with_shared_files_first(
+    fast_path: FastPath, catalog: Mock, actions: Mock
+) -> None:
+    private = [_match(f"C:/Private/report{i}.pdf", 99) for i in range(3)]
+    shared = [_match(f"C:/Docs/report{i}.pdf", 95) for i in range(5)]
+    catalog.search_names.return_value = private + shared
+    actions.is_shared.side_effect = lambda path: "Private" not in str(path)
+
+    answer = fast_path.try_answer("find report.pdf")
+
+    assert len(answer.sources) == 5
