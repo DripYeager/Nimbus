@@ -187,3 +187,31 @@ def test_extract_text_from_image_raises_for_a_broken_file(tmp_path: Path) -> Non
 
     with pytest.raises(ParsingError, match="Couldn't open image"):
         extract_text_from_image(broken)
+
+
+def test_enlarge_small_scales_a_tiny_crop_up() -> None:
+    from core.ocr_fallback import _enlarge_small
+
+    assert _enlarge_small(Image.new("RGB", (195, 105))).size == (195 * 4, 105 * 4)
+
+
+def test_enlarge_small_leaves_a_large_image_alone() -> None:
+    from core.ocr_fallback import _enlarge_small
+
+    assert _enlarge_small(Image.new("RGB", (1200, 800))).size == (1200, 800)
+
+
+@pytest.mark.skipif(not _windows_ocr_available(), reason="Windows has no OCR language installed here")
+def test_extract_text_from_image_reads_a_small_crop_when_asked(tmp_path: Path) -> None:
+    from PIL import ImageDraw, ImageFont
+
+    image = Image.new("RGB", (190, 60), "white")
+    try:
+        font = ImageFont.truetype("arial.ttf", 16)
+    except OSError:
+        font = ImageFont.load_default()
+    ImageDraw.Draw(image).text((8, 20), "Invoice 4821 due", fill="black", font=font)
+    crop = tmp_path / "crop.png"
+    image.save(crop)
+
+    assert "4821" in extract_text_from_image(crop, skip_icons=False)

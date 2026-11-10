@@ -27,6 +27,9 @@ MAX_OCR_PAGES = 40
 RENDER_SCALE = 2.0
 # Smaller than this is an icon or a thumbnail, not something with readable text.
 MIN_IMAGE_SIDE_PX = 200
+# Images whose short side is under this are enlarged (at most MAX_ENLARGE_FACTOR times) first.
+SMALL_IMAGE_SIDE_PX = 600
+MAX_ENLARGE_FACTOR = 4
 
 _engine: OcrEngine | None = None
 _engine_checked = False
@@ -53,21 +56,22 @@ def extract_pages_with_ocr(path: Path) -> list[str]:
         return [_ocr_page(engine, pdf, i) for i in range(min(len(pdf), MAX_OCR_PAGES))]
 
 
-def extract_text_from_image(path: Path) -> str:
-    """OCRs one image file. Returns "" for icons and thumbnails, and when Windows has no OCR
-    language installed."""
+def extract_text_from_image(path: Path, skip_icons: bool = True) -> str:
+    """OCRs one image file. Returns "" when Windows has no OCR language installed, and, with
+    skip_icons, for images too small to be anything but an icon (right for indexing a folder;
+    a screenshot the user boxed on purpose is read however small it is)."""
     try:
         with Image.open(path) as opened:
             image = opened.convert("RGB")
     except (OSError, ValueError, Image.DecompressionBombError) as e:
         raise ParsingError(f"Couldn't open image {path}: {e}") from e
-    if min(image.size) < MIN_IMAGE_SIDE_PX:
+    if skip_icons and min(image.size) < MIN_IMAGE_SIDE_PX:
         return ""
     engine = _get_engine()
     if engine is None:
         return ""
     try:
-        return asyncio.run(_recognize(engine, _fit(image, OcrEngine.max_image_dimension)))
+        return asyncio.run(_recognize(engine, _fit(_enlarge_small(image), OcrEngine.max_image_dimension)))
     except Exception as e:
         raise ParsingError(f"OCR failed on {path}: {e}") from e
 
@@ -98,6 +102,16 @@ def _ocr_page(engine: OcrEngine, pdf: pdfium.PdfDocument, index: int) -> str:
         return asyncio.run(_recognize(engine, _fit(image, OcrEngine.max_image_dimension)))
     except Exception as e:
         raise ParsingError(f"OCR failed on page {index + 1} of {pdf}: {e}") from e
+
+
+def _enlarge_small(image: Image.Image) -> Image.Image:
+    """Scales a small capture up: OCR misses text only a few pixels tall, so a crop of a
+    single line reads far better at two or three times the size."""
+    shortest = min(image.size)
+    if shortest >= SMALL_IMAGE_SIDE_PX:
+        return image
+    factor = min(MAX_ENLARGE_FACTOR, -(-SMALL_IMAGE_SIDE_PX // max(shortest, 1)))
+    return image.resize((image.width * factor, image.height * factor), Image.Resampling.LANCZOS)
 
 
 def _fit(image: Image.Image, max_dimension: int) -> Image.Image:

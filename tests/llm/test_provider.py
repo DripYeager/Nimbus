@@ -19,6 +19,7 @@ def _fake_settings(provider: str) -> SimpleNamespace:
         ollama_host="http://localhost:11434",
         ollama_model="llama3.1:8b",
         ollama_context_tokens=16384,
+        ollama_thinking=False,
         anthropic_model="claude-haiku-5-5",
         openai_model="gpt-5-mini",
         compatible_base_url="https://api.deepinfra.com/v1/openai",

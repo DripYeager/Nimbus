@@ -16,6 +16,11 @@ from llm.provider import LLMProvider
 # A safe word budget per prompt, big enough to avoid pointless map-reduce on a typical
 # document, small enough to fit comfortably in even a locally-hosted model's context window.
 SAFE_PROMPT_WORD_LIMIT = 4000
+# Each part is one model call, which a local model can take a minute over. A 200-page document
+# would otherwise mean dozens of calls and a reply that seems to hang, so a very long document
+# is summarized from this many evenly spaced parts (its start, its end and the middle between).
+MAX_SUMMARY_PARTS = 4
+SAMPLED_NOTE = "\n\n_Summary based on {used} evenly spaced sections of {total}. Ask about a part for detail._"
 NOTHING_TO_SUMMARIZE_MESSAGE = "Nothing to summarize: no text could be extracted."
 
 
@@ -32,13 +37,23 @@ def summarize_document(path: Path, provider: LLMProvider) -> str:
 
 def summarize_text(text: str, provider: LLMProvider) -> str:
     """Summarizes text in one call if it fits the word budget, otherwise summarizes each part
-    and then summarizes the summaries."""
+    (at most MAX_SUMMARY_PARTS of them) and then summarizes the summaries."""
     if not text.strip():
         return NOTHING_TO_SUMMARIZE_MESSAGE
     parts = chunk_text(text, chunk_size=SAFE_PROMPT_WORD_LIMIT, overlap=0)
     if len(parts) <= 1:
         return provider.complete(build_summarize_prompt(text))
-    partial_summaries = [provider.complete(build_summarize_prompt(part)) for part in parts]
+    sampled = _evenly_spaced(parts, MAX_SUMMARY_PARTS)
+    partial_summaries = [provider.complete(build_summarize_prompt(part)) for part in sampled]
+    note = SAMPLED_NOTE.format(used=len(sampled), total=len(parts)) if len(sampled) < len(parts) else ""
     # Each summary is far shorter than its part, so recursing on the joined summaries always
     # converges, and keeps the final prompt inside the word budget for very long documents.
-    return summarize_text("\n\n".join(partial_summaries), provider)
+    return summarize_text("\n\n".join(partial_summaries), provider) + note
+
+
+def _evenly_spaced(parts: list[str], limit: int) -> list[str]:
+    """At most limit parts, always including the first and the last."""
+    if len(parts) <= limit:
+        return parts
+    step = (len(parts) - 1) / (limit - 1)
+    return [parts[round(index * step)] for index in range(limit)]

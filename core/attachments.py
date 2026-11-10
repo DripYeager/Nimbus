@@ -9,8 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.attachment_format import with_attachment
-from core.document_parser import extract_document_text
+from core.document_parser import IMAGE_EXTENSIONS, extract_document_text
 from core.exceptions import ParsingError
+from core.ocr_fallback import extract_text_from_image
 from models.chat import Attachment
 
 MAX_ATTACHMENT_CHARS = 12_000
@@ -29,7 +30,8 @@ def _body(attachment: Attachment) -> str:
         path = Path(attachment.path)
         if not path.is_file():
             raise ParsingError(f"Couldn't find {path}. It may have been moved or deleted.")
-        content = extract_document_text(path)
+        # Attached images skip the indexer's icon filter: a tiny crop is still what the user meant.
+        content = extract_text_from_image(path, skip_icons=False) if _is_image(path) else extract_document_text(path)
     else:
         content = attachment.text or ""
     content = content.strip()
@@ -38,3 +40,7 @@ def _body(attachment: Attachment) -> str:
     if len(content) > MAX_ATTACHMENT_CHARS:
         return content[:MAX_ATTACHMENT_CHARS] + TRUNCATED_NOTE
     return content
+
+
+def _is_image(path: Path) -> bool:
+    return path.suffix.lower() in IMAGE_EXTENSIONS

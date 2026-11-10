@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     # list and one read document overflow it, Ollama silently drops the start, and the model
     # answers with nothing. 16K fits a long document comfortably on an 8B model.
     ollama_context_tokens: int = 16384
+    # Lets thinking models reason before answering: sometimes better, much slower on a laptop.
+    ollama_thinking: bool = False
     openai_model: str = "gpt-5-mini"
     anthropic_model: str = "claude-haiku-5-5"
     compatible_base_url: str = ""
