@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     llm_provider: ProviderName = "ollama"
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
+    # Ollama's own default window is only a few thousand tokens: the system prompt, the tool
+    # list and one read document overflow it, Ollama silently drops the start, and the model
+    # answers with nothing. 16K fits a long document comfortably on an 8B model.
+    ollama_context_tokens: int = 16384
     openai_model: str = "gpt-5-mini"
     anthropic_model: str = "claude-haiku-5-5"
     compatible_base_url: str = ""

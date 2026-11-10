@@ -12,6 +12,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from core.attachment_format import AttachedItem
 from models.chat import Attachment, ChatMessage
 from models.schema import IndexStatus, SourceRef
 from ui.api_client import ApiClient
@@ -67,7 +68,8 @@ class ChatSession(QObject):
         if self._input.is_busy():
             return
         attachment, self._attachment = self._attachment, None
-        self._view.add_user_message(text, (attachment.name,) if attachment else ())
+        attached = (AttachedItem(attachment.name, attachment.path),) if attachment else ()
+        self._view.add_user_message(text, attached)
         self._view.begin_reply()
         self._start_running(self._conversation_id)
         self._stream.send(text, self._conversation_id, attachment)

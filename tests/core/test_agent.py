@@ -8,10 +8,13 @@ import pytest
 from config.settings import get_settings
 from core.agent import (
     CONTEXT_MESSAGES,
+    EMPTY_ANSWER_MESSAGE,
     MAX_TOOL_RESULT_CHARS,
     STEP_LIMIT_MESSAGE,
+    SourceTracker,
     pending_tool_calls,
 )
+from core.attachment_format import with_attachment
 from core.exceptions import ProviderError, ToolsUnsupportedError
 from models.chat import (
     ChatMessage,
@@ -225,3 +228,55 @@ def test_run_saves_the_step_limit_note_in_the_history(registry: ToolRegistry) ->
     list(make_agent(provider, registry).run(messages))
 
     assert messages[-1] == ChatMessage(role="assistant", content=STEP_LIMIT_MESSAGE.strip())
+
+
+def test_run_offers_no_tools_for_a_question_about_an_attachment(registry: ToolRegistry) -> None:
+    provider = ScriptedProvider([[TextDelta(text="It says hello.")]])
+    question = with_attachment("What does this say?", "Screenshot", "hello")
+
+    list(make_agent(provider, registry).run([ChatMessage(role="user", content=question)]))
+
+    assert provider.tools_seen == [[]]
+
+
+def test_run_offers_tools_again_for_a_follow_up_without_one(registry: ToolRegistry) -> None:
+    provider = ScriptedProvider([[TextDelta(text="Sure.")]])
+    messages = [
+        ChatMessage(role="user", content=with_attachment("What does this say?", "Screenshot", "hello")),
+        ChatMessage(role="assistant", content="It says hello."),
+        ChatMessage(role="user", content="Find my resume"),
+    ]
+
+    list(make_agent(provider, registry).run(messages))
+
+    assert provider.tools_seen[0] != []
+
+
+def test_run_says_so_when_the_model_returns_nothing(registry: ToolRegistry) -> None:
+    provider = ScriptedProvider([[]])
+    messages = user_turn()
+
+    events = list(make_agent(provider, registry).run(messages))
+
+    assert tokens_of(events) == EMPTY_ANSWER_MESSAGE
+    assert messages[-1].content == EMPTY_ANSWER_MESSAGE
+
+
+def test_source_tracker_prefers_files_that_were_read() -> None:
+    tracker = SourceTracker()
+    listed = SourceRef(file_name="setup.exe", file_path="C:/Downloads/setup.exe", score=1.0)
+    read = SourceRef(file_name="pilot.pdf", file_path="C:/Downloads/pilot.pdf", score=1.0)
+
+    tracker.add([listed], listing=True)
+    tracker.add([read])
+
+    assert tracker.final() == [read]
+
+
+def test_source_tracker_falls_back_to_listed_files() -> None:
+    tracker = SourceTracker()
+    listed = SourceRef(file_name="setup.exe", file_path="C:/Downloads/setup.exe", score=1.0)
+
+    tracker.add([listed], listing=True)
+
+    assert tracker.final() == [listed]

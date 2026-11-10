@@ -23,6 +23,7 @@ from core.file_catalog import folder_prefix, path_key
 from core.logger import get_logger
 from core.search_query import build_fts_query
 from core.vector_store_sql import (
+    CHUNK_TABLE_COLUMNS,
     SCHEMA,
     SEARCH_SQL,
     TEXT_SEARCH_SQL,
@@ -80,11 +81,14 @@ class VectorStore:
         when it did, so the caller knows every file needs re-indexing."""
         expected = {"schema_version": SCHEMA_VERSION, "embedding_model": embedding_model}
         current = dict(self._read("SELECT key, value FROM meta"))
-        # Chunks with no metadata predate versioning, so they're incompatible too.
-        was_reset = current != expected and (bool(current) or self.count() > 0)
+        # Chunks with no metadata predate versioning, so they're incompatible too. The table's
+        # own columns are checked as well: an index can carry the right version number while
+        # still having an older layout (an earlier upgrade emptied it without rebuilding it).
+        stale_layout = not self._has_current_layout()
+        was_reset = stale_layout or (current != expected and (bool(current) or self.count() > 0))
         if was_reset:
             logger.warning("Index was built differently, rebuilding", extra={"found": current, "expected": expected})
-            self.drop_all()
+            self._rebuild_tables()
         with self._transaction() as conn:
             conn.executemany("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", expected.items())
         return was_reset
@@ -153,6 +157,18 @@ class VectorStore:
         """Removes every chunk of every file below root, for a removed source folder."""
         prefix = folder_prefix(root)
         self._delete("substr(path_key, 1, ?) = ?", (len(prefix), prefix), str(root))
+
+    def _has_current_layout(self) -> bool:
+        """True when the chunks table has every column this version reads and writes."""
+        columns = {row[1] for row in self._read("PRAGMA table_info(chunks)")}
+        return columns >= CHUNK_TABLE_COLUMNS
+
+    def _rebuild_tables(self) -> None:
+        """Drops every table and creates them afresh, so a changed layout really takes effect."""
+        with self._transaction() as conn:
+            for table in ("chunk_vectors", "chunk_fts", "chunks"):
+                conn.execute(f"DROP TABLE IF EXISTS {table}")
+            conn.executescript(SCHEMA)
 
     def drop_all(self) -> None:
         """Empties the index; the next upsert recreates the vector table."""

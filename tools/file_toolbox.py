@@ -178,7 +178,7 @@ def _matches_result(matches: list[CatalogMatch]) -> ToolResult:
         for i, m in enumerate(matches, 1)
     ]
     sources = [source_ref_for_match(m) for m in matches]
-    return ToolResult(content="\n".join(lines), sources=sources)
+    return ToolResult(content="\n".join(lines), sources=sources, listing=True)
 
 
 def _in_folder(parent: Path, folder: str) -> bool:

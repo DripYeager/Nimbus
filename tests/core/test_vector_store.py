@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -321,3 +322,37 @@ def test_search_returns_the_page_a_chunk_came_from(store: VectorStore) -> None:
     [result] = store.search(NORTH, top_k=1)
 
     assert result.page == 12
+
+
+def _old_layout_index(path: Path) -> None:
+    """An index left by the broken upgrade: version 4 in meta, but no page column."""
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE chunks (rowid INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, file_path TEXT NOT NULL, "
+        "path_key TEXT NOT NULL, file_name TEXT NOT NULL, file_type TEXT NOT NULL, content_hash TEXT NOT NULL, "
+        "chunk_index INTEGER NOT NULL, chunk_text TEXT NOT NULL, created_at REAL NOT NULL, "
+        "modified_at REAL NOT NULL, indexed_at REAL NOT NULL);"
+        "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        f"INSERT INTO meta VALUES ('schema_version', '{SCHEMA_VERSION}'), ('embedding_model', 'model-a');"
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_ensure_compatible_rebuilds_a_table_with_an_old_layout(tmp_path: Path) -> None:
+    db = tmp_path / "search.db"
+    _old_layout_index(db)
+    store = VectorStore(db)
+    store.connect()
+
+    was_reset = store.ensure_compatible("model-a")
+    store.upsert_chunks([_chunk("C:/Docs/a.pdf").model_copy(update={"page": 2})])
+
+    assert (was_reset, store.search(NORTH, top_k=1)[0].page) == (True, 2)
+
+
+def test_ensure_compatible_keeps_a_current_index(store: VectorStore) -> None:
+    store.ensure_compatible("model-a")
+    store.upsert_chunks([_chunk("C:/Docs/a.txt")])
+
+    assert (store.ensure_compatible("model-a"), store.count()) == (False, 1)

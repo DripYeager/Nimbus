@@ -62,6 +62,9 @@ class ToolResult(BaseModel):
     content: str
     sources: list[SourceRef] = Field(default_factory=list)
     is_error: bool = False
+    # True when the files were only listed or matched by name, not read. They're shown as
+    # sources only if nothing in the turn was actually read or searched.
+    listing: bool = False
 
 
 class ConversationSummary(BaseModel):

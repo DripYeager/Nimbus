@@ -11,11 +11,14 @@ from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QToolButton, QWidget
 
 from models.chat import Attachment
+from ui.chat.attachment_preview import image_preview
 from ui.theme.line_icons import line_icon
 from ui.theme.tokens import GI_ORANGE, TEXT, TEXT_MUTED
 
 ICON_SIZE = 15
 MAX_SUGGESTIONS = 3
+BAR_PREVIEW_WIDTH = 96
+BAR_PREVIEW_HEIGHT = 54
 SCREENSHOT_NAME = "Screenshot"
 COPIED_TEXT_NAME = "Copied text"
 FILE_SUGGESTIONS = ("Summarize it", "What are the key dates and deadlines?", "Who is mentioned?")
@@ -71,6 +74,9 @@ class AttachmentBar(QWidget):
         if attachment is None:
             self.hide()
             return
+        preview = image_preview(attachment.path, BAR_PREVIEW_WIDTH, BAR_PREVIEW_HEIGHT, self)
+        if preview is not None:
+            self._row.addWidget(preview)
         icon = "scan" if attachment.name == SCREENSHOT_NAME else "paperclip"
         self._chip(attachment.name, icon, "AttachmentPill").setEnabled(False)
         self._row.addWidget(self._close_button("Remove", self.removed))

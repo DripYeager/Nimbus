@@ -25,6 +25,10 @@ CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path_key);
 CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(chunk_text, tokenize='porter unicode61');
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
+# Columns the code relies on; an existing table missing any of them gets rebuilt.
+CHUNK_TABLE_COLUMNS = frozenset(
+    {"id", "file_path", "path_key", "file_name", "file_type", "content_hash", "chunk_index", "chunk_text", "page"}
+)
 # The embedding size is only known once the first chunk arrives, so this table is created then.
 VECTOR_TABLE = (
     "CREATE VIRTUAL TABLE chunk_vectors USING vec0(embedding float[{dim}] distance_metric=cosine, modified_at float)"

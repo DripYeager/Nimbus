@@ -40,7 +40,8 @@ class LLMProvider(Protocol):
 def build_provider(config: ProviderConfig, ollama_host: str | None = None) -> LLMProvider:
     """Builds the concrete provider config describes."""
     if config.name == "ollama":
-        return OllamaProvider(ollama_host or get_settings().ollama_host, config.model)
+        settings = get_settings()
+        return OllamaProvider(ollama_host or settings.ollama_host, config.model, settings.ollama_context_tokens)
     if config.name == "anthropic":
         return AnthropicProvider(config.api_key, config.model)
     if config.name == "openai":

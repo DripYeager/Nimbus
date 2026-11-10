@@ -10,7 +10,7 @@ from __future__ import annotations
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from core.attachment_format import split_attachments
+from core.attachment_format import AttachedItem, split_attachments
 from models.chat import ChatMessage
 from ui.chat.message_cards import ConfirmCard
 from ui.chat.message_widgets import AssistantMessage, UserBubble
@@ -63,7 +63,7 @@ class ConversationColumn(QWidget):
         self._current = None
         self._cards.clear()
 
-    def add_user_message(self, text: str, attachments: tuple[str, ...] = ()) -> None:
+    def add_user_message(self, text: str, attachments: tuple[AttachedItem, ...] = ()) -> None:
         """Shows the user's message and starts a fresh reply slot after it."""
         self.end_reply()
         self._append(UserBubble(text, self, attachments))
@@ -91,8 +91,8 @@ class ConversationColumn(QWidget):
         for message in messages:
             if message.role == "user":
                 # A saved message carries its attachment's full text; show a tag instead.
-                text, names = split_attachments(message.content)
-                self.add_user_message(text, tuple(names))
+                text, items = split_attachments(message.content)
+                self.add_user_message(text, tuple(items))
             elif message.content.strip():
                 self.current_reply.set_text(message.content)
                 self.end_reply()

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from core.attachment_format import split_attachments
+from core.attachment_format import AttachedItem, split_attachments
 from core.attachments import MAX_ATTACHMENT_CHARS, NO_TEXT_NOTE, TRUNCATED_NOTE, attach
 from core.exceptions import ParsingError
 from models.chat import Attachment
@@ -18,7 +18,7 @@ def test_attach_reads_an_attached_file(tmp_path: Path) -> None:
     message = attach("When is the launch?", Attachment(name="notes.txt", path=str(notes)))
 
     assert "The launch moved to May." in message
-    assert split_attachments(message) == ("When is the launch?", ["notes.txt"])
+    assert split_attachments(message) == ("When is the launch?", [AttachedItem("notes.txt", str(notes))])
 
 
 def test_attach_uses_attached_text_as_is() -> None:

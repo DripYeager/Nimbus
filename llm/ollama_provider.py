@@ -26,20 +26,24 @@ OLLAMA_ERRORS = (ollama.RequestError, ollama.ResponseError, ConnectionError, htt
 
 # What Ollama says when a model's template has no tool support.
 TOOLS_UNSUPPORTED_MARKER = "does not support tools"
+DEFAULT_CONTEXT_TOKENS = 16384
 
 
 class OllamaProvider:
     """Implements LLMProvider against a local Ollama server."""
 
-    def __init__(self, host: str, model: str) -> None:
+    def __init__(self, host: str, model: str, context_tokens: int = DEFAULT_CONTEXT_TOKENS) -> None:
         self._host = host
         self._model = model
+        self._options = {"num_ctx": context_tokens}
         self._client = ollama.Client(host=host)
 
     def complete(self, prompt: str) -> str:
         """Sends prompt to Ollama and returns the full response text."""
         try:
-            response = self._client.chat(model=self._model, messages=[{"role": "user", "content": prompt}])
+            response = self._client.chat(
+                model=self._model, messages=[{"role": "user", "content": prompt}], options=self._options
+            )
         except OLLAMA_ERRORS as e:
             raise ProviderError(f"Ollama request failed ({self._model} @ {self._host}): {e}") from e
         return response.message.content or ""
@@ -47,7 +51,9 @@ class OllamaProvider:
     def stream(self, prompt: str) -> Iterator[str]:
         """Sends prompt to Ollama and yields response text as it streams in."""
         try:
-            chunks = self._client.chat(model=self._model, messages=[{"role": "user", "content": prompt}], stream=True)
+            chunks = self._client.chat(
+                model=self._model, messages=[{"role": "user", "content": prompt}], stream=True, options=self._options
+            )
             for chunk in chunks:
                 if chunk.message.content:
                     yield chunk.message.content
@@ -103,6 +109,7 @@ class OllamaProvider:
             "model": self._model,
             "messages": to_ollama_messages(system, messages),
             "stream": True,
+            "options": self._options,
         }
         if tools:
             request["tools"] = to_ollama_tools(tools)

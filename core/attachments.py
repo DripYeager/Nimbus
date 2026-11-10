@@ -20,7 +20,7 @@ NO_TEXT_NOTE = "[No readable text was found in this.]"
 
 def attach(text: str, attachment: Attachment) -> str:
     """The user's message with the attachment's text appended."""
-    return with_attachment(text, attachment.name, _body(attachment))
+    return with_attachment(text, attachment.name, _body(attachment), attachment.path)
 
 
 def _body(attachment: Attachment) -> str:

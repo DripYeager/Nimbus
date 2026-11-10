@@ -12,8 +12,10 @@ from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QDesktopServices, QFont, QFontMetrics, QGuiApplication, QIcon, QResizeEvent
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QTextBrowser, QToolButton, QVBoxLayout, QWidget
 
+from core.attachment_format import AttachedItem
 from models.schema import SourceRef
 from ui.chat.answer_style import remove_dashes
+from ui.chat.attachment_preview import image_preview
 from ui.chat.message_cards import SourceCard, ToolStep
 from ui.chat.thinking_indicator import ThinkingIndicator
 from ui.theme.energy import EnergyOrb
@@ -30,6 +32,8 @@ USER_TEXT_PX = 14
 AVATAR_SIZE = 34
 COPY_ICON_SIZE = 15
 TAG_ICON_SIZE = 13
+BUBBLE_PREVIEW_WIDTH = 260
+BUBBLE_PREVIEW_HEIGHT = 170
 COPIED_FEEDBACK_MS = 1500
 STOPPED_TEXT = "Stopped."
 
@@ -37,7 +41,7 @@ STOPPED_TEXT = "Stopped."
 class UserBubble(QWidget):
     """The user's message, right-aligned in a gi-orange bubble, with a tag for each attachment."""
 
-    def __init__(self, text: str, parent: QWidget | None = None, attachments: tuple[str, ...] = ()) -> None:
+    def __init__(self, text: str, parent: QWidget | None = None, attachments: tuple[AttachedItem, ...] = ()) -> None:
         super().__init__(parent)
         bubble = QFrame(self)
         bubble.setObjectName("UserBubble")
@@ -51,8 +55,11 @@ class UserBubble(QWidget):
         inner = QVBoxLayout(bubble)
         inner.setContentsMargins(16, 10, 16, 10)
         inner.addWidget(label)
-        for name in attachments:
-            inner.addLayout(_attachment_tag(name, bubble))
+        for item in attachments:
+            preview = image_preview(item.path, BUBBLE_PREVIEW_WIDTH, BUBBLE_PREVIEW_HEIGHT, bubble)
+            if preview is not None:
+                inner.addWidget(preview)
+            inner.addLayout(_attachment_tag(item.name, bubble))
         bubble.setMaximumWidth(USER_BUBBLE_MAX_WIDTH)
         row = QHBoxLayout(self)
         row.setContentsMargins(60, 0, 0, 0)

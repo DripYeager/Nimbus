@@ -10,6 +10,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QScrollArea, QStackedWidget, QWidget
 
+from core.attachment_format import AttachedItem
 from models.chat import ChatMessage
 from ui.chat.conversation_column import ConversationColumn
 from ui.chat.empty_state import EmptyState
@@ -61,7 +62,7 @@ class ChatView(QStackedWidget):
         self._column.clear()
         self.setCurrentIndex(WELCOME_PAGE)
 
-    def add_user_message(self, text: str, attachments: tuple[str, ...] = ()) -> None:
+    def add_user_message(self, text: str, attachments: tuple[AttachedItem, ...] = ()) -> None:
         self._column.add_user_message(text, attachments)
 
     def end_reply(self) -> None:
