@@ -16,6 +16,7 @@ from typing import Any
 from models.chat import ToolResult
 from tools.document_writer import (
     DOCUMENT_SUFFIXES,
+    INVALID_NAME_CHARS,
     SPREADSHEET_SUFFIXES,
     unique_path,
     write_document,
@@ -26,20 +27,20 @@ from tools.registry import Tool, ToolRegistry, object_schema, string_param, tool
 
 DEFAULT_OUTPUT_DIR = Path("~/Documents/Nimbus")
 _FOLDER = string_param(
-    "The folder the user asked for: a full path, or a name like Downloads or Desktop\\Reports. "
-    "Leave empty only if they didn't say"
+    "Where to save it, as a path. If the user wants a new folder, put it at the end of the path, "
+    "e.g. Downloads\\LLM Notes makes a new LLM Notes folder inside Downloads. Empty only if they didn't say"
 )
 CREATE_DOCUMENT = tool_spec(
     "create_document",
-    "Create a new text, Markdown or Word file. Write the content as Markdown: # headings, - bullets, "
-    "1. numbered items, **bold**, and | tables |. Word files get real headings, lists and tables.",
+    "Create a new text, Markdown or Word file. A Word document is always .docx. Write the content as "
+    "Markdown: # headings, - bullets, 1. numbered items, **bold**, and | tables |.",
     object_schema(
         {
-            "file_name": string_param("Name with extension: .docx, .txt or .md, e.g. trip-plan.docx"),
+            "file_name": string_param("Name with extension: .docx for Word, .txt or .md, e.g. trip-plan.docx"),
             "content": string_param("The full text, in Markdown"),
             "folder": _FOLDER,
         },
-        ["file_name", "content"],
+        ["file_name", "content", "folder"],
     ),
 )
 CREATE_SPREADSHEET = tool_spec(
@@ -53,7 +54,7 @@ CREATE_SPREADSHEET = tool_spec(
             "sheet_name": string_param("Optional sheet name for Excel"),
             "folder": _FOLDER,
         },
-        ["file_name", "csv"],
+        ["file_name", "csv", "folder"],
     ),
 )
 
@@ -71,14 +72,26 @@ class CreateToolbox:
         registry.register(Tool(CREATE_SPREADSHEET, self.create_spreadsheet, self.describe, True))
 
     def create_document(self, args: dict[str, Any]) -> ToolResult:
-        path = unique_path(self.folder_for(args.get("folder")), str(args["file_name"]), DOCUMENT_SUFFIXES)
+        path = unique_path(self.target_folder(args), str(args["file_name"]), DOCUMENT_SUFFIXES)
         write_document(path, str(args["content"]))
         return _created(path, "")
 
     def create_spreadsheet(self, args: dict[str, Any]) -> ToolResult:
-        path = unique_path(self.folder_for(args.get("folder")), str(args["file_name"]), SPREADSHEET_SUFFIXES)
+        path = unique_path(self.target_folder(args), str(args["file_name"]), SPREADSHEET_SUFFIXES)
         rows = write_spreadsheet(path, str(args["csv"]), str(args.get("sheet_name") or "Sheet1"))
         return _created(path, f" with {rows} row{'' if rows == 1 else 's'}")
+
+    def target_folder(self, args: dict[str, Any]) -> Path:
+        """The asked-for folder. The schema asks for any new folder as the end of that path, which
+        small models get right far more often than a separate field; a new_folder some models
+        still send is honoured too."""
+        base = self.folder_for(args.get("folder"))
+        # One plain folder name only: separators and reserved characters can't smuggle in a path.
+        name = INVALID_NAME_CHARS.sub("", str(args.get("new_folder") or "")).strip().strip(".")
+        # Models often name the new folder in both fields; that means one folder, not two.
+        if not name or base.name.lower() == name.lower():
+            return base
+        return base / name
 
     def folder_for(self, requested: object) -> Path:
         """Where the file goes. A full path is used as is (created if missing). A name is looked
@@ -95,7 +108,7 @@ class CreateToolbox:
 
     def describe(self, args: dict[str, Any]) -> str:
         """What the approval card says: the exact folder, so nothing lands somewhere unexpected."""
-        return f"Create “{args.get('file_name', 'a file')}” in {self.folder_for(args.get('folder'))}"
+        return f"Create “{args.get('file_name', 'a file')}” in {self.target_folder(args)}"
 
 
 def _created(path: Path, detail: str) -> ToolResult:

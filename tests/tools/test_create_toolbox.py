@@ -76,3 +76,29 @@ def test_register_adds_both_tools_behind_approval(toolbox: CreateToolbox) -> Non
 
     tools = [registry.get(name) for name in ("create_document", "create_spreadsheet")]
     assert all(tool is not None and tool.requires_confirmation for tool in tools)
+
+
+def test_create_document_makes_the_new_folder_inside_the_asked_one(toolbox: CreateToolbox, home: Path) -> None:
+    toolbox.create_document(
+        {"file_name": "llm.docx", "content": "LLMs are...", "folder": "Downloads", "new_folder": "LLM Notes"}
+    )
+
+    assert (home / "Downloads" / "LLM Notes" / "llm.docx").exists()
+
+
+def test_target_folder_keeps_a_new_folder_to_one_plain_name(toolbox: CreateToolbox, home: Path) -> None:
+    folder = toolbox.target_folder({"folder": "Downloads", "new_folder": r"..\..\Windows"})
+
+    assert folder == (home / "Downloads").resolve() / "Windows"
+
+
+def test_describe_shows_the_new_folder_on_the_approval_card(toolbox: CreateToolbox, home: Path) -> None:
+    text = toolbox.describe({"file_name": "llm.docx", "folder": "Downloads", "new_folder": "LLM Notes"})
+
+    assert text.endswith(str((home / "Downloads").resolve() / "LLM Notes"))
+
+
+def test_target_folder_does_not_double_a_folder_named_in_both_fields(toolbox: CreateToolbox, home: Path) -> None:
+    folder = toolbox.target_folder({"folder": r"Downloads\LLM Notes", "new_folder": "LLM Notes"})
+
+    assert folder == (home / "Downloads" / "LLM Notes").resolve()
