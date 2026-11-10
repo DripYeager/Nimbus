@@ -79,7 +79,8 @@ class CreateToolbox:
     def create_spreadsheet(self, args: dict[str, Any]) -> ToolResult:
         path = unique_path(self.target_folder(args), str(args["file_name"]), SPREADSHEET_SUFFIXES)
         rows = write_spreadsheet(path, str(args["csv"]), str(args.get("sheet_name") or "Sheet1"))
-        return _created(path, f" with {rows} row{'' if rows == 1 else 's'}")
+        detail = "" if rows == 0 else f" with {rows} row{'' if rows == 1 else 's'}"
+        return _created(path, detail)
 
     def target_folder(self, args: dict[str, Any]) -> Path:
         """The asked-for folder. The schema asks for any new folder as the end of that path, which
@@ -96,15 +97,31 @@ class CreateToolbox:
     def folder_for(self, requested: object) -> Path:
         """Where the file goes. A full path is used as is (created if missing). A name is looked
         up under the home folder first ("Downloads"), then inside each shared folder
-        ("Reports" in Documents), and is otherwise created under the home folder."""
+        ("Reports" in Documents), and is otherwise created under the home folder.
+
+        A path can name a folder that doesn't exist yet ("Reports\\Notes"). The longest prefix
+        that does exist decides the root, so Notes is created inside the shared Reports folder
+        rather than a new Reports folder in the home directory."""
         text = str(requested or "").strip()
         if not text:
             return self._output_dir
         raw = Path(text).expanduser()
         if raw.is_absolute():
             return raw.resolve()
-        candidates = [Path.home() / raw, *(root / raw for root in self._shared_roots())]
-        return next((c.resolve() for c in candidates if c.is_dir()), (Path.home() / raw).resolve())
+        # ".." would let a relative path climb out of the folder the user named.
+        parts = [part for part in raw.parts if part not in (".", "..")]
+        if not parts:
+            return self._output_dir
+        best: tuple[int, Path] | None = None
+        for root in (Path.home(), *self._shared_roots()):
+            for length in range(len(parts), 0, -1):
+                if (root / Path(*parts[:length])).is_dir():
+                    # Equal-length matches keep the earlier root, so the home folder wins a tie.
+                    if best is None or length > best[0]:
+                        best = (length, root)
+                    break
+        base = best[1] if best is not None else Path.home()
+        return (base / Path(*parts)).resolve()
 
     def describe(self, args: dict[str, Any]) -> str:
         """What the approval card says: the exact folder, so nothing lands somewhere unexpected."""

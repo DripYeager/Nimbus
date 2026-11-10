@@ -49,6 +49,14 @@ def test_folder_for_creates_an_unknown_name_under_home(toolbox: CreateToolbox, h
     assert toolbox.folder_for("Trips") == (home / "Trips").resolve()
 
 
+def test_folder_for_creates_a_new_subfolder_inside_the_shared_folder(toolbox: CreateToolbox, shared: Path) -> None:
+    assert toolbox.folder_for(r"Reports\Notes") == (shared / "Reports" / "Notes").resolve()
+
+
+def test_folder_for_does_not_climb_out_of_the_named_folder(toolbox: CreateToolbox, home: Path) -> None:
+    assert toolbox.folder_for(r"Downloads\..\Windows") == (home / "Downloads" / "Windows").resolve()
+
+
 def test_create_document_saves_in_the_asked_folder(toolbox: CreateToolbox, home: Path) -> None:
     result = toolbox.create_document({"file_name": "plan.docx", "content": "# Plan", "folder": "Downloads"})
 

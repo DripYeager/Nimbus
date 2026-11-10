@@ -32,8 +32,18 @@ TABLE_ROW = re.compile(r"^\s*\|(.*)\|\s*$")
 TABLE_RULE = re.compile(r"^[\s|:-]+$")
 BOLD = re.compile(r"(\*\*[^*]+\*\*)")
 NUMBER = re.compile(r"^-?\d+(\.\d+)?$")
+LEADING_ZERO = re.compile(r"^-?0\d")
+# Excel keeps 15 significant digits; a longer card number or ID would be silently rounded.
+MAX_EXACT_DIGITS = 15
+# "1,200.50" is one number; "1,2" is not, so only groups of three digits count as separators.
+THOUSANDS = re.compile(r"^-?\d{1,3}(,\d{3})+(\.\d+)?$")
+# Windows refuses to create a file whose name is one of these, with any extension.
+WINDOWS_DEVICES = frozenset(
+    {"con", "prn", "aux", "nul", *(f"com{n}" for n in range(1, 10)), *(f"lpt{n}" for n in range(1, 10))}
+)
 HEADER_FILL = PatternFill("solid", fgColor="FFE0B3")
 MAX_COLUMN_WIDTH = 60
+MAX_SHEET_TITLE = 31
 
 
 def unique_path(folder: Path, file_name: str, allowed: frozenset[str]) -> Path:
@@ -44,12 +54,17 @@ def unique_path(folder: Path, file_name: str, allowed: frozenset[str]) -> Path:
         raise ToolError("The file needs a name, like trip-plan.docx.")
     if suffix not in allowed:
         raise ToolError(f"Can't create a {suffix or 'nameless'} file here. Use one of: {', '.join(sorted(allowed))}.")
+    if stem.lower() in WINDOWS_DEVICES:
+        # "nul.txt" can't be created at all; a trailing underscore makes it an ordinary name.
+        stem = f"{stem}_"
     candidate = folder / f"{stem}{suffix}"
-    for copy in range(2, MAX_COPIES):
-        if not candidate.exists():
-            return candidate
+    copy = 2
+    while candidate.exists():
+        if copy > MAX_COPIES:
+            raise ToolError(f"Too many files named {stem}{suffix} in {folder}.")
         candidate = folder / f"{stem} ({copy}){suffix}"
-    raise ToolError(f"Too many files named {stem}{suffix} in {folder}.")
+        copy += 1
+    return candidate
 
 
 def write_document(path: Path, content: str) -> None:
@@ -102,7 +117,8 @@ def _add_line(document: DocxDocument, line: str) -> None:
     if not line.strip():
         return
     if heading := HEADING.match(line):
-        document.add_heading(heading.group(2).strip(), level=len(heading.group(1)))
+        paragraph = document.add_heading(level=len(heading.group(1)))
+        _add_runs(paragraph, heading.group(2).strip())
     elif bullet := BULLET.match(line):
         _add_runs(document.add_paragraph(style="List Bullet"), bullet.group(1))
     elif numbered := NUMBERED.match(line):
@@ -127,19 +143,25 @@ def _add_table(document: DocxDocument, lines: list[str], start: int) -> int:
         if not TABLE_RULE.match(lines[index]):
             rows.append([cell.strip() for cell in match.group(1).split("|")])
         index += 1
+    if not rows:
+        # A separator line on its own ("|---|") is not a table; skip it instead of crashing.
+        return index
     width = max(len(row) for row in rows)
     table = document.add_table(rows=len(rows), cols=width, style="Table Grid")
     for row_index, row in enumerate(rows):
         for column, value in enumerate(row):
-            run = table.cell(row_index, column).paragraphs[0].add_run(value)
-            run.bold = row_index == 0
+            paragraph = table.cell(row_index, column).paragraphs[0]
+            _add_runs(paragraph, value)
+            if row_index == 0:
+                for run in paragraph.runs:
+                    run.bold = True
     return index
 
 
 def _save_xlsx(path: Path, rows: list[list[str]], sheet_name: str) -> None:
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = INVALID_NAME_CHARS.sub("", sheet_name)[:31] or "Sheet1"
+    sheet.title = _sheet_title(sheet_name)
     for row in rows:
         sheet.append([_cell_value(value) for value in row])
     for cell in sheet[1]:
@@ -153,9 +175,26 @@ def _save_xlsx(path: Path, rows: list[list[str]], sheet_name: str) -> None:
     workbook.save(str(path))
 
 
+def _sheet_title(name: str) -> str:
+    """A sheet name Excel will accept. Brackets and a leading apostrophe are legal in a file
+    name but not in a sheet title, and "History" is reserved."""
+    cleaned = INVALID_NAME_CHARS.sub("", name).replace("[", "").replace("]", "")
+    # Strip again after cutting: the cut can leave an apostrophe at the end.
+    cleaned = cleaned.strip().strip("'")[:MAX_SHEET_TITLE].strip().strip("'")
+    if not cleaned or cleaned.lower() == "history":
+        return "Sheet1"
+    return cleaned
+
+
 def _cell_value(value: str) -> str | int | float:
-    """Numbers become real numbers so Excel can sum and sort them; everything else stays text."""
-    cleaned = value.strip().replace(",", "")
-    if NUMBER.match(cleaned):
-        return float(cleaned) if "." in cleaned else int(cleaned)
+    """Numbers become real numbers so Excel can sum and sort them; everything else stays text.
+    Commas count only as thousands separators ("1,200"), so a value like "1,2" stays text."""
+    text = value.strip()
+    if THOUSANDS.match(text):
+        text = text.replace(",", "")
+    # "007", a zip code or an employee ID would lose its leading zeros as a number.
+    if LEADING_ZERO.match(text) or sum(char.isdigit() for char in text) > MAX_EXACT_DIGITS:
+        return value.strip()
+    if NUMBER.match(text):
+        return float(text) if "." in text else int(text)
     return value.strip()

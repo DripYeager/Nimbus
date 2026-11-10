@@ -47,6 +47,9 @@ class ChatSession(QObject):
         # A conversation taken off screen while it was running (or still waiting on a card).
         self._set_aside: ConversationColumn | None = None
         self._set_aside_id: str | None = None
+        # Bumped whenever the on-screen chat changes, so a history load that finishes late
+        # can't paint itself over the chat the user has since switched to.
+        self._shown_generation = 0
 
     def connect_signals(self) -> None:
         """Wires the input, the welcome chips and the stream to this session."""
@@ -80,6 +83,7 @@ class ChatSession(QObject):
         """Shows the welcome state for a new conversation; a running reply carries on."""
         self._leave_current()
         self._conversation_id = None
+        self._invalidate_pending_load()
 
     def open_conversation(self, conversation_id: str) -> None:
         """Shows a chat: the running one straight from memory, any other loaded from disk."""
@@ -88,14 +92,41 @@ class ChatSession(QObject):
             self._set_aside, self._set_aside_id = None, None
             self._input.set_answering_elsewhere(False)
             self._conversation_id = conversation_id
+            self._invalidate_pending_load()
+            return
+        if conversation_id == self._running_id and self._view.column is self._running:
+            # Already on screen and still answering; reloading would hide the live reply.
             return
         self._leave_current()
+        # Set before the load returns, so a message typed while it is in flight joins this chat
+        # and not the one that was on screen before.
+        self._conversation_id = conversation_id
+        generation = self._invalidate_pending_load()
+        column = self._view.column
 
         def _show(messages: list[ChatMessage]) -> None:
-            self._conversation_id = conversation_id
-            self._view.load_history(messages)
+            if generation != self._shown_generation:
+                return
+            if column.has_messages():
+                # The user sent something while this loaded: keep it, with the history above.
+                column.insert_history(messages)
+            else:
+                self._view.load_history(messages)
 
-        run_in_background(lambda: self._api.conversation(conversation_id), _show, self._show_load_error)
+        def _error(message: str) -> None:
+            if generation != self._shown_generation:
+                return
+            # The chat can't be opened (deleted, say), so don't keep sending into it.
+            if self._conversation_id == conversation_id:
+                self._conversation_id = None
+            self._show_load_error(message)
+
+        run_in_background(lambda: self._api.conversation(conversation_id), _show, _error)
+
+    def _invalidate_pending_load(self) -> int:
+        """Drops whichever history load is in flight; returns the new generation."""
+        self._shown_generation += 1
+        return self._shown_generation
 
     def stop(self) -> None:
         """The stop button: ends the running reply and keeps what it had written so far. Closing

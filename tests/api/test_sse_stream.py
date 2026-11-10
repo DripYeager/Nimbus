@@ -104,3 +104,16 @@ def test_stream_sse_stops_the_assistant_when_the_reader_leaves() -> None:
     frames.close()
 
     assert closed.wait(timeout=2)
+
+
+def test_stream_sse_still_ends_when_closing_the_assistant_fails() -> None:
+    class BrokenClose:
+        def __iter__(self) -> Iterator[ChatEvent]:
+            return iter([ChatDone(used_llm=True, elapsed_ms=1)])
+
+        def close(self) -> None:
+            raise RuntimeError("saving the turn failed")
+
+    frames = list(stream_sse(BrokenClose(), heartbeat_seconds=0.05))  # type: ignore[arg-type]
+
+    assert frames[-1].startswith("event: done")

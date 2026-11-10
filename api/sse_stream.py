@@ -83,7 +83,11 @@ def _produce(events: Iterator[ChatEvent], frames: queue.Queue[object], stop: thr
     finally:
         close = getattr(events, "close", None)
         if close is not None:
-            close()
+            try:
+                close()
+            except Exception:
+                # The reader is still blocked on the queue until the sentinel below arrives.
+                logger.exception("Couldn't close the chat stream")
         frames.put(_END_OF_STREAM)
 
 

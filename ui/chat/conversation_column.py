@@ -97,6 +97,19 @@ class ConversationColumn(QWidget):
                 self.current_reply.set_text(message.content)
                 self.end_reply()
 
+    def insert_history(self, messages: list[ChatMessage]) -> None:
+        """Puts a saved conversation above what's already shown: a message the user sent while
+        the history was still loading, and its (possibly still streaming) reply."""
+        shown = [self._layout.takeAt(0).widget() for _ in range(self._layout.count() - 1)]
+        current, cards = self._current, list(self._cards)
+        self._current = None
+        self.load_history(messages)
+        for widget in shown:
+            if widget is not None:
+                self._layout.insertWidget(self._layout.count() - 1, widget)
+        self._current = current
+        self._cards.extend(cards)
+
     def _append(self, widget: QWidget) -> None:
         """Adds widget above the bottom stretch."""
         self._layout.insertWidget(self._layout.count() - 1, widget)

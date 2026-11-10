@@ -36,6 +36,17 @@ def test_unique_path_keeps_a_free_name(tmp_path: Path) -> None:
     assert unique_path(tmp_path, "plan.docx", DOCUMENT_SUFFIXES) == tmp_path / "plan.docx"
 
 
+def test_unique_path_uses_the_last_free_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("tools.document_writer.MAX_COPIES", 2)
+    (tmp_path / "plan.docx").write_bytes(b"mine")
+
+    assert unique_path(tmp_path, "plan.docx", DOCUMENT_SUFFIXES) == tmp_path / "plan (2).docx"
+
+
+def test_unique_path_renames_a_windows_device_name(tmp_path: Path) -> None:
+    assert unique_path(tmp_path, "nul.txt", DOCUMENT_SUFFIXES).name == "nul_.txt"
+
+
 def test_unique_path_never_reuses_an_existing_file(tmp_path: Path) -> None:
     (tmp_path / "plan.docx").write_bytes(b"mine")
     (tmp_path / "plan (2).docx").write_bytes(b"mine too")
@@ -103,6 +114,62 @@ def test_write_spreadsheet_writes_csv(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8-sig").splitlines() == ["Item,Cost", "Hotel,4500"]
 
 
+def test_write_document_makes_bold_text_inside_a_heading(tmp_path: Path) -> None:
+    path = tmp_path / "trip.docx"
+
+    write_document(path, "# Pack **this**")
+
+    runs = [run for run in Document(str(path)).paragraphs[0].runs if run.text]
+    assert [(run.text, bool(run.bold)) for run in runs] == [("Pack ", False), ("this", True)]
+
+
+def test_write_document_ignores_a_separator_line_that_is_not_a_table(tmp_path: Path) -> None:
+    path = tmp_path / "notes.docx"
+
+    write_document(path, "Hello\n|---|\nThere")
+
+    document = Document(str(path))
+    assert document.tables == []
+    assert [paragraph.text for paragraph in document.paragraphs if paragraph.text] == ["Hello", "There"]
+
+
+def test_write_spreadsheet_keeps_a_short_comma_as_text_and_cleans_the_sheet_name(tmp_path: Path) -> None:
+    path = tmp_path / "codes.xlsx"
+
+    write_spreadsheet(path, 'Code\n"1,2"', "Q1 [draft]")
+
+    sheet = load_workbook(path).active
+    assert sheet.title == "Q1 draft"
+    assert sheet["A2"].value == "1,2"
+
+
 def test_write_spreadsheet_refuses_an_empty_table(tmp_path: Path) -> None:
     with pytest.raises(ToolError, match="no rows"):
         write_spreadsheet(tmp_path / "empty.xlsx", "  \n ")
+
+
+def test_write_spreadsheet_keeps_leading_zeros_as_text(tmp_path: Path) -> None:
+    path = tmp_path / "ids.xlsx"
+
+    write_spreadsheet(path, "Id,Zip,Price\n007,02134,0.5")
+
+    sheet = load_workbook(path).active
+    assert [sheet["A2"].value, sheet["B2"].value, sheet["C2"].value] == ["007", "02134", 0.5]
+
+
+def test_write_spreadsheet_keeps_long_card_numbers_exact(tmp_path: Path) -> None:
+    path = tmp_path / "cards.xlsx"
+
+    write_spreadsheet(path, "Card,Amount\n4111111111111111111,1,200")
+
+    sheet = load_workbook(path).active
+    assert sheet["A2"].value == "4111111111111111111"
+
+
+def test_write_spreadsheet_never_ends_a_sheet_name_in_an_apostrophe(tmp_path: Path) -> None:
+    path = tmp_path / "named.xlsx"
+    name = "a" * 30 + "'b"
+
+    write_spreadsheet(path, "x\n1", name)
+
+    assert not load_workbook(path).active.title.endswith("'")

@@ -17,7 +17,7 @@ from ui.chat.chat_session import STILL_LEARNING_ID, ChatSession
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
 from ui.chat.message_cards import ConfirmCard, SourceCard
-from ui.chat.message_widgets import STOPPED_TEXT, AssistantMessage
+from ui.chat.message_widgets import STOPPED_TEXT, AssistantMessage, UserBubble
 from ui.theme.tokens import PLACEHOLDER_TEXT
 
 
@@ -345,6 +345,32 @@ def test_open_conversation_loads_and_continues_it(
     stream.send.assert_called_once_with("more", "c5", None)
 
 
+def test_a_late_history_load_does_not_replace_the_chat_opened_after_it(
+    session: ChatSession, mocker: MockerFixture, view: ChatView
+) -> None:
+    pending: list[Any] = []
+    mocker.patch("ui.chat.chat_session.run_in_background", side_effect=lambda _fn, ok, _err=None: pending.append(ok))
+
+    session.open_conversation("old")
+    session.open_conversation("new")
+    pending[1]([ChatMessage(role="user", content="the new one")])
+    pending[0]([ChatMessage(role="user", content="the old one")])
+
+    shown = [label.text() for label in view.findChildren(QLabel) if label.objectName() == "UserText"]
+    assert (session._conversation_id, shown) == ("new", ["the new one"])
+
+
+def test_a_message_sent_while_history_loads_joins_that_chat(
+    session: ChatSession, mocker: MockerFixture, stream: Mock
+) -> None:
+    mocker.patch("ui.chat.chat_session.run_in_background", lambda *_args, **_kwargs: None)
+
+    session.open_conversation("c5")
+    session.send("more")
+
+    stream.send.assert_called_once_with("more", "c5", None)
+
+
 def test_open_conversation_shows_a_load_error(session: ChatSession, view: ChatView, api: Mock) -> None:
     api.conversation.side_effect = NimbusError("Chat not found")
 
@@ -437,3 +463,43 @@ def test_send_tells_the_bar_the_attachment_was_used(session: ChatSession) -> Non
     session.send("Translate this")
 
     assert changes[-1] is None
+
+
+def test_a_failed_history_load_does_not_keep_sending_into_that_chat(
+    session: ChatSession, api: Mock, stream: Mock
+) -> None:
+    api.conversation.side_effect = NimbusError("Chat not found")
+    session.open_conversation("gone")
+
+    session.send("hello")
+
+    stream.send.assert_called_once_with("hello", None, None)
+
+
+def test_opening_the_running_chat_while_it_is_on_screen_keeps_the_live_reply(
+    session: ChatSession, view: ChatView, api: Mock
+) -> None:
+    session.send("hi")
+    session._handle_event("started", _started("c1"))
+    live = view.column
+
+    session.open_conversation("c1")
+
+    assert view.column is live
+    api.conversation.assert_not_called()
+
+
+def test_history_that_loads_after_a_message_was_sent_goes_above_it(
+    session: ChatSession, mocker: MockerFixture, view: ChatView
+) -> None:
+    pending: list[Any] = []
+    mocker.patch("ui.chat.chat_session.run_in_background", side_effect=lambda _fn, ok, _err=None: pending.append(ok))
+    session.open_conversation("c5")
+    session.send("newer question")
+
+    pending[0]([ChatMessage(role="user", content="older question")])
+
+    layout = view.column._layout
+    widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
+    texts = [w.findChild(QLabel, "UserText").text() for w in widgets if isinstance(w, UserBubble)]
+    assert texts == ["older question", "newer question"]
