@@ -7,10 +7,8 @@ description and a local/cloud badge. Owns showing and picking a provider; what a
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QButtonGroup,
-    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -36,8 +34,6 @@ LOCAL_BADGE_TEXT = "Local · private"
 CLOUD_BADGE_TEXT = "Cloud"
 GRID_COLUMNS = 2
 CARD_MIN_HEIGHT = 112
-GLOW_BLUR = 28
-GLOW_ALPHA = 110
 
 
 def _badge(is_local: bool) -> QLabel:
@@ -45,17 +41,6 @@ def _badge(is_local: bool) -> QLabel:
     badge.setObjectName("Badge")
     badge.setProperty("tone", "local" if is_local else "cloud")
     return badge
-
-
-def _glow() -> QGraphicsDropShadowEffect:
-    """The soft orange halo around the selected card."""
-    color = QColor(GI_ORANGE)
-    color.setAlpha(GLOW_ALPHA)
-    effect = QGraphicsDropShadowEffect()
-    effect.setBlurRadius(GLOW_BLUR)
-    effect.setOffset(0, 0)
-    effect.setColor(color)
-    return effect
 
 
 class _ProviderCard(QPushButton):
@@ -67,11 +52,9 @@ class _ProviderCard(QPushButton):
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMinimumHeight(CARD_MIN_HEIGHT)
-        self._glow = _glow()
-        self._glow.setEnabled(False)
-        self.setGraphicsEffect(self._glow)
+        # The selected card is marked by its orange border (the stylesheet's :checked rule). A
+        # glow effect here would make the translucent window repaint slowly and leave it stale.
         self._build_layout(provider)
-        self.toggled.connect(self._glow.setEnabled)
 
     def _build_layout(self, provider: ProviderName) -> None:
         """Icon and badge on top, then the name and its description."""

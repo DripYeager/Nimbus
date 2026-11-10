@@ -8,9 +8,8 @@ keyboard shortcuts, status polling) and composes the pieces.
 from __future__ import annotations
 
 from PyQt6.QtCore import QAbstractAnimation, QPoint, Qt, QTimer
-from PyQt6.QtGui import QColor, QCursor, QGuiApplication, QKeyEvent, QKeySequence, QShortcut
+from PyQt6.QtGui import QCursor, QGuiApplication, QKeyEvent, QKeySequence, QPainter, QPaintEvent, QShortcut
 from PyQt6.QtWidgets import (
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QSizeGrip,
@@ -32,12 +31,12 @@ from ui.settings.settings_panel import SettingsPanel
 from ui.theme.backdrop import NightBackdrop
 from ui.theme.icons import app_icon
 from ui.theme.motion import build_dismiss_animation, build_summon_animation, stop_animation
+from ui.theme.soft_shadow import SoftShadow
 from ui.theme.tokens import (
     CHAT_HEIGHT,
     CHAT_MIN_HEIGHT,
     CHAT_WIDTH,
-    SHADOW_ALPHA,
-    SHADOW_BLUR,
+    RADIUS_WINDOW,
     SHADOW_MARGIN,
 )
 
@@ -64,6 +63,8 @@ class ChatWindow(QWidget):
         self._input = ChatInput()
         self._hint = QLabel(FOOTER_TEXT)
         self._pages = QStackedWidget()
+        self._panel = NightBackdrop(self)
+        self._shadow = SoftShadow(RADIUS_WINDOW)
         self._session = ChatSession(self._view, self._input, api, ChatStream())
 
     def setup(self) -> None:
@@ -151,13 +152,20 @@ class ChatWindow(QWidget):
         """Switches page and puts the matching header up.
 
         This translucent, frameless window doesn't reliably repaint on Windows when its layout
-        shifts or a page carries an opacity effect: the header kept showing the previous page's
-        title after Back. So there's no fade, the footer hint keeps its space when hidden, and
-        the whole window is repainted after every switch."""
+        shifts or something in it uses a graphics effect: the header kept showing the previous
+        page's title after Back. So nothing in the window uses one (shadows and glows are
+        painted by hand), there's no fade, the footer hint keeps its space when hidden, and the
+        whole window is repainted after every switch."""
         self._header.show_page(PAGE_TITLES.get(page))
         self._pages.setCurrentIndex(page)
         self._hint.setVisible(page == CHAT_PAGE)
         self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """The soft shadow in the transparent margin around the panel."""
+        painter = QPainter(self)
+        self._shadow.paint(painter, self.size(), self._panel.geometry())
+        painter.end()
 
     def _is_dismissing(self) -> bool:
         return (
@@ -177,13 +185,9 @@ class ChatWindow(QWidget):
         self.setMinimumHeight(CHAT_MIN_HEIGHT + 2 * SHADOW_MARGIN)
 
     def _build_layout(self) -> None:
-        """Backdrop with a soft shadow: header on top, the pages, and a slim footer."""
-        panel = NightBackdrop(self)
-        shadow = QGraphicsDropShadowEffect(panel)
-        shadow.setBlurRadius(SHADOW_BLUR)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QColor(0, 0, 0, SHADOW_ALPHA))
-        panel.setGraphicsEffect(shadow)
+        """The night panel (its shadow is painted by paintEvent): header on top, the pages, and
+        a slim footer."""
+        panel = self._panel
         outer = QVBoxLayout(self)
         outer.setContentsMargins(SHADOW_MARGIN, SHADOW_MARGIN, SHADOW_MARGIN, SHADOW_MARGIN)
         outer.addWidget(panel)

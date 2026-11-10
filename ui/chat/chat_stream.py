@@ -21,6 +21,9 @@ logger = get_logger(__name__)
 
 CONNECT_TIMEOUT_SECONDS = 5.0
 UNREACHABLE_MESSAGE = "Couldn't reach Nimbus's engine. Try restarting Nimbus from the tray."
+# The engine sends a heartbeat every few seconds while a model thinks, so a read timeout means
+# the engine itself went quiet, not that the model is merely slow.
+STALLED_MESSAGE = "Nimbus's engine stopped responding. Try again, or restart Nimbus from the tray."
 
 
 class ChatStream(QObject):
@@ -139,7 +142,7 @@ def _api_error_text(response: httpx.Response) -> str:
 def _message_for(error: Exception) -> str:
     """A friendly line for the most common failures."""
     if isinstance(error, httpx.ReadTimeout):
-        return "The model took too long to answer. A smaller model or a cloud provider may be faster."
+        return STALLED_MESSAGE
     if isinstance(error, _EngineError):
         return str(error)
     if isinstance(error, ValueError):

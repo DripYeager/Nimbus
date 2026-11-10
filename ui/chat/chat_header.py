@@ -11,7 +11,6 @@ from __future__ import annotations
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QMouseEvent
 from PyQt6.QtWidgets import (
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QStackedWidget,
@@ -24,6 +23,7 @@ from models.schema import IndexStatus
 from ui.status_text import describe_status
 from ui.theme.energy import PowerLevelReadout
 from ui.theme.fonts import use_display_font
+from ui.theme.glow_label import GlowLabel
 from ui.theme.line_icons import line_icon
 from ui.theme.painting import CloudGlyph, SkyHeader
 from ui.theme.tokens import HEADER_HEIGHT
@@ -31,6 +31,8 @@ from ui.theme.tokens import HEADER_HEIGHT
 LOGO_SIZE = 44
 ICON_SIZE = 18
 WORDMARK_PX = 30
+# Per halo copy; the copies stack into a soft orange glow.
+WORDMARK_GLOW_ALPHA = 45
 BADGE_HEIGHT = 24
 PAGE_TITLE_PX = 26
 WHITE = "#FFFFFF"
@@ -141,14 +143,9 @@ class ChatHeader(SkyHeader):
 
     def _title_column(self, parent: QWidget) -> QVBoxLayout:
         """The comic-style NIMBUS wordmark with a soft orange glow, and the status under it."""
-        title = QLabel("NIMBUS", parent)
+        title = GlowLabel("NIMBUS", QColor(255, 120, 20, WORDMARK_GLOW_ALPHA), parent)
         title.setObjectName("HeaderWordmark")
         use_display_font(title, WORDMARK_PX)
-        glow = QGraphicsDropShadowEffect(title)
-        glow.setBlurRadius(14)
-        glow.setOffset(0, 2)
-        glow.setColor(QColor(255, 120, 20, 170))
-        title.setGraphicsEffect(glow)
         column = QVBoxLayout()
         column.setSpacing(0)
         column.addWidget(title)

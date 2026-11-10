@@ -71,7 +71,8 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default_factory=app_data_dir)
 
     hotkey: str = "<ctrl>+<space>"
-    # a hard safety backstop, reset by every streamed event — not a typical wait time
+    # how long the chat waits on a silent engine; the engine sends a heartbeat every few seconds
+    # while a model thinks, so slow local models never hit this
     thinking_timeout_seconds: int = 120
     api_port: int = 8765
 

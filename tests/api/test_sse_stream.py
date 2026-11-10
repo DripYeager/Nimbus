@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Iterator
 
-from api.sse_stream import UNEXPECTED_ERROR_MESSAGE, format_sse, stream_sse
+from api.sse_stream import HEARTBEAT_FRAME, UNEXPECTED_ERROR_MESSAGE, format_sse, stream_sse
 from core.exceptions import ConversationNotFoundError
 from core.sse import parse_sse_events
 from models.chat import (
@@ -68,3 +70,37 @@ def test_stream_sse_passes_a_domain_error_message_through() -> None:
 
     assert "There's no chat with id x." in frames[0]
     assert frames[1].startswith("event: done")
+
+
+def test_stream_sse_sends_heartbeats_while_the_assistant_is_silent() -> None:
+    def slow() -> Iterator[ChatEvent]:
+        time.sleep(0.25)
+        yield ChatDone(used_llm=True, elapsed_ms=1)
+
+    frames = list(stream_sse(slow(), heartbeat_seconds=0.05))
+
+    assert HEARTBEAT_FRAME in frames
+    assert frames[-1].startswith("event: done")
+
+
+def test_stream_sse_sends_no_heartbeat_when_events_flow() -> None:
+    frames = list(stream_sse(iter([ChatToken(text="a"), ChatDone(used_llm=True, elapsed_ms=1)]), heartbeat_seconds=5))
+
+    assert HEARTBEAT_FRAME not in frames
+
+
+def test_stream_sse_stops_the_assistant_when_the_reader_leaves() -> None:
+    closed = threading.Event()
+
+    def endless() -> Iterator[ChatEvent]:
+        try:
+            while True:
+                yield ChatToken(text="a")
+        finally:
+            closed.set()
+
+    frames = stream_sse(endless())
+    next(frames)
+    frames.close()
+
+    assert closed.wait(timeout=2)

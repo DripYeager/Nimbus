@@ -14,7 +14,6 @@ from ui.chat.message_widgets import (
     COPIED_FEEDBACK_MS,
     COPY_ICON_SIZE,
     MAX_SOURCE_CARDS,
-    THINKING_TEXT,
     USER_BUBBLE_MAX_WIDTH,
     AnswerText,
     AssistantMessage,
@@ -92,7 +91,7 @@ def test_assistant_message_starts_hidden_apart_from_the_author(reply: AssistantM
 def test_start_thinking_shows_the_thinking_label(reply: AssistantMessage) -> None:
     reply.start_thinking()
 
-    assert (reply._thinking.isHidden(), reply._thinking.text()) == (False, THINKING_TEXT)
+    assert (reply._thinking.isHidden(), reply._thinking.is_animating()) == (False, True)
 
 
 def test_start_thinking_pulses_the_avatar(reply: AssistantMessage) -> None:

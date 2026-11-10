@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QTextBrowser, QToolButt
 
 from models.schema import SourceRef
 from ui.chat.message_cards import SourceCard, ToolStep
+from ui.chat.thinking_indicator import ThinkingIndicator
 from ui.theme.energy import EnergyOrb
 from ui.theme.line_icons import line_icon
 from ui.theme.tokens import SUCCESS, TEXT, TEXT_MUTED
@@ -28,7 +29,6 @@ USER_TEXT_PX = 14
 AVATAR_SIZE = 34
 COPY_ICON_SIZE = 15
 COPIED_FEEDBACK_MS = 1500
-THINKING_TEXT = "Charging up…"
 
 
 class UserBubble(QWidget):
@@ -88,9 +88,7 @@ class AssistantMessage(QWidget):
         self._steps: dict[str, ToolStep] = {}
         self._has_error = False
         self._avatar = EnergyOrb(AVATAR_SIZE, self)
-        self._thinking = QLabel(THINKING_TEXT, self)
-        self._thinking.setObjectName("Thinking")
-        self._thinking.hide()
+        self._thinking = ThinkingIndicator(self)
         self._copy = _copy_button(self)
         self._copy.clicked.connect(self._copy_answer)
         self._copied_reset = QTimer(self)
@@ -118,11 +116,11 @@ class AssistantMessage(QWidget):
         row.addLayout(self._content, stretch=1)
 
     def start_thinking(self) -> None:
-        self._thinking.show()
+        self._thinking.start()
         self._avatar.start()
 
     def stop_thinking(self) -> None:
-        self._thinking.hide()
+        self._thinking.stop()
         self._avatar.stop()
 
     def append_text(self, token: str) -> None:
