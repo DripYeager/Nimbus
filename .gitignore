@@ -20,6 +20,7 @@ htmlcov/
 
 # Virtual environments
 .venv/
+nimbus-env/
 venv/
 env/
 

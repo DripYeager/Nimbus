@@ -26,7 +26,8 @@ def scan_source(root: Path, rules: IndexRules) -> Iterator[ScannedFile]:
         for entry in _list_directory(directory):
             path = Path(entry.path)
             if entry.is_dir(follow_symlinks=False):
-                if not rules.is_excluded_dir(path):
+                # A junction reports as a real folder but can point anywhere, even outside every source.
+                if not _is_junction(entry) and not rules.is_excluded_dir(path):
                     pending.append(path)
             elif entry.is_file(follow_symlinks=False) and not rules.is_excluded_file(path):
                 scanned = _stat_entry(entry)
@@ -43,6 +44,12 @@ def _list_directory(directory: Path) -> list[os.DirEntry[str]]:
     except OSError as e:
         logger.info("Skipping unreadable folder", extra={"path": str(directory), "error": str(e)})
         return []
+
+
+def _is_junction(entry: os.DirEntry[str]) -> bool:
+    """True for a Windows directory junction (DirEntry.is_junction is Python 3.12+)."""
+    is_junction = getattr(entry, "is_junction", None)
+    return bool(is_junction and is_junction())
 
 
 def _stat_entry(entry: os.DirEntry[str]) -> ScannedFile | None:

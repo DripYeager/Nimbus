@@ -108,9 +108,9 @@ class FileToolbox:
         days = max(1, min(int(args.get("days", 1)), MAX_RECENT_DAYS))
         since = datetime.combine(datetime.now().date() - timedelta(days=days - 1), datetime.min.time())
         matches = self._catalog.recent_files(since, limit=MAX_RESULTS * 5)
-        folder = str(args.get("folder", "")).lower()
+        folder = str(args.get("folder", ""))
         if folder:
-            matches = [m for m in matches if folder in str(Path(m.file_path).parent).lower()]
+            matches = [m for m in matches if _in_folder(Path(m.file_path).parent, folder)]
         matches = matches[: _clamp(args.get("limit", 15))]
         if not matches:
             return ToolResult(content="No files changed in that period.")
@@ -178,6 +178,16 @@ def _matches_result(matches: list[CatalogMatch]) -> ToolResult:
     ]
     sources = [source_ref_for_match(m) for m in matches]
     return ToolResult(content="\n".join(lines), sources=sources)
+
+
+def _in_folder(parent: Path, folder: str) -> bool:
+    """True if folder names whole path segments of parent ("Downloads", "Work\\2026" or a full
+    path), so "doc" doesn't match Documents."""
+    needle = folder.replace("/", "\\").strip("\\").lower()
+    if not needle:
+        return True
+    haystack = "\\" + str(parent).replace("/", "\\").strip("\\").lower() + "\\"
+    return f"\\{needle}\\" in haystack
 
 
 def _excerpt(text: str) -> str:

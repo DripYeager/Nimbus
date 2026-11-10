@@ -73,7 +73,8 @@ class FastPath:
     def _open_file(self, name: str) -> FastAnswer | None:
         """Opens the single file that clearly matches name."""
         best = self._confident_file(name)
-        if best is None:
+        # The catalog can still list a file from a folder the user just un-shared.
+        if best is None or not self._actions.is_shared(Path(best.file_path)):
             return None
         try:
             open_path(Path(best.file_path))

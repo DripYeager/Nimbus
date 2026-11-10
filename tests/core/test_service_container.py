@@ -6,7 +6,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from core.exceptions import ProviderError
-from core.service_container import AppServices
+from core.service_container import AppServices, _remove_legacy_index
 
 
 @pytest.fixture
@@ -43,3 +43,22 @@ def test_is_path_shared_rejects_a_path_outside_every_source(services: AppService
     services.index.rules.is_covered.return_value = False
 
     assert not services.is_path_shared(tmp_path / "secret.txt")
+
+
+def test_remove_legacy_index_deletes_the_old_lancedb_folder(tmp_path: Path) -> None:
+    old = tmp_path / "index"
+    (old / "chunks.lance").mkdir(parents=True)
+
+    _remove_legacy_index(old)
+
+    assert not old.exists()
+
+
+def test_remove_legacy_index_leaves_an_unrelated_folder_alone(tmp_path: Path) -> None:
+    folder = tmp_path / "index"
+    folder.mkdir()
+    (folder / "my-notes.txt").write_text("keep me", encoding="utf-8")
+
+    _remove_legacy_index(folder)
+
+    assert (folder / "my-notes.txt").exists()

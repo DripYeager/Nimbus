@@ -34,9 +34,9 @@ TOP_K = 5
 Search = Callable[[str], list[SearchResult]]
 
 
-def build_index(store_dir: Path) -> tuple[Retriever, float]:
-    """Indexes every corpus document; returns the retriever and files indexed per second."""
-    store = VectorStore(store_dir)
+def build_index(store_dir: Path) -> tuple[Retriever, VectorStore, float]:
+    """Indexes every corpus document; returns the retriever, its store and files indexed per second."""
+    store = VectorStore(store_dir / "search.db")
     store.connect()
     embedder = get_embedder()
     embedder.load()
@@ -46,7 +46,7 @@ def build_index(store_dir: Path) -> tuple[Retriever, float]:
     for path in documents:
         indexer.index_file(path)
     store.optimize()
-    return Retriever(store, embedder), len(documents) / (time.perf_counter() - start)
+    return Retriever(store, embedder), store, len(documents) / (time.perf_counter() - start)
 
 
 def score(search: Search, queries: list[dict[str, str]]) -> dict[str, float]:
@@ -72,9 +72,10 @@ def score(search: Search, queries: list[dict[str, str]]) -> dict[str, float]:
 def main() -> None:
     queries = json.loads((CORPUS / "queries.json").read_text(encoding="utf-8"))
     with tempfile.TemporaryDirectory() as store_dir:
-        retriever, files_per_second = build_index(Path(store_dir))
+        retriever, store, files_per_second = build_index(Path(store_dir))
         semantic = score(lambda q: retriever.retrieve_semantic_only(q, top_k=TOP_K * 4), queries)
         hybrid = score(lambda q: retriever.retrieve(q, top_k=TOP_K * 4), queries)
+        store.close()
     print(f"Corpus: {len(queries)} queries · indexing {files_per_second:.1f} files/s\n")
     print("| Strategy | " + " | ".join(semantic) + " |")
     print("|---|" + "---|" * len(semantic))

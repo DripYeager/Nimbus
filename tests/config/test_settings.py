@@ -83,8 +83,8 @@ def test_settings_expands_a_tilde_in_a_source_path(home: Path) -> None:
 def test_settings_derives_store_paths_from_data_dir(home: Path, tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path)
 
-    assert (settings.lancedb_path, settings.catalog_path, settings.conversations_path) == (
-        tmp_path / "index",
+    assert (settings.search_index_path, settings.catalog_path, settings.conversations_path) == (
+        tmp_path / "search.db",
         tmp_path / "catalog.db",
         tmp_path / "conversations.db",
     )

@@ -11,8 +11,8 @@ datas = [(str(ROOT / "assets" / "nimbus.ico"), "assets"), (str(ROOT / "assets" /
 binaries = []
 hiddenimports = ["win32com.client", "keyring.backends.Windows"]
 
-# Backends and extras Nimbus never uses. rapidocr can run on torch/paddle/openvino and markitdown
-# can transcribe audio — collecting them would add well over 400 MB to the download.
+# Libraries Nimbus never uses that other packages can drag in; excluding them keeps the
+# download small.
 UNUSED = ("torch", "paddle", "openvino", "transformers", "speech_recognition", "pydub", "sklearn", "tensorflow")
 
 
@@ -20,14 +20,15 @@ def _wanted(module: str) -> bool:
     return not any(part in module for part in UNUSED)
 
 
-# These ship native libraries or load their plugins dynamically, which static analysis misses.
-for package in ("lancedb", "fastembed", "pypdfium2", "pypdfium2_raw"):
+# These ship native libraries (sqlite-vec's vec0.dll, pdfium, the WinRT projections) or load
+# plugins dynamically, which static analysis misses.
+for package in ("sqlite_vec", "fastembed", "pypdfium2", "pypdfium2_raw", "winrt"):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
     binaries += package_binaries
     hiddenimports += [m for m in package_hidden if _wanted(m)]
 # These only need their model/config files plus the submodules on the ONNX path.
-for package in ("rapidocr", "markitdown", "magika", "onnxruntime"):
+for package in ("markitdown", "magika", "onnxruntime"):
     datas += collect_data_files(package)
     hiddenimports += collect_submodules(package, filter=_wanted)
 

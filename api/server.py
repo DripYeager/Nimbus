@@ -23,7 +23,7 @@ from core.exceptions import (
 )
 from core.service_container import AppServices
 
-API_VERSION = "2.0.0"
+API_VERSION = "2.1.0"
 
 # Errors the caller can fix by changing their request; everything else is the engine's fault.
 CLIENT_ERROR_STATUS: dict[type[NimbusError], int] = {

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from config.settings import get_settings
@@ -39,6 +41,7 @@ class IndexWorker:
         self._running = threading.Event()
         self._current_file: str | None = None
         self._since_optimize = 0
+        self._index_lock = threading.Lock()
 
     @property
     def current_file(self) -> str | None:
@@ -73,6 +76,13 @@ class IndexWorker:
         self._running.set()
         logger.info("Indexing resumed")
 
+    @contextmanager
+    def held(self) -> Iterator[None]:
+        """Waits for the file in progress to finish and keeps the worker from writing another
+        until the block exits — for changes that must not interleave with an index write."""
+        with self._index_lock:
+            yield
+
     def _run(self) -> None:
         """The worker loop: wait while paused, index the next file, breathe, repeat."""
         throttle_seconds = get_settings().index_throttle_ms / 1000
@@ -88,7 +98,8 @@ class IndexWorker:
                 # Paused while we were waiting on the queue: put it back for after resume.
                 self._queue.push(path, 0.0, urgent=True)
                 continue
-            self._index_one(path)
+            with self._index_lock:
+                self._index_one(path)
             self._optimize_if_dirty(force=False)
             time.sleep(throttle_seconds)
 

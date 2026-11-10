@@ -98,10 +98,13 @@ class AppRuntime:
         while not self._server.started and self._server_thread.is_alive() and time.monotonic() < deadline:
             time.sleep(SERVER_POLL_SECONDS)
         if not self._server.started:
+            # Every window talks to the engine through this API, so running on without it would
+            # only show a UI where nothing works.
+            port = get_settings().api_port
             logger.error(
-                "The local API didn't start. Check that no other program is using the port.",
-                extra={"port": get_settings().api_port},
+                "The local API didn't start. Check that no other program is using the port.", extra={"port": port}
             )
+            raise RuntimeError(f"Nimbus's local API couldn't start on port {port}.")
 
 
 def _build_qt_app() -> QApplication:

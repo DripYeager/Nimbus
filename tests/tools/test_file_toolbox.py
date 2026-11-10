@@ -199,6 +199,17 @@ def test_list_recent_files_filters_by_folder(toolbox: FileToolbox, catalog: Mock
     assert [s.file_name for s in result.sources] == ["a.zip"]
 
 
+def test_list_recent_files_matches_whole_folder_names_only(toolbox: FileToolbox, catalog: Mock, tmp_path: Path) -> None:
+    catalog.recent_files.return_value = [
+        _match(tmp_path / "Documents" / "a.docx"),
+        _match(tmp_path / "doc" / "b.txt"),
+    ]
+
+    result = toolbox.list_recent_files({"folder": "doc"})
+
+    assert [s.file_name for s in result.sources] == ["b.txt"]
+
+
 def test_list_recent_files_starts_today_at_midnight_for_one_day(toolbox: FileToolbox, catalog: Mock) -> None:
     toolbox.list_recent_files({"days": 1})
 

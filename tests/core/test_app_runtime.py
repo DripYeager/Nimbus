@@ -112,13 +112,16 @@ def test_start_server_binds_to_localhost_only(mocker: MockerFixture, engine: Eng
     assert config_cls.call_args.kwargs["port"] == 8765
 
 
-def test_start_server_logs_when_the_api_never_comes_up(mocker: MockerFixture, engine: Engine) -> None:
+def test_start_fails_when_the_api_never_comes_up(mocker: MockerFixture, engine: Engine) -> None:
     engine.server.started = False
     logger = mocker.patch("core.app_runtime.logger")
 
-    AppRuntime().start()
+    with pytest.raises(RuntimeError):
+        AppRuntime().start()
 
     logger.error.assert_called_once()
+    engine.shell_cls.assert_not_called()
+    engine.services.stop.assert_called_once()
 
 
 def test_shutdown_stops_ui_then_server_then_engine(engine: Engine) -> None:

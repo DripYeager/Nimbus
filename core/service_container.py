@@ -6,6 +6,7 @@ re-configures them as a unit. The composition root for the engine — no UI, no 
 
 from __future__ import annotations
 
+import shutil
 import threading
 from collections.abc import Callable
 from datetime import datetime
@@ -36,6 +37,10 @@ from tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
 
+# Nimbus 2.0 kept its search index in a LanceDB folder; 2.1 moved it into one SQLite file.
+LEGACY_INDEX_DIR = "index"
+LEGACY_INDEX_MARKER = "chunks.lance"
+
 SettingsListener = Callable[[], None]
 
 
@@ -61,6 +66,7 @@ class AppServices:
         settings = get_settings()
         services.catalog = FileCatalog(settings.catalog_path)
         services.catalog.connect()
+        _remove_legacy_index(settings.data_dir / LEGACY_INDEX_DIR)
         services.store = VectorStore()
         services.store.connect()
         services.conversations = ConversationStore(settings.conversations_path)
@@ -83,6 +89,8 @@ class AppServices:
     def stop(self) -> None:
         self.watcher.stop()
         self.index.stop()
+        self.store.close()
+        self.catalog.close()
 
     def add_settings_listener(self, listener: SettingsListener) -> None:
         """Registers a callback for after settings change — e.g. the UI rebinding the hotkey."""
@@ -120,6 +128,18 @@ class AppServices:
             self.apps.load_or_build()
         except Exception:
             logger.exception("Couldn't build the app catalog; app launching won't work this session")
+
+
+def _remove_legacy_index(folder: Path) -> None:
+    """Deletes the LanceDB folder Nimbus 2.0 used, now that the index lives in search.db. Only a
+    folder that really is that index (it holds the chunks table) is touched."""
+    if not (folder / LEGACY_INDEX_MARKER).is_dir():
+        return
+    try:
+        shutil.rmtree(folder)
+        logger.info("Removed the old index folder", extra={"path": str(folder)})
+    except OSError as e:
+        logger.warning("Couldn't remove the old index folder", extra={"path": str(folder), "error": str(e)})
 
 
 def _system_prompt() -> str:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from pytest_mock import MockerFixture
 import config.settings as settings_module
 from config.settings import Settings
 from core.exceptions import IndexingError, QueryError
-from core.vector_store import META_FILE_NAME, SCHEMA_VERSION, VectorStore
+from core.vector_store import SCHEMA_VERSION, VectorStore
 from models.schema import IndexedChunk
 
 MODEL = "BAAI/bge-small-en-v1.5"
@@ -41,7 +40,7 @@ def _chunk(
 
 @pytest.fixture
 def store(tmp_path: Path) -> VectorStore:
-    opened = VectorStore(db_path=tmp_path / "index")
+    opened = VectorStore(db_path=tmp_path / "search.db")
     opened.connect()
     return opened
 
@@ -50,12 +49,12 @@ def _paths(store: VectorStore) -> set[str]:
     return {r.file_path for r in store.search(NORTH, top_k=100)}
 
 
-def test_connect_raises_indexing_error_when_db_path_is_a_file(tmp_path: Path) -> None:
+def test_connect_raises_indexing_error_when_the_folder_is_a_file(tmp_path: Path) -> None:
     blocker = tmp_path / "blocked"
     blocker.write_text("not a directory", encoding="utf-8")
 
     with pytest.raises(IndexingError):
-        VectorStore(db_path=blocker).connect()
+        VectorStore(db_path=blocker / "search.db").connect()
 
 
 def test_vector_store_defaults_to_the_settings_index_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -63,7 +62,7 @@ def test_vector_store_defaults_to_the_settings_index_path(tmp_path: Path, monkey
 
     VectorStore().connect()
 
-    assert (tmp_path / "index").is_dir()
+    assert (tmp_path / "search.db").is_file()
 
 
 def test_count_is_zero_before_anything_is_written(store: VectorStore) -> None:
@@ -145,7 +144,7 @@ def test_search_returns_empty_before_anything_is_indexed(store: VectorStore) -> 
 
 def test_search_wraps_a_backend_failure_in_query_error(store: VectorStore, mocker: MockerFixture) -> None:
     store.upsert_chunks([_chunk("C:\\Docs\\a.txt")])
-    mocker.patch.object(store._table, "search", side_effect=RuntimeError("corrupt fragment"))
+    store._reader.close()
 
     with pytest.raises(QueryError):
         store.search(NORTH)
@@ -177,9 +176,21 @@ def test_search_text_returns_empty_for_a_blank_query(store: VectorStore) -> None
 
 def test_search_text_returns_empty_when_the_query_cannot_be_parsed(store: VectorStore, mocker: MockerFixture) -> None:
     store.upsert_chunks([_chunk("C:\\Docs\\a.txt")])
-    mocker.patch.object(store._table, "search", side_effect=ValueError("syntax error"))
+    store._reader.close()
 
-    assert store.search_text("AND OR (") == []
+    assert store.search_text("words") == []
+
+
+def test_search_text_treats_query_syntax_as_plain_words(store: VectorStore) -> None:
+    store.upsert_chunks([_chunk("C:\\Docs\\a.txt", "budget AND forecast (draft)")])
+
+    assert [r.file_name for r in store.search_text('AND OR ( "draft')] == ["a.txt"]
+
+
+def test_search_text_matches_a_code_exactly_not_just_its_prefix(store: VectorStore) -> None:
+    store.upsert_chunks([_chunk("C:\\Docs\\a.txt", "Invoice INV-2231"), _chunk("C:\\Docs\\b.txt", "Invoice INV-9999")])
+
+    assert [r.file_name for r in store.search_text("INV-9999")] == ["b.txt"]
 
 
 def test_delete_by_path_removes_only_that_files_rows(store: VectorStore) -> None:
@@ -217,7 +228,7 @@ def test_delete_under_ignores_case_and_spares_a_same_prefix_sibling(store: Vecto
 
 def test_delete_wraps_a_backend_failure_in_indexing_error(store: VectorStore, mocker: MockerFixture) -> None:
     store.upsert_chunks([_chunk("C:\\Docs\\a.txt")])
-    mocker.patch.object(store._table, "delete", side_effect=RuntimeError("locked"))
+    store._writer.close()
 
     with pytest.raises(IndexingError):
         store.delete_by_path("C:\\Docs\\a.txt")
@@ -227,10 +238,10 @@ def test_ensure_compatible_is_false_for_a_fresh_store(store: VectorStore) -> Non
     assert store.ensure_compatible(MODEL) is False
 
 
-def test_ensure_compatible_records_the_model_and_schema(store: VectorStore, tmp_path: Path) -> None:
+def test_ensure_compatible_records_the_model_and_schema(store: VectorStore) -> None:
     store.ensure_compatible(MODEL)
 
-    meta = json.loads((tmp_path / "index" / META_FILE_NAME).read_text(encoding="utf-8"))
+    meta = dict(store._read("SELECT key, value FROM meta"))
     assert meta == {"schema_version": SCHEMA_VERSION, "embedding_model": MODEL}
 
 
@@ -250,7 +261,7 @@ def test_ensure_compatible_drops_the_table_when_the_model_changes(store: VectorS
     assert store.count() == 0
 
 
-def test_ensure_compatible_drops_a_legacy_table_with_no_meta_file(store: VectorStore) -> None:
+def test_ensure_compatible_drops_chunks_written_without_metadata(store: VectorStore) -> None:
     store.upsert_chunks([_chunk("C:\\Docs\\a.txt")])
 
     assert store.ensure_compatible(MODEL) is True
@@ -277,7 +288,7 @@ def test_optimize_keeps_every_row_searchable(store: VectorStore) -> None:
 
 def test_optimize_logs_rather_than_raises_on_failure(store: VectorStore, mocker: MockerFixture) -> None:
     store.upsert_chunks([_chunk("C:\\Docs\\a.txt")])
-    mocker.patch.object(store._table, "optimize", side_effect=RuntimeError("disk full"))
+    store._writer.close()
 
     store.optimize()
 
@@ -285,11 +296,19 @@ def test_optimize_logs_rather_than_raises_on_failure(store: VectorStore, mocker:
 
 
 def test_reconnecting_picks_up_the_existing_table(tmp_path: Path) -> None:
-    first = VectorStore(db_path=tmp_path / "index")
+    first = VectorStore(db_path=tmp_path / "search.db")
     first.connect()
     first.upsert_chunks([_chunk("C:\\Docs\\a.txt", content_hash="abc")])
 
-    second = VectorStore(db_path=tmp_path / "index")
+    second = VectorStore(db_path=tmp_path / "search.db")
     second.connect()
 
     assert second.content_hash_for("C:\\Docs\\a.txt") == "abc"
+
+
+def test_close_is_safe_to_call_twice(store: VectorStore) -> None:
+    store.close()
+    store.close()
+
+    with pytest.raises(IndexingError):
+        store.count()

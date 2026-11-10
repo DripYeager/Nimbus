@@ -19,7 +19,7 @@ LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 LOG_FILE_NAME = "nimbus.log"
 MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
-QUIET_LIBRARIES = ("httpx", "httpcore", "huggingface_hub", "lancedb")
+QUIET_LIBRARIES = ("httpx", "httpcore", "huggingface_hub")
 
 # message/asctime are added to a record by Formatter.format() itself, not present on a fresh
 # record — but with two handlers sharing one record, the first handler's format() call bakes

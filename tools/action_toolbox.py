@@ -100,6 +100,10 @@ class ActionToolbox:
         """The best catalog entry for name if it scores at least min_score, else None."""
         return best_app_match(self._apps, name, min_score)
 
+    def is_shared(self, path: Path) -> bool:
+        """True if path, once resolved, is inside the user's shared folders."""
+        return self._path_guard(path.expanduser().resolve())
+
     def open_file(self, args: dict[str, Any]) -> ToolResult:
         path = self._checked_path(args["path"])
         open_path(path)

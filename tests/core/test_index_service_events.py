@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import Mock
 
 from core.file_catalog import FileCatalog, path_key
 from core.index_service import IndexService
-from core.vector_store import META_FILE_NAME, SCHEMA_VERSION, VectorStore
+from core.vector_store import VectorStore
 from models.schema import CatalogEntry, CatalogStatus, IndexSource
 from tests.core.index_service_helpers import (
     MODEL,
@@ -145,14 +144,13 @@ def test_rebuild_requeues_every_indexed_file(service: IndexService, docs: Path, 
 
 
 def test_start_reindexes_everything_after_an_embedding_model_change(
-    service: IndexService, docs: Path, tmp_path: Path, store: VectorStore, embedder: Mock
+    service: IndexService, docs: Path, store: VectorStore, embedder: Mock
 ) -> None:
     write_file(docs / "notes.txt")
     start_and_index(service, expected_indexed=1)
     service.stop()
     embedder.embed.reset_mock()
-    meta = {"schema_version": SCHEMA_VERSION, "embedding_model": "an/older-model"}
-    (tmp_path / "index" / META_FILE_NAME).write_text(json.dumps(meta), encoding="utf-8")
+    store.ensure_compatible("an/older-model")
 
     service.start(MODEL)
 

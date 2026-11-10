@@ -147,7 +147,7 @@ class SourceSummary(BaseModel):
 
 
 class IndexedChunk(BaseModel):
-    """One row in LanceDB: an embedded chunk plus enough metadata to trace it back to its file."""
+    """One indexed chunk: its text, embedding, and enough metadata to trace it back to its file."""
 
     id: str
     file_path: str

@@ -99,8 +99,8 @@ class Settings(BaseSettings):
         return f"http://127.0.0.1:{self.api_port}"
 
     @property
-    def lancedb_path(self) -> Path:
-        return self.data_dir / "index"
+    def search_index_path(self) -> Path:
+        return self.data_dir / "search.db"
 
     @property
     def catalog_path(self) -> Path:

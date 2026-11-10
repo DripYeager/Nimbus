@@ -64,12 +64,14 @@ class IndexService:
     def rebuild(self) -> None:
         """Re-reads every file's contents from scratch, e.g. after a parser upgrade. The stored
         chunks are dropped first — otherwise the indexer's unchanged-contents check would skip
-        every file and the rebuild would re-read nothing."""
-        self._queue.clear()
-        self._store.drop_all()
-        self._catalog.requeue_all()
-        for path, modified_ts in self._catalog.pending_files():
-            self._queue.push(path, modified_ts)
+        every file and the rebuild would re-read nothing. The worker is held meanwhile, so a
+        file it was halfway through can't land its chunks after the drop."""
+        with self._worker.held():
+            self._queue.clear()
+            self._store.drop_all()
+            self._catalog.requeue_all()
+            for path, modified_ts in self._catalog.pending_files():
+                self._queue.push(path, modified_ts)
         self.rescan()
 
     def apply_settings(self) -> None:
@@ -84,6 +86,9 @@ class IndexService:
 
     def path_changed(self, path: Path) -> None:
         """Watcher hook for a created/modified/moved-in path. A folder gets its subtree scanned."""
+        # The scanner never follows links either: a link's target may sit outside every source.
+        if path.is_symlink() or _is_junction(path):
+            return
         if path.is_dir():
             # A new node_modules (or any excluded folder) would otherwise be walked in full only
             # for every file in it to be thrown away.
@@ -93,7 +98,11 @@ class IndexService:
             return
         if not path.is_file() or not self._rules.is_covered(path):
             return
-        stat = path.stat()
+        try:
+            stat = path.stat()
+        except OSError:
+            # Gone again before we got to it; the watcher's delete event will clean up.
+            return
         scanned = ScannedFile(path=path, size_bytes=stat.st_size, modified_ts=stat.st_mtime)
         existing = self._catalog.entry_for(path)
         snapshot = {path_key(path): existing} if existing is not None else {}
@@ -150,21 +159,31 @@ class IndexService:
     def _scan_all_sources(self) -> None:
         """Walks every source, applies each one's changes as soon as it's scanned (so name
         search works for the first folder before the last one is done), then drops vanished files."""
-        if not self._scan_lock.acquire(blocking=False):
-            return
-        self._is_scanning = True
-        try:
-            self._rescan_requested.clear()
-            self._scan_once()
-            # A rescan asked for while this one ran (a source added mid-scan) gets its own pass.
-            while self._rescan_requested.is_set():
+        while True:
+            if not self._scan_lock.acquire(blocking=False):
+                return
+            self._is_scanning = True
+            try:
                 self._rescan_requested.clear()
-                self._scan_once()
+                self._scan_once_logged()
+                # A rescan asked for while this one ran (a source added mid-scan) gets its own pass.
+                while self._rescan_requested.is_set():
+                    self._rescan_requested.clear()
+                    self._scan_once_logged()
+            finally:
+                self._is_scanning = False
+                self._scan_lock.release()
+            # A rescan that arrived after the last check but before the release found the lock
+            # held and gave up, so it's this thread's to run.
+            if not self._rescan_requested.is_set():
+                return
+
+    def _scan_once_logged(self) -> None:
+        """One pass; a failure is logged so a pending rescan still gets its turn."""
+        try:
+            self._scan_once()
         except Exception:
             logger.exception("Source scan failed")
-        finally:
-            self._is_scanning = False
-            self._scan_lock.release()
 
     def _scan_once(self) -> None:
         """One full pass over every source."""
@@ -209,3 +228,9 @@ class IndexService:
         self._queue.discard_under(root)
         self._catalog.remove_under(root)
         self._store.delete_under(root)
+
+
+def _is_junction(path: Path) -> bool:
+    """True for a Windows directory junction (Path.is_junction is Python 3.12+)."""
+    is_junction = getattr(path, "is_junction", None)
+    return bool(is_junction and is_junction())

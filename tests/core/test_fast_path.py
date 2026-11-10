@@ -104,6 +104,16 @@ def test_try_answer_falls_through_for_a_weak_file_match(fast_path: FastPath, cat
     open_path.assert_not_called()
 
 
+def test_try_answer_falls_through_for_a_file_outside_the_shared_folders(
+    fast_path: FastPath, catalog: Mock, actions: Mock, open_path: Mock
+) -> None:
+    catalog.search_names.return_value = [_match("C:/Private/report.pdf", 97)]
+    actions.is_shared.return_value = False
+
+    assert fast_path.try_answer("open report.pdf") is None
+    open_path.assert_not_called()
+
+
 def test_try_answer_reports_a_file_that_would_not_open(fast_path: FastPath, catalog: Mock, open_path: Mock) -> None:
     catalog.search_names.return_value = [_match("C:/Docs/report.pdf", 97)]
     open_path.side_effect = ToolError("no app for .pdf")

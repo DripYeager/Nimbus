@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/nimbus.png" width="120" alt="Nimbus logo — a golden cloud">
+  <img src="assets/nimbus.png" width="120" alt="Nimbus logo, a golden cloud">
 </p>
 
 <h1 align="center">Nimbus</h1>
 
 <p align="center">
-  <b>A private desktop assistant for your files and apps — summoned from anywhere with one hotkey.</b><br>
+  <b>A private desktop assistant for your files and apps, summoned from anywhere with one hotkey.</b><br>
   Ask questions about your documents, find any file in milliseconds, and open apps, files and settings by just asking.<br>
   Runs fully on your PC by default. No admin rights needed.
 </p>
@@ -21,8 +21,6 @@
   <img src="docs/images/chat.png" width="640" alt="The Nimbus chat window answering a question about a contract, with tool steps, a source card and an approval prompt">
 </p>
 
----
-
 ## What it does
 
 Press **Ctrl+Space** in any app and Nimbus glides up, ready for a request:
@@ -32,38 +30,50 @@ Press **Ctrl+Space** in any app and Nimbus glides up, ready for a request:
 | *"What does the vendor contract say about termination?"* | Searches your documents, reads the right one, and answers with the source file linked |
 | *"What did I download today?"* | Lists today's downloads and can summarize them |
 | *"Summarize the Q3 report"* | Summarizes documents of any length (map-reduce for long ones) |
-| *"find invoice_INV-2231.pdf"* | Answers instantly from the file catalog — no AI call at all |
+| *"find invoice_INV-2231.pdf"* | Answers instantly from the file catalog, with no AI call at all |
 | *"open spotify"* | Launches the app straight away (Start Menu, registry and Store apps are all discovered) |
 | *"Open the Wi-Fi settings"* · *"How's my battery?"* | Opens Windows Settings pages and reports system status |
 | *"Remember that the project deadline is the 14th"* | Saves a note it can search later |
 
-Anything that **launches or writes** shows an approval card first — *Allow*, *Always allow*, or *Don't*.
+Anything that **launches or writes** shows an approval card first: *Allow*, *Always allow*, or *Don't*.
 
 ## Highlights
 
-- **Bring your own model.** Ollama (local), OpenAI, Anthropic (Claude), or any OpenAI-compatible server — switchable in Settings without a restart. API keys are stored in **Windows Credential Manager**, never in plain-text files.
-- **Private by default.** Search, embeddings, chat history and notes never leave the machine. A **Local / Cloud** badge shows where answers are generated, and switching to a cloud model asks first.
-- **Usable from the first second.** A two-tier index makes every file findable *by name* within seconds, while contents are indexed in the background — newest files first. Questions are never blocked by indexing.
-- **You decide what it learns.** Pick folders, mark any folder "names only", choose file types, set a size limit and exclude patterns — all from the Settings window.
+- **Bring your own model.** Ollama (local), OpenAI, Anthropic (Claude), or any OpenAI-compatible server, switchable in Settings without a restart. API keys are stored in **Windows Credential Manager**, never in plain-text files.
+- **Private by default.** Search, embeddings, OCR, chat history and notes never leave the machine. A **Local / Cloud** badge shows where answers are generated, and switching to a cloud model asks first.
+- **Usable from the first second.** A two-tier index makes every file findable *by name* within seconds, while contents are indexed in the background, newest files first. Questions are never blocked by indexing.
+- **You decide what it learns.** Pick folders, mark any folder "names only", choose file types, set a size limit and exclude patterns, all from the Settings window.
 - **Built for locked-down work laptops.** No admin rights, no services, no keyboard hooks: the hotkey uses the Windows `RegisterHotKey` API, data lives in `%APPDATA%`, and the API server binds to `127.0.0.1` only.
+- **Small and fast.** No PyTorch and no separate database server. The whole search index is one SQLite file, and the standalone release is about 120 MB zipped.
 
 <p align="center">
-  <img src="docs/images/settings-sources.png" width="430" alt="Settings — choosing which folders and file types to index">
+  <img src="docs/images/settings-sources.png" width="430" alt="Settings: choosing which folders and file types to index">
   &nbsp;
-  <img src="docs/images/settings-model.png" width="430" alt="Settings — choosing the model provider">
+  <img src="docs/images/settings-model.png" width="430" alt="Settings: choosing the model provider">
 </p>
 
 ## Engineering notes
 
 **Hybrid retrieval.** Every question runs vector search (meaning) and BM25 keyword search (exact
 tokens like `INV-2231` or a surname) in parallel and merges them with **reciprocal rank fusion**.
-On the labelled benchmark in [`tests/fixtures/eval_corpus`](tests/fixtures/eval_corpus)
-(`python scripts/eval_retrieval.py`):
+Keyword queries drop filler words and match each remaining word as a phrase, so a code matches
+exactly and a long question stays fast. On the labelled benchmark in
+[`tests/fixtures/eval_corpus`](tests/fixtures/eval_corpus) (`python scripts/eval_retrieval.py`):
 
 | Strategy | recall@1 | recall@5 | MRR | ms / query |
 |---|---|---|---|---|
-| Vector only | 0.92 | 1.00 | 0.95 | 12 |
-| **Hybrid (vector + BM25, RRF)** | **0.96** | **1.00** | **0.98** | 20 |
+| Vector only | 0.92 | 1.00 | 0.95 | 22 |
+| **Hybrid (vector + BM25, RRF)** | **1.00** | **1.00** | **1.00** | 22 |
+
+**One SQLite file for search.** Chunk text, 384-dim embeddings ([sqlite-vec](https://github.com/asg017/sqlite-vec))
+and an FTS5 full-text index share one database with WAL mode, so searches run while indexing
+writes. Compared with the LanceDB store it replaced, at 20,000 chunks:
+
+| | LanceDB | SQLite + sqlite-vec + FTS5 |
+|---|---|---|
+| Index 20k chunks | 45.2 s | **17.7 s** |
+| Vector search | 45 ms | **21 ms** |
+| Keyword search | 21 ms | **1.1 ms** |
 
 **Tool-calling agent with a human in the loop.** One provider-neutral tool schema is translated
 to each vendor's native function-calling format. The agent loop streams text and tool steps
@@ -75,10 +85,12 @@ model calls**.
 **Incremental, crash-safe indexing.** A SQLite file catalog tracks every file's size, modified
 time and status. Rescans skip unchanged files without reading them, content hashes skip
 re-embedding after a mere touch, and a schema/model version check triggers a clean rebuild
-instead of mixing incompatible vectors. Scanned PDFs fall back to on-device OCR.
+instead of mixing incompatible vectors.
 
-**No torch.** Embeddings run on ONNX (`fastembed`, `bge-small-en-v1.5`) and PDFs are read from
-their text layer — keeping the install a fraction of the size of a PyTorch-based stack.
+**Lean document pipeline.** Embeddings run on ONNX (`fastembed`, `bge-small-en-v1.5`). PDFs are
+read from their text layer with pdfium, and scanned PDFs go through the OCR engine built into
+Windows, which reads a page in well under 100 ms with nothing extra to download. Office and
+Outlook files go through MarkItDown with only those converters installed.
 
 ```mermaid
 flowchart LR
@@ -96,13 +108,13 @@ flowchart LR
     AG --> P["Provider<br/>Ollama · OpenAI · Anthropic · compatible"]
     TR --> R[Hybrid retriever]
     TR --> ACT[Apps · files · settings · notes]
-    R --> VS[(LanceDB<br/>vectors + BM25)]
+    R --> VS[(SQLite search.db<br/>sqlite-vec + FTS5)]
     W[File watcher] --> IS[Index service]
     IS --> CAT[(SQLite<br/>file catalog)]
     IS --> IX[Parse → OCR → chunk → embed] --> VS
 ```
 
-The full design — process model, data flows, storage layout and security model — is in
+The full design (process model, data flows, storage layout and security model) is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Getting started
@@ -114,8 +126,8 @@ Requires Windows 10/11 and Python 3.11+.
 ```powershell
 git clone <repository-url> nimbus
 cd nimbus
-python -m venv .venv
-.venv\Scripts\activate
+python -m venv nimbus-env
+nimbus-env\Scripts\activate
 pip install -r requirements.txt
 python main.py
 ```
@@ -130,23 +142,23 @@ hotkey. Indexing starts in the background, and Nimbus lives in the system tray f
 - **Cloud:** pick OpenAI or Anthropic, paste an API key, and press *Test connection* to load the
   available models.
 - **Other servers:** *Custom OpenAI-compatible server* works with DeepInfra, Groq, LM Studio,
-  vLLM and others — just enter the base URL.
+  vLLM and others. Just enter the base URL.
 
 ### Build a standalone release
 
 ```powershell
 pip install -r requirements-dev.txt
-python scripts/build_release.py      # → dist/Nimbus/Nimbus.exe and dist/Nimbus-<version>-win64.zip
+python scripts/build_release.py      # creates dist/Nimbus/Nimbus.exe and dist/Nimbus-<version>-win64.zip
 ```
 
 ## Privacy & security
 
-- File contents only leave the machine if you choose a cloud model — and then only the excerpts
+- File contents only leave the machine if you choose a cloud model, and then only the excerpts
   needed to answer the current question.
 - Nimbus never modifies, moves or deletes your files. Its only writes are its own notes, index
   and settings under `%APPDATA%\Nimbus`.
 - File tools refuse any path outside the folders you shared (path traversal is resolved first).
-- Logs record paths, counts and timings — never file contents, prompts or API keys.
+- Logs record paths, counts and timings, never file contents, prompts or API keys.
 
 ## Project structure
 
@@ -159,7 +171,7 @@ models/     Pydantic data contracts shared across layers
 tools/      Tools the agent can call: files, apps, system actions, notes
 ui/         Chat window, Settings, onboarding, tray, hotkey, theme
 scripts/    Retrieval benchmark, CLI indexer, release build
-tests/      1,100+ tests mirroring the source tree — fully offline
+tests/      1,100+ tests mirroring the source tree, fully offline
 ```
 
 ## Development
@@ -176,11 +188,12 @@ are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Limitations
 
-- Windows only for now. The engine is OS-agnostic, but app discovery, the hotkey and autostart
-  use Windows APIs.
+- Windows only for now. The engine is OS-agnostic, but app discovery, the hotkey, autostart and
+  OCR use Windows APIs.
+- Scanned PDFs need a Windows display language with OCR support (English and most major
+  languages have it). Without one, those files are still searchable by name.
 - Small local models (under ~8B parameters) are noticeably weaker at choosing tools than
   cloud models; Nimbus falls back to plain retrieval answers when a model can't call tools.
-- The standalone build is large (~330 MB zipped), mostly the vector database and OCR runtime.
 
 ## About the name
 

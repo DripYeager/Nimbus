@@ -53,7 +53,7 @@ def catalog(tmp_path: Path) -> Iterator[FileCatalog]:
 
 @pytest.fixture
 def store(tmp_path: Path) -> VectorStore:
-    opened = VectorStore(db_path=tmp_path / "index")
+    opened = VectorStore(db_path=tmp_path / "search.db")
     opened.connect()
     return opened
 
