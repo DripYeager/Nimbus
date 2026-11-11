@@ -133,8 +133,15 @@ def _new_run_folder() -> Path:
 
 
 def _made_files(folder: Path) -> list[Path]:
-    """What the code created, without the run's own bookkeeping."""
-    return sorted(path for path in folder.iterdir() if path.is_file() and path.name not in INTERNAL_FILES)
+    """What the code created, including in subfolders, without the run's bookkeeping or temp files."""
+    files = []
+    for path in folder.rglob("*"):
+        if not path.is_file() or ".temp" in path.parts:
+            continue
+        if path.parent == folder and path.name in INTERNAL_FILES:
+            continue
+        files.append(path)
+    return sorted(files)
 
 
 def _limit(process: subprocess.Popen[bytes], memory_bytes: int) -> object | None:
@@ -153,7 +160,10 @@ def _limit(process: subprocess.Popen[bytes], memory_bytes: int) -> object | None
         )
         win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, info)
         handle = win32api.OpenProcess(win32con.PROCESS_ALL_ACCESS, False, process.pid)
-        win32job.AssignProcessToJobObject(job, handle)
+        try:
+            win32job.AssignProcessToJobObject(job, handle)
+        finally:
+            win32api.CloseHandle(handle)
         return job
     except Exception as e:
         # The time limit still applies; a missing memory cap isn't worth failing the run over.

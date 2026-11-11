@@ -39,7 +39,7 @@ run_python: find the file's full path first, then write a complete program that 
 media_control or set_volume for music and sound, list_open_windows, switch_to_window or \
 close_window for apps, and copy_to_clipboard when they want something to paste.
 - To tidy files, use move_file or rename_file (they ask the user first) and undo_file_change to \
-put the last one back. Never delete files.
+put the last one back (with the file's current path if this chat moved it). Never delete files.
 - When a search result shows a page, cite it with the file, like (Report.pdf, p. 12).
 - Write in plain sentences. Never use em dashes or en dashes; use a comma, colon or full stop."""
 

@@ -22,6 +22,9 @@ from core.exceptions import ToolError
 TIMEOUT_S = 15.0
 MAX_BYTES = 3 * 1024 * 1024
 MAX_REDIRECTS = 5
+# The well-known NAT64 range: its last 32 bits are an IPv4 address.
+NAT64_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
+IPV4_BITS = 0xFFFFFFFF
 MAX_TEXT_CHARS = 12_000
 # An honest identity: the client's name, version and purpose. A site that turns automated
 # readers away is respected; the tool then suggests opening the page in a browser.
@@ -48,16 +51,17 @@ def read_page(url: str) -> WebPage:
     current = url.strip()
     with httpx.Client(timeout=TIMEOUT_S, follow_redirects=False, headers={"User-Agent": USER_AGENT}) as client:
         for _ in range(MAX_REDIRECTS + 1):
-            check_address(current)
-            response = _get(client, current)
+            address = check_address(current)
+            response = _get(client, current, address)
             if response.status_code not in REDIRECT_CODES:
                 return _to_page(current, response)
             current = urljoin(current, response.headers.get("location", ""))
     raise ToolError(f"{url} redirects too many times.")
 
 
-def check_address(url: str) -> None:
-    """Refuses anything but a public http(s) address.
+def check_address(url: str) -> str:
+    """Refuses anything but a public http(s) address; returns the checked IP address, which the
+    request then connects to, so a second lookup can't swap in a local one (DNS rebinding).
 
     Raises:
         ToolError: Another scheme, no host, or a host on this PC or the local network.
@@ -66,19 +70,44 @@ def check_address(url: str) -> None:
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ToolError(f"Can only read http or https web pages, not {url!r}.")
     try:
-        addresses = {info[4][0] for info in socket.getaddrinfo(parsed.hostname, None)}
+        addresses = [info[4][0] for info in socket.getaddrinfo(parsed.hostname, None)]
     except socket.gaierror as e:
         raise ToolError(f"Couldn't find the site {parsed.hostname}.") from e
     for address in addresses:
-        ip = ipaddress.ip_address(address.split("%")[0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        if _is_local_address(address):
             raise ToolError(f"{parsed.hostname} points to this PC or the local network, which Nimbus doesn't read.")
+    if not addresses:
+        raise ToolError(f"Couldn't find the site {parsed.hostname}.")
+    return addresses[0].split("%")[0]
 
 
-def _get(client: httpx.Client, url: str) -> httpx.Response:
-    """A GET that stops reading at MAX_BYTES."""
+def _is_local_address(address: str) -> bool:
+    """True for anything that isn't a public internet address: this PC, the local network,
+    shared and reserved ranges, multicast, and an IPv4 address hidden inside an IPv6 one
+    ("::ffff:127.0.0.1", NAT64 "64:ff9b::7f00:1", 6to4 "2002:7f00:1::")."""
+    ip = ipaddress.ip_address(address.split("%")[0])
+    candidates = [ip]
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            candidates = [ip.ipv4_mapped]
+        elif ip.sixtofour is not None:
+            candidates.append(ip.sixtofour)
+        elif ip in NAT64_PREFIX:
+            candidates.append(ipaddress.IPv4Address(int(ip) & IPV4_BITS))
+    return any(not candidate.is_global or candidate.is_multicast for candidate in candidates)
+
+
+def _get(client: httpx.Client, url: str, address: str) -> httpx.Response:
+    """A GET to the checked address that stops reading at MAX_BYTES. The site's own name still
+    goes in the Host header and the TLS handshake, so its certificate is verified as usual."""
+    parsed = urlparse(url)
+    host = f"[{address}]" if ":" in address else address
+    pinned = parsed._replace(netloc=host + (f":{parsed.port}" if parsed.port else "")).geturl()
+    site = parsed.netloc.rsplit("@", 1)[-1]
     try:
-        with client.stream("GET", url) as response:
+        with client.stream(
+            "GET", pinned, headers={"Host": site}, extensions={"sni_hostname": parsed.hostname}
+        ) as response:
             body = b""
             for chunk in response.iter_bytes():
                 body += chunk

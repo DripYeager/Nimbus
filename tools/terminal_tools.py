@@ -13,6 +13,7 @@ from typing import Any
 
 from core.command_policy import ELEVATION_MESSAGE, asks_for_elevation, is_read_only
 from core.command_runner import DEFAULT_TIMEOUT_S, CommandResult, run_powershell
+from core.command_targets import is_known_target, network_targets
 from core.exceptions import ToolError
 from core.process_monitor import busiest_programs, describe_usage
 from models.chat import ShownCode, ToolResult
@@ -67,9 +68,15 @@ class TerminalToolbox:
 
 
 def needs_approval(args: dict[str, Any], user_text: str = "") -> bool:
-    """Read-only commands, and ones that will be refused anyway, don't need a card."""
+    """Read-only commands, and ones that will be refused anyway, don't need a card. A read-only
+    command that contacts another computer runs freely only for addresses the user typed this
+    turn (or literal IPs): a name taken from a document could carry data out in a DNS lookup."""
     command = str(args.get("command", ""))
-    return not (is_read_only(command) or asks_for_elevation(command))
+    if asks_for_elevation(command):
+        return False
+    if not is_read_only(command):
+        return True
+    return not all(is_known_target(target, user_text) for target in network_targets(command))
 
 
 def describe_command(args: dict[str, Any]) -> str:

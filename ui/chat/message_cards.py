@@ -56,8 +56,8 @@ class ToolStep(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._icon = QLabel(self)
-        self._text = QLabel(self)
-        self._text.setObjectName("ToolStepText")
+        # Step labels quote the model's arguments ("Searched files for ..."), so plain text only.
+        self._text = plain_label("", self, "ToolStepText")
         self._code: CodeBlock | None = None
         self._output: CodeBlock | None = None
         row = QHBoxLayout()
@@ -131,6 +131,15 @@ class SourceCard(QPushButton):
         open_source(self._path, self._page)
 
 
+def plain_label(text: str, parent: QWidget, object_name: str) -> QLabel:
+    """A label that never reads its text as HTML (QLabel guesses by default)."""
+    label = QLabel(parent)
+    label.setObjectName(object_name)
+    label.setTextFormat(Qt.TextFormat.PlainText)
+    label.setText(text)
+    return label
+
+
 def _where(path: Path, page: int | None) -> str:
     """The folder a source lives in, and the page the answer came from when known."""
     folder = path.parent.name or str(path.parent)
@@ -152,17 +161,9 @@ class ConfirmCard(QFrame):
         super().__init__(parent)
         self.setObjectName("ConfirmCard")
         self._open = True
-        title_icon = QLabel(self)
-        title_icon.setPixmap(line_pixmap("zap", GI_ORANGE, STEP_ICON_SIZE))
-        title = QLabel("NIMBUS WANTS TO", self)
-        title.setObjectName("ConfirmTitle")
-        heading = QHBoxLayout()
-        heading.setSpacing(6)
-        heading.addWidget(title_icon)
-        heading.addWidget(title)
-        heading.addStretch()
-        text = QLabel(description, self)
-        text.setObjectName("ConfirmText")
+        # Plain text: the description carries words the model chose (file names, an MCP tool's
+        # arguments), and rich text could make the card show something other than what runs.
+        text = plain_label(description, self, "ConfirmText")
         text.setWordWrap(True)
         self._buttons = QHBoxLayout()
         self._buttons.setSpacing(8)
@@ -174,12 +175,24 @@ class ConfirmCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(8)
-        layout.addLayout(heading)
+        layout.addLayout(self._heading())
         layout.addWidget(text)
         if code is not None:
             # The exact code or command, so the user approves what will really run.
-            layout.addWidget(CodeBlock(code, self))
+            layout.addWidget(CodeBlock(code, self, full_if_one_line=True))
         layout.addLayout(self._buttons)
+
+    def _heading(self) -> QHBoxLayout:
+        title_icon = QLabel(self)
+        title_icon.setPixmap(line_pixmap("zap", GI_ORANGE, STEP_ICON_SIZE))
+        title = QLabel("NIMBUS WANTS TO", self)
+        title.setObjectName("ConfirmTitle")
+        heading = QHBoxLayout()
+        heading.setSpacing(6)
+        heading.addWidget(title_icon)
+        heading.addWidget(title)
+        heading.addStretch()
+        return heading
 
     def _add_button(self, text: str, variant: str, approved: bool, always: bool) -> None:
         button = QPushButton(text, self)

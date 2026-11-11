@@ -50,11 +50,14 @@ def show_all_text(text: str) -> str:
 class CodeBlock(QFrame):
     """A titled, monospaced, collapsible view of code or output."""
 
-    def __init__(self, code: ShownCode, parent: QWidget | None = None) -> None:
+    def __init__(self, code: ShownCode, parent: QWidget | None = None, full_if_one_line: bool = False) -> None:
         super().__init__(parent)
         self.setObjectName("CodeBlock")
         self._full = code.text
-        self._preview = preview_of(code.text)
+        # On an approval card a one-line command is shown whole: padding could push a second
+        # command past the preview's cut. Longer code says how many lines are hidden.
+        one_line = len(code.text.strip().splitlines()) <= 1
+        self._preview = code.text.strip() if full_if_one_line and one_line else preview_of(code.text)
         self._expanded = False
         self._text = QLabel(self._preview, self)
         self._text.setObjectName("CodeText")

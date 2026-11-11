@@ -193,6 +193,17 @@ def test_move_across_drives_falls_back_to_copying(tidier: FileTidier, report: Pa
     assert change.destination.read_text(encoding="utf-8") == "report"
 
 
+def test_undo_is_put_back_when_the_log_cannot_be_saved(tidier: FileTidier, report: Path, mocker: MockerFixture) -> None:
+    moved = tidier.move(report, report.parent / "Reports")
+    mocker.patch.object(FileTidier, "_rewrite_log", side_effect=OSError("disk full"))
+
+    with pytest.raises(ToolError, match="undo log"):
+        tidier.undo_last()
+
+    assert moved.destination.exists() and not report.exists()
+    assert tidier.last_change() == moved
+
+
 def test_move_is_put_back_when_the_log_cannot_be_saved(tidier: FileTidier, report: Path, mocker: MockerFixture) -> None:
     mocker.patch.object(FileTidier, "_append", side_effect=OSError("disk full"))
 

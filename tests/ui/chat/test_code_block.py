@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLabel
+
 from models.chat import ShownCode
 from ui.chat.chat_session import step_detail
 from ui.chat.code_block import (
@@ -91,3 +94,26 @@ def test_step_detail_reads_code_and_output() -> None:
 
     assert detail == StepDetail(code=ShownCode(title="PowerShell", text="ipconfig"), output="IPv4 ...")
     assert step_detail({"call_id": "a"}) is None
+
+
+def test_confirm_card_shows_markup_as_plain_text(qapp: object) -> None:
+    sneaky = 'Use convert from units with {"note": "<b>harmless</b><br>"}'
+    card = ConfirmCard(sneaky, None, True)
+
+    [text] = [label for label in card.findChildren(QLabel) if label.objectName() == "ConfirmText"]
+    assert text.textFormat() == Qt.TextFormat.PlainText and text.text() == sneaky
+
+
+def test_tool_step_label_is_plain_text(qapp: object) -> None:
+    step = ToolStep()
+    step.update_step("Searched files for <img src=x>", "done")
+
+    assert step._text.textFormat() == Qt.TextFormat.PlainText
+
+
+def test_confirm_card_shows_a_long_one_line_command_whole(qapp: object) -> None:
+    command = "Get-Process" + " " * 400 + "; Remove-Item C:/important"
+    card = ConfirmCard("Run a PowerShell command", None, False, ShownCode(title="PowerShell", text=command))
+
+    [block] = card.findChildren(CodeBlock)
+    assert "Remove-Item" in block._text.text() and not block.can_expand()

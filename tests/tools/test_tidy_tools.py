@@ -85,12 +85,40 @@ def test_rename_of_shared_folder_itself_is_refused(share: Path, tmp_path: Path) 
 
 def test_undo_puts_back_and_describe_names_it(toolbox: TidyToolbox, share: Path) -> None:
     toolbox.rename({"path": str(share / "notes.txt"), "new_name": "ideas"})
+    args = {"path": str(share / "ideas.txt")}
 
-    assert "ideas.txt" in toolbox.describe_undo()
+    assert toolbox.describe_undo(args) == f"Put {share / 'ideas.txt'} back at {share / 'notes.txt'}"
+    toolbox.undo(args)
+
+    assert (share / "notes.txt").exists()
+
+
+def test_undo_refuses_when_a_newer_change_happened_since_the_card(toolbox: TidyToolbox, share: Path) -> None:
+    (share / "other.txt").write_text("x", encoding="utf-8")
+    toolbox.rename({"path": str(share / "notes.txt"), "new_name": "ideas"})
+    stale_card = {"path": str(share / "ideas.txt")}
+    toolbox.rename({"path": str(share / "other.txt"), "new_name": "newer"})
+
+    with pytest.raises(ToolError, match="most recent change"):
+        toolbox.undo(stale_card)
+
+    assert (share / "newer.txt").exists() and (share / "ideas.txt").exists()
+
+
+def test_describe_undo_without_a_matching_change(toolbox: TidyToolbox, share: Path) -> None:
+    toolbox.rename({"path": str(share / "notes.txt"), "new_name": "ideas"})
+
+    assert toolbox.describe_undo({"path": str(share / "x.txt")}) == f"Undo the last change to {share / 'x.txt'}"
+
+
+def test_undo_without_a_path_puts_back_the_newest_change(toolbox: TidyToolbox, share: Path) -> None:
+    toolbox.rename({"path": str(share / "notes.txt"), "new_name": "ideas"})
+
+    assert toolbox.describe_undo({}) == f"Put {share / 'ideas.txt'} back at {share / 'notes.txt'}"
     toolbox.undo({})
 
     assert (share / "notes.txt").exists()
 
 
 def test_describe_undo_with_nothing_to_undo(toolbox: TidyToolbox) -> None:
-    assert "there isn't one" in toolbox.describe_undo()
+    assert "there isn't one" in toolbox.describe_undo({})

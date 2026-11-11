@@ -27,6 +27,8 @@ CLIPBOARD_ATTEMPTS = 10
 CLIPBOARD_RETRY_S = 0.05
 # Each press of a volume key moves Windows' volume by 2%.
 VOLUME_STEP_PERCENT = 2
+# A full sweep from mute to full. More presses than this only holds the assistant up.
+MAX_KEY_PRESSES = 100 // VOLUME_STEP_PERCENT
 KEY_PRESS_GAP_S = 0.01
 # Windows' virtual-key codes for the media keys (win32con doesn't define them).
 MEDIA_KEYS = {
@@ -80,7 +82,7 @@ def press_media_key(action: str, times: int = 1) -> None:
     key = MEDIA_KEYS.get(action)
     if key is None:
         raise ToolError(f"Unknown media action {action!r}. Use one of: {', '.join(MEDIA_KEYS)}.")
-    for _ in range(max(1, times)):
+    for _ in range(min(MAX_KEY_PRESSES, max(1, times))):
         win32api.keybd_event(key, 0, 0, 0)
         win32api.keybd_event(key, 0, win32con.KEYEVENTF_KEYUP, 0)
         time.sleep(KEY_PRESS_GAP_S)

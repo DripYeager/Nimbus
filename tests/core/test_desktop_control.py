@@ -33,6 +33,13 @@ def test_press_media_key_presses_and_releases_once(keys: Mock) -> None:
     assert [c.args[0] for c in keys.call_args_list] == [0xB3, 0xB3]
 
 
+def test_press_media_key_stops_at_a_full_volume_sweep(keys: Mock) -> None:
+    press_media_key("volume_up", 10_000)
+
+    presses = [call.args[0] for call in keys.call_args_list if call.args[2] == 0]
+    assert len(presses) == 50
+
+
 def test_press_media_key_rejects_an_unknown_action(keys: Mock) -> None:
     with pytest.raises(ToolError, match="Unknown media action"):
         press_media_key("rewind")

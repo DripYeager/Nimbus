@@ -58,6 +58,13 @@ BLOCKED_PREFIXES = (
     "ctypes.dlsym",
     "ctypes.call_function",
     "_winapi.CreateProcess",
+    # A junction made in the run's folder could point anywhere; other processes are off limits.
+    "_winapi.CreateJunction",
+    "_winapi.OpenProcess",
+    "_winapi.TerminateProcess",
+    # Raw Windows file and pipe handles would go around the checks on open().
+    "_winapi.CreateFile",
+    "_winapi.CreateNamedPipe",
     "webbrowser.open",
 )
 # Listing a folder reveals its file names, so it counts as reading.
@@ -107,8 +114,34 @@ def install_guard(policy: Policy) -> None:
                 path = _as_path(value)
                 if path is not None and not policy.may_write(path):
                     raise PermissionError(f"Can only change files in the run's folder, not {path}")
+        elif event == "_winapi.CopyFile2":
+            _check_copy(policy, args)
+        elif event == "sqlite3.connect":
+            _check_database(policy, args)
 
     sys.addaudithook(guard)
+
+
+def _check_copy(policy: Policy, args: tuple[object, ...]) -> None:
+    """shutil's fast copy on Windows: read from where reading is allowed, write only here."""
+    source, target = (_as_path(value) for value in args[:2])
+    if source is None or not policy.may_read(source):
+        raise PermissionError(f"Can only copy from the folders shared with Nimbus, not {source}")
+    if target is None or not policy.may_write(target):
+        raise PermissionError(f"Can only copy into the run's folder, not {target}")
+
+
+def _check_database(policy: Policy, args: tuple[object, ...]) -> None:
+    """SQLite opens files for writing, so only databases in the run's folder (or in memory).
+    To look at a shared database, copy it into the run's folder first."""
+    database = args[0] if args else None
+    if database in ("", ":memory:", b"", b":memory:"):
+        return
+    path = None if str(database).startswith("file:") else _as_path(database)
+    if path is None or not policy.may_write(path):
+        raise PermissionError(
+            "Can only open SQLite databases in the run's folder; copy a shared one there first with shutil.copy."
+        )
 
 
 def _check_open(policy: Policy, args: tuple[object, ...]) -> None:
@@ -125,12 +158,16 @@ def _check_open(policy: Policy, args: tuple[object, ...]) -> None:
 
 
 def _as_path(value: object) -> Path | None:
-    """An absolute path for a str/bytes/PathLike argument; None for file descriptors and others."""
+    """An absolute path for a str/bytes/PathLike argument, with links followed so a junction
+    inside a shared folder can't point at the rest of the disk. None for file descriptors."""
     if isinstance(value, bytes):
         value = os.fsdecode(value)
-    if isinstance(value, (str, os.PathLike)):
-        return Path(os.path.abspath(value))
-    return None
+    if not isinstance(value, (str, os.PathLike)):
+        return None
+    try:
+        return Path(value).resolve()
+    except (OSError, RuntimeError) as e:
+        raise PermissionError("Can't use that path in Nimbus's code runner.") from e
 
 
 def save_open_charts(scratch: Path) -> None:

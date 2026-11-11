@@ -98,7 +98,7 @@ def resolve_due(at: str | None, in_minutes: int | None, now: datetime | None = N
 def _parse(text: str, now: datetime) -> datetime:
     """A full date and time, or a clock time today (tomorrow if that time has passed)."""
     try:
-        return datetime.fromisoformat(text.replace("/", "-"))
+        return _comparable(datetime.fromisoformat(text.replace("/", "-")), now)
     except ValueError:
         pass
     for pattern in TIME_FORMATS:
@@ -109,3 +109,12 @@ def _parse(text: str, now: datetime) -> datetime:
         due = datetime.combine(now.date(), clock)
         return due if due >= now - PAST_GRACE else due + timedelta(days=1)
     raise ToolError(f"Couldn't read the time {text!r}. Use 15:00 or 2026-11-12 09:30.")
+
+
+def _comparable(due: datetime, now: datetime) -> datetime:
+    """due in now's zone. A time with a zone ("09:30Z") can't be compared with a local now."""
+    if due.tzinfo is None:
+        return due
+    if now.tzinfo is None:
+        return due.astimezone().replace(tzinfo=None)
+    return due.astimezone(now.tzinfo)

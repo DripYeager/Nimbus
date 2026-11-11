@@ -74,20 +74,32 @@ class FileTidier:
             changes = self._read_log()
         return changes[-1] if changes else None
 
-    def undo_last(self) -> FileChange:
-        """Puts the most recent change back, if nothing has taken its place since."""
+    def undo_last(self, expected: Path | None = None) -> FileChange:
+        """Puts the most recent change back, if nothing has taken its place since. With
+        expected (the file's current path, as the approval card showed it), refuses when the
+        most recent change is a different one, so approving an older card can't undo a newer
+        change made in the meantime."""
         with self._lock:
             changes = self._read_log()
             if not changes:
                 raise ToolError("There's no file change to undo.")
             last = changes[-1]
+            if expected is not None and not _same_except_case(expected, last.destination):
+                raise ToolError(
+                    f"The most recent change is {last.source} to {last.destination}, not {expected}. "
+                    "Nothing was undone."
+                )
             if not last.destination.exists():
                 raise ToolError(f"Can't undo: {last.destination} isn't there any more.")
             if last.source.exists() and not _same_except_case(last.source, last.destination):
                 raise ToolError(f"Can't undo: something new is already at {last.source}.")
             last.source.parent.mkdir(parents=True, exist_ok=True)
             _move(last.destination, last.source)
-            self._rewrite_log(changes[:-1])
+            try:
+                self._rewrite_log(changes[:-1])
+            except OSError as e:
+                _move(last.source, last.destination)
+                raise ToolError("Nothing was undone: the undo log couldn't be saved.") from e
         return FileChange(last.destination, last.source)
 
     def _apply(self, source: Path, destination: Path) -> FileChange:

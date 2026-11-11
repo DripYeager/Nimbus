@@ -35,7 +35,12 @@ RENAME = tool_spec(
         ["path", "new_name"],
     ),
 )
-UNDO = tool_spec("undo_file_change", "Put back the most recent move or rename.", object_schema({}))
+UNDO = tool_spec(
+    "undo_file_change",
+    "Put back the most recent move or rename. If you know where the file is now (from the move or rename "
+    "result in this chat), pass that path; otherwise leave it out.",
+    object_schema({"path": string_param("Optional: where the file is now, from the move or rename result")}),
+)
 
 
 class TidyToolbox:
@@ -57,7 +62,7 @@ class TidyToolbox:
                 lambda a: f"Rename {file_name_arg(a)} to {a.get('new_name', '')}",
                 self._rename_allowed,
             ),
-            (UNDO, self.undo, lambda a: self.describe_undo(), None),
+            (UNDO, self.undo, self.describe_undo, None),
         ):
             tool = Tool(spec, handler, describe, requires_confirmation=True, confirm_when=rule, always_allowable=False)
             registry.register(tool)
@@ -84,14 +89,20 @@ class TidyToolbox:
         return source, folder
 
     def undo(self, args: dict[str, Any]) -> ToolResult:
-        return _done(self._tidier.undo_last(), "Put back")
+        path = str(args.get("path") or "").strip()
+        expected = Path(path).expanduser() if path else None
+        return _done(self._tidier.undo_last(expected), "Put back")
 
-    def describe_undo(self) -> str:
-        """The approval card says exactly which change will be put back."""
+    def describe_undo(self, args: dict[str, Any]) -> str:
+        """The approval card. With a path, it names that file, and the undo refuses if that's no
+        longer the most recent change; without one, it names the most recent change."""
+        path = str(args.get("path") or "").strip()
         last = self._tidier.last_change()
         if last is None:
             return "Undo the last file move or rename (there isn't one)"
-        return f"Put {last.destination} back at {last.source}"
+        if not path or Path(path).expanduser() == last.destination:
+            return f"Put {last.destination} back at {last.source}"
+        return f"Undo the last change to {path}"
 
     def _movable(self, raw: str) -> Path:
         """An existing path inside the shared folders that isn't a shared folder itself."""

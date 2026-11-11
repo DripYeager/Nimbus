@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,31 @@ def test_as_path_resolves_relative_paths_against_the_current_folder(tmp_path: Pa
     previous = Path.cwd()
     os.chdir(tmp_path)
     try:
-        assert _as_path("x.txt") == tmp_path / "x.txt"
+        assert _as_path("x.txt") == tmp_path.resolve() / "x.txt"
     finally:
         os.chdir(previous)
+
+
+def _junction(link: Path, target: Path) -> None:
+    created = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True)
+    if created.returncode != 0:
+        pytest.skip("This PC won't create a junction")
+
+
+def test_a_junction_out_of_a_shared_folder_is_not_readable_or_writable(tmp_path: Path) -> None:
+    secret = tmp_path / "secret"
+    shared = tmp_path / "shared"
+    scratch = tmp_path / "scratch"
+    secret.mkdir()
+    shared.mkdir()
+    scratch.mkdir()
+    (secret / "note.txt").write_text("hidden", encoding="utf-8")
+    (shared / "ok.txt").write_text("ok", encoding="utf-8")
+    link = shared / "link"
+    _junction(link, secret)
+    policy = Policy(scratch, [shared])
+
+    assert policy.may_read(_as_path(shared / "ok.txt"))
+    assert policy.may_write(_as_path(scratch / "out.txt"))
+    assert not policy.may_read(_as_path(link / "note.txt"))
+    assert not policy.may_write(_as_path(link / "new.txt"))

@@ -27,7 +27,12 @@ class ProgramUsage:
 
 
 def busiest_programs(sample_s: float = DEFAULT_SAMPLE_S) -> list[ProgramUsage]:
-    """Every program's CPU share (of the whole machine) and memory, measured over sample_s."""
+    """Every program's CPU share (of the whole machine) and memory, measured over sample_s.
+
+    Also starts the machine-wide CPU window: the first reading is always zero, so this call
+    happens before the wait and describe_usage reads it afterwards.
+    """
+    psutil.cpu_percent(None)
     processes = list(psutil.process_iter(["name"]))
     for process in processes:
         try:

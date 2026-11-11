@@ -209,14 +209,23 @@ Values from a 1.x `.env` are migrated automatically (`config/legacy_settings.py`
   inside shared folders, one approved change at a time, journaled for undo.
 - `run_command`: an allow list of read-only cmdlets and native tools (with argument rules, for
   example `netsh ... show` only), checked per `;` statement after single-quoted text is set
-  aside; `&`, redirection, subexpressions and script blocks make a command need approval;
-  elevation (`-Verb RunAs`, `runas`, `sudo`) is refused outright. Output is trimmed.
+  aside (quotes are read left to right, so a `'` inside double quotes can't hide a `$(...)`;
+  curly quotes are refused); `&`, redirection, subexpressions and script blocks make a command
+  need approval; elevation (`-Verb RunAs`, `runas`, `sudo`) is refused outright. A native tool
+  must be Windows' own: a path directly in System32 or SysWOW64, or a bare name found there
+  first on the PATH (`core/command_text.py`). After a pipe only the PowerShell formatter itself
+  may follow (not `sort.exe`), and findstr or Select-String may not be given a file. A lookup
+  or ping of a name the user didn't type, or `-ComputerName`, needs approval, since DNS can carry
+  data out (`core/command_targets.py`). Output is trimmed.
 - `run_python`: a separate process in a job object (2 GB, killed with Nimbus) with a time
   limit. An audit hook allows reads only in shared folders, the run folder and Python's own
-  files, writes only in the run folder, and blocks process creation, sockets, registry writes
-  and `ctypes` native calls. numpy, pandas, openpyxl and matplotlib are imported before the hook
-  is installed.
-- `read_web_page`: http and https only, every redirect re-checked, private, loopback,
+  files, writes only in the run folder, and blocks process creation, sockets, registry writes,
+  `ctypes` native calls, raw Windows file handles (`_winapi.CreateFile`), junctions and access to
+  other processes. Paths are checked after links are followed, `shutil`'s fast copy is checked
+  on both ends, and SQLite may open databases only in the run folder. numpy, pandas, openpyxl
+  and matplotlib are imported before the hook is installed.
+- `read_web_page`: http and https only, every redirect re-checked and connected to the exact
+  address that was checked (no second DNS lookup to rebind), private, loopback,
   link-local and reserved addresses refused, 3 MB cap, an honest user agent.
 - MCP servers the user adds start with only a small set of environment variables plus the ones
   configured for them, and every tool call shows its arguments on an approval card.

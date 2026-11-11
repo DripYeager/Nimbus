@@ -69,6 +69,14 @@ def test_resolve_due_counts_minutes_from_now() -> None:
     assert resolve_due(None, 20, NOW) == NOW + timedelta(minutes=20)
 
 
+def test_resolve_due_reads_a_time_that_names_its_zone() -> None:
+    zoned = "2026-11-12T04:00:00+00:00"
+    expected = datetime.fromisoformat(zoned).astimezone().replace(tzinfo=None)
+
+    assert resolve_due(zoned, None, NOW) == expected
+    assert resolve_due("2026-11-12T04:00:00Z", None, NOW) == expected
+
+
 @pytest.mark.parametrize(
     ("at", "minutes"), [(None, None), ("", None), ("tea time", None), (None, 0), ("2026-11-10 09:00", None)]
 )

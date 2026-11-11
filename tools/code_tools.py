@@ -98,5 +98,6 @@ def describe_run(result: CodeResult) -> str:
     else:
         lines.append(result.output or NO_OUTPUT)
     if result.files:
-        lines.append(f"Files made in {result.folder}: " + ", ".join(path.name for path in result.files))
+        names = ", ".join(str(path.relative_to(result.folder)) for path in result.files)
+        lines.append(f"Files made in {result.folder}: {names}")
     return "\n".join(lines)

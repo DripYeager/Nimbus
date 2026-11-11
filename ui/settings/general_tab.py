@@ -91,6 +91,16 @@ def describe_usage(usage: UsageView) -> str:
     return f"{calls:,} model call{'' if calls == 1 else 's'} today"
 
 
+def cap_box() -> QSpinBox:
+    """Model calls per day; 0 shows as "No limit"."""
+    box = QSpinBox()
+    box.setRange(0, MAX_DAILY_CALLS)
+    box.setSpecialValueText(NO_LIMIT_TEXT)
+    box.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+    box.setFixedWidth(CAP_BOX_WIDTH)
+    return box
+
+
 def memory_box() -> QDoubleSpinBox:
     """Gigabytes, in quarter steps, from the smallest workable limit up to this PC's RAM."""
     box = QDoubleSpinBox()
@@ -130,11 +140,7 @@ class GeneralTab(QWidget):
         )
         self._explorer_error = styled_label("", "error", wrap=True)
         self._explorer_error.hide()
-        self._cap_box = QSpinBox()
-        self._cap_box.setRange(0, MAX_DAILY_CALLS)
-        self._cap_box.setSpecialValueText(NO_LIMIT_TEXT)
-        self._cap_box.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        self._cap_box.setFixedWidth(CAP_BOX_WIDTH)
+        self._cap_box = cap_box()
         self._usage_label = styled_label("", "muted")
         self._memory_box = memory_box()
         self._action_rows = {tool: ToggleRow(label, icon=icon) for tool, (label, icon) in ACTION_ROWS.items()}

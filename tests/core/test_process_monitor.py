@@ -38,6 +38,18 @@ def test_busiest_programs_leaves_out_the_idle_entry(machine: None) -> None:
     assert "System Idle Process" not in {p.name for p in busiest_programs()}
 
 
+def test_busiest_programs_starts_the_cpu_window_before_it_waits(mocker: MockerFixture) -> None:
+    order: list[str] = []
+    mocker.patch("core.process_monitor.psutil.process_iter", return_value=[])
+    mocker.patch("core.process_monitor.psutil.cpu_count", return_value=1)
+    mocker.patch("core.process_monitor.psutil.cpu_percent", side_effect=lambda *_a, **_k: order.append("cpu"))
+    mocker.patch("core.process_monitor.time.sleep", side_effect=lambda *_a, **_k: order.append("sleep"))
+
+    busiest_programs()
+
+    assert order.index("cpu") < order.index("sleep")
+
+
 def test_describe_usage_lists_cpu_and_memory_leaders(mocker: MockerFixture) -> None:
     mocker.patch("core.process_monitor.psutil.cpu_percent", return_value=37.0)
     mocker.patch(

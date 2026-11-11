@@ -13,12 +13,15 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
+from core.command_text import blank_single_quoted, has_path, is_system_path, program_name, resolves_to_windows
+
 # Chaining, redirection, sub-expressions, script blocks, variables, escapes and line breaks: any
 # of these could hide a second command inside an innocent-looking one. (";" is allowed because
 # every statement it separates is checked on its own.)
 _UNSAFE_CHARACTERS = re.compile(r"[&<>`$(){}@\r\n]|\|\|")
+# One word: unquoted characters and quoted runs, so findstr /c:"IPv4 Address" stays one word.
+_WORD = re.compile(r"""(?:[^\s"']|"[^"]*"|'[^']*')+""")
 _ELEVATION = re.compile(r"-verb\s+runas|\brunas(\.exe)?\b|\bsudo\b|\bgsudo\b", re.IGNORECASE)
-_SINGLE_QUOTED = re.compile(r"'[^']*'")
 ELEVATION_MESSAGE = "Nimbus never runs commands as administrator. Run that one yourself if it's needed."
 
 ArgumentRule = Callable[[list[str]], bool]
@@ -97,6 +100,24 @@ _READ_ONLY_TOOLS: dict[str, ArgumentRule] = {
     "winget": _starts_with(("list",), ("search",), ("show",), ("--version",)),
     "powercfg": _only("/a", "/availablesleepstates", "/requests", "/lastwake", "/getactivescheme", "/list", "/l"),
 }
+# Select-String's parameters: name -> whether it takes a value. The file ones are refused, and
+# listing them keeps a short form like "-pa" (Path or Pattern) from slipping through.
+_SELECT_STRING_FILE_PARAMETERS = frozenset({"path", "literalpath", "include", "exclude"})
+_SELECT_STRING_PARAMETERS: dict[str, bool] = {
+    "pattern": True,
+    "context": True,
+    "encoding": True,
+    "culture": True,
+    "simplematch": False,
+    "casesensitive": False,
+    "notmatch": False,
+    "allmatches": False,
+    "quiet": False,
+    "list": False,
+    "raw": False,
+    "noemphasis": False,
+    **dict.fromkeys(_SELECT_STRING_FILE_PARAMETERS, True),
+}
 # What may follow a pipe: commands that only sort, filter, measure or format what they're given.
 _PIPE_FORMATTERS = frozenset(
     [
@@ -129,9 +150,10 @@ def is_read_only(command: str) -> bool:
         return False
     # Single-quoted text is literal in PowerShell (no variables, no sub-expressions), so its
     # contents can't hide code: a counter path like '\Process(*)\% Processor Time' is fine.
-    # Double-quoted text expands $(...), so it gets no such pass. An unclosed quote fails here.
-    structure = _SINGLE_QUOTED.sub("''", command)
-    if "'" in structure.replace("''", "") or _UNSAFE_CHARACTERS.search(structure):
+    # Double-quoted text expands $(...), so it gets no such pass. Quotes are read left to right,
+    # so a ' inside double quotes can't hide a $(...) between two of them.
+    structure = blank_single_quoted(command)
+    if structure is None or _UNSAFE_CHARACTERS.search(structure):
         return False
     statements = [statement for statement in structure.split(";") if statement.strip()]
     return bool(statements) and all(_statement_reads_only(statement) for statement in statements)
@@ -139,13 +161,13 @@ def is_read_only(command: str) -> bool:
 
 def _statement_reads_only(statement: str) -> bool:
     """One pipeline: an allow-listed first command, then only sorting, filtering and formatting."""
-    segments = [segment.split() for segment in statement.split("|")]
+    segments = [_WORD.findall(segment) for segment in statement.split("|")]
     if any(not words for words in segments):
         return False
     first, *rest = segments
     if not _first_command_reads_only(first):
         return False
-    return all(_name(words[0]) in _PIPE_FORMATTERS for words in rest)
+    return all(_formats_the_pipeline(words) for words in rest)
 
 
 def asks_for_elevation(command: str) -> bool:
@@ -154,14 +176,82 @@ def asks_for_elevation(command: str) -> bool:
 
 
 def _first_command_reads_only(words: list[str]) -> bool:
-    name, args = _name(words[0]), [arg.strip("'\"") for arg in words[1:]]
-    if name in _READ_ONLY_CMDLETS:
+    """An allow-listed cmdlet, or a native tool that is really Windows' own: a path directly in
+    System32, or a bare name PowerShell finds there first."""
+    token = words[0]
+    if has_path(token) and not is_system_path(token):
+        return False
+    name, args = program_name(token), [arg.strip("'\"") for arg in words[1:]]
+    if name in _READ_ONLY_CMDLETS and not has_path(token):
         return True
     rule = _READ_ONLY_TOOLS.get(name)
-    return rule is not None and rule(args)
+    if rule is None or not rule(args):
+        return False
+    return has_path(token) or resolves_to_windows(name)
 
 
-def _name(word: str) -> str:
-    """The command's bare name: no quotes, no path, no ".exe"."""
-    bare = word.strip("'\"").replace("\\", "/").rsplit("/", 1)[-1].lower()
-    return bare.removesuffix(".exe")
+def _formats_the_pipeline(words: list[str]) -> bool:
+    """A pipe stage that only sorts, filters or formats what it was given. It must be the
+    PowerShell command itself: "sort.exe" is Windows' sort, which can write a file. findstr and
+    Select-String can also read files, so their arguments are checked."""
+    token = words[0].strip("'\"")
+    name = program_name(token)
+    if name not in _PIPE_FORMATTERS:
+        return False
+    # Only findstr is a program; every other stage must be the PowerShell command by its bare
+    # name. "sort.exe" or a path to "sort" is Windows' sort, which can read and write files.
+    if name == "findstr":
+        if has_path(token) and not is_system_path(token):
+            return False
+        if not has_path(token) and not resolves_to_windows(name):
+            return False
+    elif has_path(token) or token.lower().endswith(".exe"):
+        return False
+    args = words[1:]
+    if name == "findstr":
+        return _findstr_reads_only_its_input(args)
+    if name == "select-string":
+        return _select_string_reads_only_its_input(args)
+    return True
+
+
+def _findstr_reads_only_its_input(args: list[str]) -> bool:
+    """findstr [switches] string: no /F:, /G: or /D: (they read files; findstr takes "-" for
+    "/" too), and no word after the search string, which findstr would open as a file."""
+    has_string_switch = False
+    plain_words = 0
+    for arg in args:
+        lowered = arg.strip("'\"").lower()
+        switch = "/" + lowered[1:] if lowered.startswith("-") else lowered
+        if switch.startswith(("/f:", "/g:", "/d:")):
+            return False
+        if switch.startswith("/c:"):
+            has_string_switch = True
+        elif not switch.startswith("/"):
+            plain_words += 1
+    return plain_words <= (0 if has_string_switch else 1)
+
+
+def _select_string_reads_only_its_input(args: list[str]) -> bool:
+    """Select-String with a pattern only: no -Path or -LiteralPath (or a short form PowerShell
+    would accept for them), and no second positional word, which Select-String reads as a path."""
+    has_pattern = False
+    positional = 0
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if not arg.startswith("-"):
+            positional += 1
+            continue
+        parameter, _, inline_value = arg[1:].lower().partition(":")
+        matches = [name for name in _SELECT_STRING_PARAMETERS if name.startswith(parameter)] if parameter else []
+        if len(matches) != 1 and parameter not in _SELECT_STRING_PARAMETERS:
+            return False
+        resolved = parameter if parameter in _SELECT_STRING_PARAMETERS else matches[0]
+        if resolved in _SELECT_STRING_FILE_PARAMETERS:
+            return False
+        has_pattern = has_pattern or resolved == "pattern"
+        skip_next = _SELECT_STRING_PARAMETERS[resolved] and not inline_value
+    return positional <= (0 if has_pattern else 1)
