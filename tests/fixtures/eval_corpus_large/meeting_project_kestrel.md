@@ -1,0 +1,1 @@
+Project Kestrel weekly meeting. Goal: pilot drone deliveries in rural areas. Owner: Nadia Bello. Target date: end of December. Decisions: keep the scope fixed, review budget next week. Risks: vendor delays.

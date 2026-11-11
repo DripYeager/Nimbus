@@ -102,3 +102,13 @@ def integer_param(description: str) -> dict[str, str]:
 def file_name_arg(args: dict[str, Any]) -> str:
     """The file name from a call's "path" argument, for short chip labels."""
     return Path(str(args.get("path", ""))).name or "a file"
+
+
+# Tools the user approves together, as one setting: making a Word file and making a
+# spreadsheet are the same kind of permission.
+APPROVAL_GROUPS: tuple[tuple[str, ...], ...] = (("create_document", "create_spreadsheet"),)
+
+
+def approval_group(tool: str) -> tuple[str, ...]:
+    """Every tool that shares tool's approval setting, tool included."""
+    return next((group for group in APPROVAL_GROUPS if tool in group), (tool,))

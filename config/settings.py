@@ -64,8 +64,10 @@ class Settings(BaseSettings):
 
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_threads: int = 2
-    # A cross-encoder re-scores the top search candidates; it downloads once in the background.
-    rerank_enabled: bool = True
+    # A cross-encoder that re-scores the top search candidates (downloads 150 MB once). Off by
+    # default: with query-aware hybrid search it added no accuracy on the benchmark and cost
+    # about 250 ms per question (see the README's retrieval notes).
+    rerank_enabled: bool = False
     rerank_model: str = "jinaai/jina-reranker-v1-turbo-en"
 
     sources: list[IndexSource] = Field(default_factory=_default_sources)

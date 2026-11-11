@@ -16,6 +16,7 @@ from core.exceptions import AutostartError, ExplorerMenuError
 from core.explorer_menu import disable_explorer_menu, enable_explorer_menu, is_explorer_menu_enabled
 from core.logger import get_logger
 from models.api import UsageView
+from tools.registry import approval_group
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
 from ui.settings.hotkey_edit import HotkeyEdit
@@ -40,8 +41,8 @@ ACTION_ROWS: dict[str, tuple[str, str]] = {
     "open_website": ("Open websites", "globe"),
     "open_windows_setting": ("Open Windows settings pages", "settings"),
     "save_note": ("Save notes", "notebook-pen"),
-    "create_document": ("Create documents (Word, text, Markdown)", "file-text"),
-    "create_spreadsheet": ("Create spreadsheets (Excel, CSV)", "file-spreadsheet"),
+    # One switch for both file-creation tools (see tools.registry.APPROVAL_GROUPS).
+    "create_document": ("Create files (Word, Excel, CSV, text)", "file-text"),
 }
 MAX_DAILY_CALLS = 10_000
 CAP_BOX_WIDTH = 110
@@ -140,7 +141,7 @@ class GeneralTab(QWidget):
         self._cap_box.setValue(values.get("daily_llm_call_cap") or 0)
         approved = set(values.get("auto_approved_tools", []))
         for tool, row in self._action_rows.items():
-            row.switch.setChecked(tool in approved)
+            row.switch.setChecked(any(name in approved for name in approval_group(tool)))
         _set_quietly(self._autostart_switch, is_autostart_enabled())
         _set_quietly(self._explorer_row.switch, is_explorer_menu_enabled())
         self._autostart_error.hide()
@@ -151,7 +152,12 @@ class GeneralTab(QWidget):
         """The edited values; an unusable hotkey is left out so the saved one stays."""
         updates: dict[str, Any] = {
             "daily_llm_call_cap": self._cap_box.value() or None,
-            "auto_approved_tools": [tool for tool, row in self._action_rows.items() if row.switch.isChecked()],
+            "auto_approved_tools": [
+                name
+                for tool, row in self._action_rows.items()
+                if row.switch.isChecked()
+                for name in approval_group(tool)
+            ],
         }
         hotkey = self._hotkey_edit.hotkey()
         if hotkey:

@@ -56,21 +56,34 @@ def describe_source_counts(summary: SourceSummary) -> str:
     return text
 
 
-class _PathLabel(QLabel):
-    """A one-line path that elides in the middle when space runs out, with the full path as tooltip."""
+class _ElidedLabel(QLabel):
+    """One line that never asks for more width than it gets: when space runs out it trims the
+    middle ("Reading site_alerts…xlsx… · 387 of 11,339 read"), and the tooltip shows it all. A
+    long file name in the status line used to stretch the whole Settings page sideways."""
 
-    def __init__(self, path: str, parent: QWidget | None = None) -> None:
+    def __init__(self, text: str, role: str | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._path = path
-        self.setObjectName("RowTitle")
-        self.setToolTip(path)
+        if role:
+            self.setProperty("role", role)
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.setText(path)
+        self._full = ""
+        self.set_full_text(text)
+
+    def full_text(self) -> str:
+        return self._full
+
+    def set_full_text(self, text: str) -> None:
+        self._full = text
+        self.setToolTip(text)
+        self._fit()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        self.setText(self.fontMetrics().elidedText(self._path, Qt.TextElideMode.ElideMiddle, self.width()))
+        self._fit()
+
+    def _fit(self) -> None:
+        self.setText(self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideMiddle, max(self.width(), 1)))
 
 
 def _remove_button() -> QPushButton:
@@ -97,7 +110,7 @@ class SourceRow(QFrame):
         self.contents_switch = ToggleSwitch()
         self.contents_switch.setChecked(include_contents)
         self.contents_switch.setToolTip("Off: searchable by file name only")
-        self.counts_label = styled_label(NEW_FOLDER_COUNTS, "muted")
+        self.counts_label = _ElidedLabel(NEW_FOLDER_COUNTS, "muted")
         self.progress = QProgressBar()
         self.progress.setObjectName("FolderProgress")
         self.progress.setRange(0, PROGRESS_STEPS)
@@ -119,7 +132,9 @@ class SourceRow(QFrame):
         status_line.addWidget(self.counts_label, 1)
         text_column = QVBoxLayout()
         text_column.setSpacing(4)
-        text_column.addWidget(_PathLabel(self.path))
+        title = _ElidedLabel(self.path)
+        title.setObjectName("RowTitle")
+        text_column.addWidget(title)
         text_column.addLayout(status_line)
         text_column.addWidget(self.progress)
         layout = QHBoxLayout(self)
@@ -134,7 +149,7 @@ class SourceRow(QFrame):
 
     def set_summary(self, summary: SourceSummary) -> None:
         """Shows this folder's latest progress: status line, bar while work remains, orb while active."""
-        self.counts_label.setText(describe_source_counts(summary))
+        self.counts_label.set_full_text(describe_source_counts(summary))
         working = summary.include_contents and summary.exists and summary.pending_count > 0
         self.progress.setVisible(working)
         self.progress.setValue(int(summary.progress_ratio * PROGRESS_STEPS))

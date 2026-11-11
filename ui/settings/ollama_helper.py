@@ -1,17 +1,18 @@
 """
 The Ollama setup card on the Model page: says whether Ollama is installed, running and has the
 chosen model, and offers the one button that gets you to the next step, Get Ollama, Start
-Ollama, or Download the model (with live progress). Owns that card's display and polling; the
-work itself happens in the engine (core/ollama_setup.py).
+Ollama, or Download the model (with live progress). Below that it suggests the model that fits
+this PC's RAM and graphics card, with a button to use it. Owns that card's display and polling;
+the work itself happens in the engine (core/ollama_setup.py, core/model_advisor.py).
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer, QUrl
+from PyQt6.QtCore import QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QHideEvent, QShowEvent
 from PyQt6.QtWidgets import QHBoxLayout, QProgressBar, QPushButton, QVBoxLayout, QWidget
 
-from models.api import OllamaStatus
+from models.api import ModelRecommendation, OllamaStatus
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
 from ui.settings.label_roles import set_variant, styled_label
@@ -22,6 +23,12 @@ DOWNLOAD_PAGE = "https://ollama.com/download/windows"
 POLL_MS = 1500
 ORB_SIZE = 22
 PROGRESS_STEPS = 1000
+
+
+def describe_recommendation(recommendation: ModelRecommendation) -> str:
+    """The suggestion line: which model, why, and for what hardware."""
+    status = "already downloaded" if recommendation.installed else f"about {recommendation.size_gb:.1f} GB"
+    return f"Suggested for this PC: {recommendation.model} ({status}). {recommendation.reason}"
 
 
 def describe_ollama(status: OllamaStatus, model: str) -> tuple[str, str, str | None]:
@@ -51,7 +58,10 @@ def describe_ollama(status: OllamaStatus, model: str) -> tuple[str, str, str | N
 
 
 class OllamaHelper(SettingsCard):
-    """Polls the engine while visible and keeps the card in sync with the setup state."""
+    """Polls the engine while visible and keeps the card in sync with the setup state. Emits
+    model_chosen(name) when the user takes the suggested model."""
+
+    model_chosen = pyqtSignal(str)
 
     def __init__(self, api: ApiClient, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -74,6 +84,12 @@ class OllamaHelper(SettingsCard):
         self._progress.setTextVisible(False)
         self._progress.setFixedHeight(4)
         self._progress.hide()
+        self._suggestion = styled_label("", "muted", wrap=True)
+        self._suggestion.hide()
+        self._use_suggestion = QPushButton(self)
+        self._use_suggestion.clicked.connect(self._take_suggestion)
+        self._use_suggestion.hide()
+        self._recommendation: ModelRecommendation | None = None
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_MS)
         self._timer.timeout.connect(self.check)
@@ -82,6 +98,7 @@ class OllamaHelper(SettingsCard):
     def watch(self, model: str) -> None:
         """Tracks model (the one picked on the Model page) and checks right away."""
         self._model = model.strip()
+        self._refresh_suggestion()
         self.check()
 
     def check(self) -> None:
@@ -94,6 +111,8 @@ class OllamaHelper(SettingsCard):
         """Polls only while the card is on screen."""
         super().showEvent(event)
         self._timer.start()
+        if self._recommendation is None:
+            run_in_background(self._api.ollama_recommendation, self._show_recommendation, lambda _: None)
 
     def hideEvent(self, event: QHideEvent) -> None:
         super().hideEvent(event)
@@ -111,6 +130,11 @@ class OllamaHelper(SettingsCard):
         row.addWidget(self._action)
         self.body.addLayout(row)
         self.body.addWidget(self._progress)
+        suggestion = QHBoxLayout()
+        suggestion.setSpacing(CARD_ROW_SPACING)
+        suggestion.addWidget(self._suggestion, 1)
+        suggestion.addWidget(self._use_suggestion)
+        self.body.addLayout(suggestion)
 
     def _show(self, status: OllamaStatus) -> None:
         """Renders one status; the orb pulses while something is still to be done."""
@@ -128,6 +152,26 @@ class OllamaHelper(SettingsCard):
             self._orb.start()
         else:
             self._orb.stop()
+
+    def _show_recommendation(self, recommendation: ModelRecommendation) -> None:
+        self._recommendation = recommendation
+        self._refresh_suggestion()
+
+    def _refresh_suggestion(self) -> None:
+        """Shows the suggestion, with a button only when it isn't the model already picked."""
+        recommendation = self._recommendation
+        self._suggestion.setVisible(recommendation is not None)
+        if recommendation is None:
+            return
+        self._suggestion.setText(describe_recommendation(recommendation))
+        self._suggestion.setToolTip(f"Based on this PC: {recommendation.hardware}")
+        already_picked = self._model.lower() == recommendation.model.lower()
+        self._use_suggestion.setText(f"Use {recommendation.model}")
+        self._use_suggestion.setVisible(not already_picked)
+
+    def _take_suggestion(self) -> None:
+        if self._recommendation is not None:
+            self.model_chosen.emit(self._recommendation.model)
 
     def _show_error(self, message: str) -> None:
         self._is_checking = False

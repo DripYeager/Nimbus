@@ -277,3 +277,18 @@ def test_send_gives_the_agent_the_attached_text_and_skips_the_fast_path(
     [(messages, _)] = agent.runs
     assert "Bonjour" in messages[-1].content
     fast_path.try_answer.assert_not_called()
+
+
+def test_confirm_with_always_allow_on_a_file_allows_every_file_type(
+    service: ChatService, store: ConversationStore, mocker: MockerFixture
+) -> None:
+    conversation_id = store.create("make a sheet")
+    call = ToolCall(id="c2", name="create_spreadsheet", arguments={"file_name": "a.xlsx", "csv": "a"})
+    store.append(
+        conversation_id, [ChatMessage(role="user", content="x"), ChatMessage(role="assistant", tool_calls=[call])]
+    )
+    save = mocker.patch("core.chat_service.save_user_settings")
+
+    list(service.confirm(conversation_id, ConfirmRequest(call_id="c2", approved=True, always_allow=True)))
+
+    save.assert_called_once_with({"auto_approved_tools": ["create_document", "create_spreadsheet"]})

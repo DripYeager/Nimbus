@@ -17,6 +17,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CORPUS = ROOT / "tests" / "fixtures" / "eval_corpus"
+# 100 look-alike documents (many invoices, meetings, trips...), built by scripts/build_eval_corpus.py.
+LARGE_CORPUS = ROOT / "tests" / "fixtures" / "eval_corpus_large"
+CORPORA = (("Small corpus, 16 documents", CORPUS), ("Large corpus, 100 look-alike documents", LARGE_CORPUS))
 os.environ.setdefault("NIMBUS_HOME", tempfile.mkdtemp(prefix="nimbus-eval-"))
 sys.path.insert(0, str(ROOT))
 
@@ -36,14 +39,14 @@ TOP_K = 5
 Search = Callable[[str], list[SearchResult]]
 
 
-def build_index(store_dir: Path) -> tuple[Retriever, VectorStore, float]:
+def build_index(store_dir: Path, corpus: Path = CORPUS) -> tuple[Retriever, VectorStore, float]:
     """Indexes every corpus document; returns the retriever, its store and files indexed per second."""
     store = VectorStore(store_dir / "search.db")
     store.connect()
     embedder = get_embedder()
     embedder.load()
     indexer = Indexer(store, embedder)
-    documents = sorted(p for p in CORPUS.iterdir() if p.suffix in {".txt", ".md"})
+    documents = sorted(p for p in corpus.iterdir() if p.suffix in {".txt", ".md"})
     start = time.perf_counter()
     for path in documents:
         indexer.index_file(path)
@@ -75,22 +78,27 @@ QUERY_SETS = (("Direct questions", "queries.json"), ("Paraphrased questions", "q
 
 
 def main() -> None:
-    """Scores each strategy on both question sets and prints one Markdown table per set."""
-    with tempfile.TemporaryDirectory() as store_dir:
-        retriever, store, files_per_second = build_index(Path(store_dir))
-        reranker = Reranker(get_settings().rerank_model, get_settings().embedding_threads)
-        reranker.load()
-        reranked = Retriever(store, get_embedder(), reranker)
-        strategies: dict[str, Search] = {
-            "Vector only": lambda q: retriever.retrieve_semantic_only(q, top_k=TOP_K * 4),
-            "Hybrid (vector + BM25, RRF)": lambda q: retriever.retrieve(q, top_k=TOP_K * 4),
-            "Hybrid + cross-encoder rerank": lambda q: reranked.retrieve(q, top_k=TOP_K * 4),
-        }
-        print(f"Indexing {files_per_second:.1f} files/s · reranker {get_settings().rerank_model}")
-        for title, file_name in QUERY_SETS:
-            queries = json.loads((CORPUS / file_name).read_text(encoding="utf-8"))
-            _print_table(f"{title} ({len(queries)})", {name: score(fn, queries) for name, fn in strategies.items()})
-        store.close()
+    """Scores each strategy on each corpus and question set; prints one Markdown table per set."""
+    reranker = Reranker(get_settings().rerank_model, get_settings().embedding_threads)
+    reranker.load()
+    print(f"Reranker: {get_settings().rerank_model}")
+    for corpus_title, corpus in CORPORA:
+        with tempfile.TemporaryDirectory() as store_dir:
+            retriever, store, files_per_second = build_index(Path(store_dir), corpus)
+            equal = Retriever(store, get_embedder(), keyword_weighting=lambda _query: 1.0)
+            reranked = Retriever(store, get_embedder(), reranker)
+            strategies: dict[str, Search] = {
+                "Vector only": lambda q, r=retriever: r.retrieve_semantic_only(q, top_k=TOP_K * 4),
+                "Hybrid, equal weights": lambda q, r=equal: r.retrieve(q, top_k=TOP_K * 4),
+                "Hybrid, query-aware (default)": lambda q, r=retriever: r.retrieve(q, top_k=TOP_K * 4),
+                "Query-aware + cross-encoder rerank": lambda q, r=reranked: r.retrieve(q, top_k=TOP_K * 4),
+            }
+            print(f"\n## {corpus_title} (indexing {files_per_second:.1f} files/s)")
+            for title, file_name in QUERY_SETS:
+                queries = json.loads((corpus / file_name).read_text(encoding="utf-8"))
+                results = {name: score(fn, queries) for name, fn in strategies.items()}
+                _print_table(f"{title} ({len(queries)})", results)
+            store.close()
 
 
 def _print_table(title: str, results: dict[str, dict[str, float]]) -> None:

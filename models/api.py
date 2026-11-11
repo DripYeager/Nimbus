@@ -45,6 +45,16 @@ class UsageView(BaseModel):
     daily_cap: int | None
 
 
+class ModelRecommendation(BaseModel):
+    """The local model suggested for this PC, and why."""
+
+    model: str
+    size_gb: float
+    reason: str
+    hardware: str
+    installed: bool = False
+
+
 class OllamaStatus(BaseModel):
     """Everything the Settings page needs to walk someone from "no Ollama" to "ready"."""
 

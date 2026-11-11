@@ -6,7 +6,7 @@ import pytest
 
 from core.exceptions import ToolError
 from models.chat import ToolCall, ToolResult, ToolSpec
-from tools.registry import Tool, ToolRegistry, file_name_arg, object_schema, string_param, tool_spec
+from tools.registry import Tool, ToolRegistry, approval_group, file_name_arg, object_schema, string_param, tool_spec
 
 
 def _tool(name: str, handler: Any = None, describe: Any = None, requires_confirmation: bool = False) -> Tool:
@@ -126,3 +126,11 @@ def test_file_name_arg_returns_the_file_name() -> None:
 
 def test_file_name_arg_has_a_fallback_without_a_path() -> None:
     assert file_name_arg({}) == "a file"
+
+
+def test_approval_group_ties_the_file_creation_tools_together() -> None:
+    assert set(approval_group("create_spreadsheet")) == {"create_document", "create_spreadsheet"}
+
+
+def test_approval_group_is_just_the_tool_otherwise() -> None:
+    assert approval_group("open_app") == ("open_app",)

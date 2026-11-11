@@ -1,0 +1,1 @@
+Project Cascade weekly meeting. Goal: replace the warehouse barcode scanners. Owner: Mei Lin. Target date: end of April. Decisions: keep the scope fixed, review budget next week. Risks: vendor delays.

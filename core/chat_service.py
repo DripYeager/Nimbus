@@ -31,6 +31,7 @@ from models.chat import (
     ConfirmRequest,
 )
 from models.schema import IndexStatus
+from tools.registry import approval_group
 
 logger = get_logger(__name__)
 
@@ -122,11 +123,13 @@ class ChatService:
         )
 
     def _always_allow(self, history: list[ChatMessage], call_id: str) -> None:
-        """Remembers "always allow" for the tool behind call_id."""
+        """Remembers "always allow" for the tool behind call_id, and for any tool that shares its
+        setting (allowing Word files allows spreadsheets too: Settings shows one switch)."""
         tool = next(c.name for c in pending_tool_calls(history) if c.id == call_id)
         allowed = get_settings().auto_approved_tools
-        if tool not in allowed:
-            save_user_settings({"auto_approved_tools": [*allowed, tool]})
+        missing = [name for name in approval_group(tool) if name not in allowed]
+        if missing:
+            save_user_settings({"auto_approved_tools": [*allowed, *missing]})
 
 
 def _elapsed_ms(start: float) -> int:

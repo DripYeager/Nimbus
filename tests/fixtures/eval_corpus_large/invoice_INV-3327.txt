@@ -1,0 +1,1 @@
+Invoice INV-3327 from Fabrikam Print. Bill to: Northwind Ltd. Item: 2000 x business cards at 0.08 USD each. Total due 160.00 USD by 25 October. Pay by bank transfer, quoting INV-3327.

@@ -1,0 +1,1 @@
+Project Iris weekly meeting. Goal: add single sign-on for enterprise clients. Owner: Ana Costa. Target date: end of July. Decisions: keep the scope fixed, review budget next week. Risks: vendor delays.

@@ -108,6 +108,10 @@ class OllamaSetup:
             with self._lock:
                 self._pulling, self._pull_percent = None, None
 
+    def installed_models(self) -> list[str]:
+        """Models already downloaded; empty when Ollama isn't running."""
+        return self._installed_models() or []
+
     def _installed_models(self) -> list[str] | None:
         """Names of downloaded models, or None when the server isn't reachable."""
         try:

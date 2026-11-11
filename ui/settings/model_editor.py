@@ -88,6 +88,9 @@ class ModelEditor(QWidget):
         self._build_layout()
         # Re-check the local setup when a different model is picked or typed.
         self._model_box.currentTextChanged.connect(self._watch_local_model)
+        # Taking the suggested model fills the box; Save makes it stick, and the card's own
+        # Download button fetches it if needed.
+        self._ollama_helper.model_chosen.connect(self._model_box.setEditText)
         self._picker.picked.connect(self._on_provider_picked)
         self._test_button.clicked.connect(self._test_connection)
 

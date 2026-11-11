@@ -49,7 +49,7 @@ def test_collect_round_trips_loaded_values(api: Mock) -> None:
 def test_load_shows_folder_counts(api: Mock) -> None:
     editor = SourcesEditor(api)
     editor.load(VALUES)
-    assert editor._rows[0].counts_label.text() == "1,240 files · all read"
+    assert editor._rows[0].counts_label.full_text() == "1,240 files · all read"
 
 
 def test_choose_folder_adds_new_folder(api: Mock, mocker: MockerFixture) -> None:

@@ -150,3 +150,10 @@ def test_pull_refuses_a_second_download_at_once(setup: OllamaSetup, mocker: Mock
 
     with pytest.raises(ProviderError, match="Already downloading"):
         setup.pull("llama3.1:8b")
+
+
+def test_installed_models_is_empty_when_ollama_is_not_running(mocker: MockerFixture) -> None:
+    setup = OllamaSetup(lambda: "http://localhost:11434")
+    mocker.patch.object(setup, "_installed_models", return_value=None)
+
+    assert setup.installed_models() == []

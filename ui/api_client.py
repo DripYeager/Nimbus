@@ -14,7 +14,7 @@ import httpx
 from config.settings import get_settings
 from core.api_auth import auth_headers
 from core.exceptions import NimbusError
-from models.api import OllamaStatus, ProviderTestResult, SettingsView, UsageView
+from models.api import ModelRecommendation, OllamaStatus, ProviderTestResult, SettingsView, UsageView
 from models.chat import ChatMessage, ConversationSummary, ProviderConfig, ProviderName
 from models.schema import IndexStatus, SourceSummary
 
@@ -57,6 +57,9 @@ class ApiClient:
 
     def ollama_status(self, model: str) -> OllamaStatus:
         return OllamaStatus(**self._request("GET", f"/providers/ollama/status?model={quote(model)}"))
+
+    def ollama_recommendation(self) -> ModelRecommendation:
+        return ModelRecommendation(**self._request("GET", "/providers/ollama/recommendation"))
 
     def start_ollama(self) -> OllamaStatus:
         return OllamaStatus(**self._request("POST", "/providers/ollama/start"))

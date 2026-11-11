@@ -117,3 +117,20 @@ def test_load_shows_the_real_explorer_menu_state(api: Mock, mocker: MockerFixtur
     tab.load({})
 
     assert tab._explorer_row.switch.isChecked()
+
+
+def test_one_create_files_switch_approves_both_file_tools(api: Mock) -> None:
+    tab = GeneralTab(api)
+    tab.load({"auto_approved_tools": []})
+
+    tab._action_rows["create_document"].switch.setChecked(True)
+
+    assert {"create_document", "create_spreadsheet"} <= set(tab.collect()["auto_approved_tools"])
+
+
+def test_create_files_switch_is_on_when_either_tool_was_allowed(api: Mock) -> None:
+    tab = GeneralTab(api)
+
+    tab.load({"auto_approved_tools": ["create_spreadsheet"]})
+
+    assert tab._action_rows["create_document"].switch.isChecked()

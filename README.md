@@ -46,7 +46,7 @@ Anything that **launches or writes** shows an approval card first: *Allow*, *Alw
 
 ## Highlights
 
-- **Bring your own model.** Ollama (local), OpenAI, Anthropic (Claude), or any OpenAI-compatible server, switchable in Settings without a restart. API keys are stored in **Windows Credential Manager**, never in plain-text files.
+- **Bring your own model.** Ollama (local), OpenAI, Anthropic (Claude), or any OpenAI-compatible server, switchable in Settings without a restart. For local models, Settings suggests the one that fits your PC, from its RAM and graphics card. API keys are stored in **Windows Credential Manager**, never in plain-text files.
 - **Private by default.** Search, embeddings, OCR, chat history and notes never leave the machine. A **Local / Cloud** badge shows where answers are generated, and switching to a cloud model asks first.
 - **Usable from the first second.** A two-tier index makes every file findable *by name* within seconds, while contents are indexed in the background, newest files first. Questions are never blocked by indexing.
 - **Answers you can check.** PDF answers cite the page, and clicking the source opens the PDF right at that page (Edge, Chrome, Acrobat and SumatraPDF are supported).
@@ -72,26 +72,28 @@ Anything that **launches or writes** shows an approval card first: *Allow*, *Alw
 
 ## Engineering notes
 
-**Hybrid retrieval.** Every question runs vector search (meaning) and BM25 keyword search (exact
-tokens like `INV-2231` or a surname) in parallel and merges them with **reciprocal rank fusion**.
-Keyword queries drop filler words and match each remaining word as a phrase, so a code matches
-exactly and a long question stays fast. A **cross-encoder reranker** (Jina's 8K-context model,
-ONNX) then re-scores the top 20 candidates, blended with the first-pass rank so it refines the
-order instead of overruling it. It downloads once in the background and search runs without
-it until it's ready. Labelled benchmark in [`tests/fixtures/eval_corpus`](tests/fixtures/eval_corpus)
-(`python scripts/eval_retrieval.py`), with direct questions and paraphrases that share almost no
-words with the answer:
+**Query-aware hybrid retrieval.** Vector search (meaning) and BM25 keyword search (exact tokens)
+are merged with **weighted reciprocal rank fusion**, and the weight depends on the question. Codes
+(`INV-2231`, `E119`), acronyms, quoted phrases and names get full keyword weight; a plain
+question ("how much did we pay for the desks") is left to vector search, because there an
+OR-of-words keyword ranking is mostly noise ("pay" appears in every invoice).
 
-| Strategy | Direct: recall@1 | Direct: MRR | Paraphrased: recall@1 | Paraphrased: MRR | ms / query |
+Measured on a labelled benchmark (`python scripts/eval_retrieval.py`): a small 16-file corpus,
+and 100 look-alike documents (20 invoices, 15 project meetings, 12 trips...) generated
+reproducibly by [`scripts/build_eval_corpus.py`](scripts/build_eval_corpus.py). Each set has
+direct questions and paraphrases that avoid the document's own words. Top-1 accuracy (recall@1):
+
+| Strategy | Small, direct | Small, paraphrased | 100 docs, direct | 100 docs, paraphrased | ms / query |
 |---|---|---|---|---|---|
-| Vector only | 0.92 | 0.95 | 1.00 | 1.00 | 19 |
-| Hybrid (vector + BM25, RRF) | 1.00 | 1.00 | 0.88 | 0.93 | 19 |
-| **Hybrid + rerank** | **1.00** | **1.00** | **0.96** | **0.98** | 230 |
+| Vector only | 0.92 | 1.00 | 0.86 | 0.74 | 18 |
+| Hybrid, equal weights | 1.00 | 0.88 | 1.00 | 0.40 | 19 |
+| **Hybrid, query-aware** | **1.00** | **1.00** | **1.00** | **0.73** | 19 |
+| Query-aware + cross-encoder rerank | 1.00 | 1.00 | 1.00 | 0.67 | 250 |
 
-Keyword search is what makes codes like `INV-2231` exact, but it costs accuracy on paraphrases;
-the reranker wins most of that back. Recall@5 is 1.00 for every strategy on both sets. A
-512-token reranker tried first scored *worse* than no reranker, because it missed facts near the
-end of long excerpts.
+The 100-document set is what exposed the problem: with equal weights, keyword noise dragged
+paraphrased questions down to 0.40. A cross-encoder reranker (Jina's 8K-context model, ONNX)
+is built in but **off by default**: on top of query-aware fusion it added no accuracy and cost
+about a quarter of a second per question. It can be switched on with `rerank_enabled`.
 
 **One SQLite file for search.** Chunk text, 384-dim embeddings ([sqlite-vec](https://github.com/asg017/sqlite-vec))
 and an FTS5 full-text index share one database with WAL mode, so searches run while indexing

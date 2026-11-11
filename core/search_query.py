@@ -1,7 +1,8 @@
 """
 Turns a user's question into a full-text (FTS5) query: keeps the meaningful words, drops
 filler like "what" and "the", and quotes each word so codes such as "INV-2231" match exactly.
-Pure text processing, does not run the query.
+Also decides how much keyword matching should count for a question. Pure text processing, does
+not run the query.
 """
 
 from __future__ import annotations
@@ -37,3 +38,22 @@ def build_fts_query(text: str) -> str | None:
     if not terms:
         return None
     return " OR ".join(f'"{term}"' for term in terms[:MAX_TERMS])
+
+
+# Keyword search earns its place for exact things: codes (anything with a digit, like "INV-2231"
+# or "E119"), acronyms ("VPN"), quoted phrases and names. For a plain question ("how much did we
+# pay for the desks") its OR-of-words ranking is noise: "pay" matches every invoice. On the
+# 100-document benchmark, fusing it at full weight for such questions cut top-1 accuracy on
+# paraphrases from 0.72 to 0.40.
+_CODE_LIKE = re.compile(r"\d|\b[A-Z]{2,}\b|\"")
+# A capitalized word that doesn't start the sentence: a name, a place, a product.
+_NAME_LIKE = re.compile(r"(?<!^)(?<![.?!] )\b[A-Z][a-z]+")
+KEYWORD_WEIGHT_EXACT = 1.0
+KEYWORD_WEIGHT_NATURAL = 0.0
+
+
+def keyword_weight(text: str) -> float:
+    """How much keyword ranking should count when fused with meaning-based ranking."""
+    if _CODE_LIKE.search(text) or _NAME_LIKE.search(text.strip()):
+        return KEYWORD_WEIGHT_EXACT
+    return KEYWORD_WEIGHT_NATURAL
