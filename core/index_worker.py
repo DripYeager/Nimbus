@@ -41,6 +41,8 @@ class IndexWorker:
         self._running = threading.Event()
         self._current_path: Path | None = None
         self._since_optimize = 0
+        # A merge done mid-index is only partial; the full one still has to run when the queue empties.
+        self._needs_full_optimize = False
         self._index_lock = threading.Lock()
 
     @property
@@ -128,9 +130,15 @@ class IndexWorker:
             self._current_path = None
 
     def _optimize_if_dirty(self, force: bool) -> None:
-        """Optimizes the store when the queue runs dry, or every OPTIMIZE_EVERY_N_FILES files."""
-        if self._since_optimize == 0 or (not force and self._since_optimize < OPTIMIZE_EVERY_N_FILES):
+        """Optimizes the store when the queue runs dry, or every OPTIMIZE_EVERY_N_FILES files.
+
+        The periodic merge is bounded, so it must not count as the full rewrite: that one runs
+        when the queue later empties, even if the bounded merge just reset the file counter.
+        """
+        if self._since_optimize == 0 and not (force and self._needs_full_optimize):
+            return
+        if not force and self._since_optimize < OPTIMIZE_EVERY_N_FILES:
             return
         self._since_optimize = 0
-        # The full rewrite waits until the queue is empty; meanwhile a bounded merge keeps up.
+        self._needs_full_optimize = not force
         self._indexer.optimize_store(full=force)

@@ -58,6 +58,17 @@ def test_code_block_short_code_has_nothing_to_open(qapp: object) -> None:
     assert not block.can_expand() and not block.is_expanded() and block._toggle.isHidden()
 
 
+def test_code_block_copy_resets_with_its_own_timer(qapp: object, mocker) -> None:
+    mocker.patch("ui.chat.code_block.QGuiApplication.clipboard")
+    block = CodeBlock(ShownCode(title="Python", text="print(1)"))
+
+    block._copy.click()
+
+    assert block._copied_reset.isActive() and block._copy.text() == "Copied"
+    block._copied_reset.timeout.emit()
+    assert block._copy.text() == "Copy"
+
+
 def test_code_block_copy_puts_everything_on_the_clipboard(qapp: object, mocker) -> None:
     clipboard = mocker.patch("ui.chat.code_block.QGuiApplication.clipboard")
     block = CodeBlock(ShownCode(title="Python", text=LONG))

@@ -54,8 +54,16 @@ def test_history_turns_has_no_output_for_a_declined_step() -> None:
     assert (step.status, step.output) == ("denied", None)
 
 
+def _result(text: str, is_error: bool = False) -> ChatMessage:
+    return ChatMessage(role="tool", content=text, tool_call_id="a", is_error=is_error)
+
+
 def test_step_status_reads_how_a_step_ended() -> None:
-    assert step_status("read_file", "read_file failed: no such file") == "failed"
-    assert step_status("read_file", "read_file hit an unexpected error: KeyError") == "failed"
-    assert step_status("x", "Not run: the user sent a new message instead of answering.") == "denied"
-    assert step_status("read_file", "Budget: $48,000") == "done"
+    assert step_status("read_file", _result("read_file failed: no such file")) == "failed"
+    assert step_status("read_file", _result("read_file hit an unexpected error: KeyError")) == "failed"
+    assert step_status("x", _result("Not run: the user sent a new message instead of answering.")) == "denied"
+    assert step_status("read_file", _result("Budget: $48,000")) == "done"
+
+
+def test_step_status_trusts_the_saved_failure_flag() -> None:
+    assert step_status("read_file", _result("C:/old.txt no longer exists.", is_error=True)) == "failed"

@@ -25,6 +25,7 @@ BUBBLE_PREVIEW_WIDTH = 260
 BUBBLE_PREVIEW_HEIGHT = 170
 # A pasted wall of text shows this many lines until "Show all".
 PREVIEW_LINES = 12
+MEASURED_LINES = 500
 LESS_TEXT = "Show less"
 
 
@@ -38,7 +39,9 @@ class UserBubble(QWidget):
         lines = text.splitlines()
         self._full = text
         self._preview = "\n".join(lines[:PREVIEW_LINES]) + "\n..." if len(lines) > PREVIEW_LINES else text
-        self._label = _text_label(self._preview, bubble)
+        # Width follows the whole message, so "Show all" doesn't open into a bubble
+        # only as wide as the short lines in the preview.
+        self._label = _text_label(self._preview, bubble, self._full)
         inner = QVBoxLayout(bubble)
         inner.setContentsMargins(16, 10, 16, 10)
         inner.addWidget(self._label)
@@ -67,7 +70,7 @@ class UserBubble(QWidget):
         self._toggle.setText(LESS_TEXT if expanded else f"Show all {len(self._full.splitlines())} lines")
 
 
-def _text_label(text: str, parent: QWidget) -> QLabel:
+def _text_label(text: str, parent: QWidget, measure: str | None = None) -> QLabel:
     label = QLabel(parent)
     label.setObjectName("UserText")
     label.setTextFormat(Qt.TextFormat.PlainText)
@@ -75,7 +78,7 @@ def _text_label(text: str, parent: QWidget) -> QLabel:
     label.setWordWrap(True)
     label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     # A wrapping QLabel otherwise collapses to its narrowest width; size it to the text.
-    text_width = _text_width(text, USER_TEXT_PX) + BUBBLE_TEXT_SLACK_PX
+    text_width = _text_width(measure if measure is not None else text, USER_TEXT_PX) + BUBBLE_TEXT_SLACK_PX
     label.setMinimumWidth(min(text_width, USER_BUBBLE_MAX_WIDTH - BUBBLE_PADDING_PX))
     return label
 
@@ -104,8 +107,9 @@ def _attachment_tag(name: str, parent: QWidget) -> QHBoxLayout:
 
 
 def _text_width(text: str, pixel_size: int) -> int:
-    """Width of the longest line of text at the given font size."""
+    """Width of the longest line of text at the given font size (of the first lines only: a
+    huge paste is wider than the bubble's maximum long before its end)."""
     font = QFont()
     font.setPixelSize(pixel_size)
     metrics = QFontMetrics(font)
-    return max(metrics.horizontalAdvance(line) for line in text.splitlines() or [""])
+    return max(metrics.horizontalAdvance(line) for line in text.splitlines()[:MEASURED_LINES] or [""])

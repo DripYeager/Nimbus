@@ -46,9 +46,13 @@ class ChatSession(QObject):
         # The conversation whose reply is streaming, and its column (on screen or set aside).
         self._running_id: str | None = None
         self._running: ConversationColumn | None = None
-        # A conversation taken off screen while it was running (or still waiting on a card).
+        # A conversation taken off screen while its reply was still running.
         self._set_aside: ConversationColumn | None = None
         self._set_aside_id: str | None = None
+        # A conversation taken off screen while a card in it still waits for an answer. Its own
+        # slot: sharing one with the running reply could discard the column a stream writes into.
+        self._waiting: ConversationColumn | None = None
+        self._waiting_id: str | None = None
         # Bumped whenever the on-screen chat changes, so a history load that finishes late
         # can't paint itself over the chat the user has since switched to.
         self._shown_generation = 0
@@ -89,11 +93,14 @@ class ChatSession(QObject):
         self._invalidate_pending_load()
 
     def open_conversation(self, conversation_id: str) -> None:
-        """Shows a chat: the running one straight from memory, any other loaded from disk."""
-        if self._set_aside is not None and conversation_id == self._set_aside_id:
-            self._view.attach(self._set_aside)
-            self._set_aside, self._set_aside_id = None, None
-            self._input.set_answering_elsewhere(False)
+        """Shows a chat: one kept in memory (running, or waiting on a card) as it is, any other
+        loaded from disk."""
+        kept = self._take_kept(conversation_id)
+        if kept is not None:
+            # Park what's on screen first (a running reply is never discarded), then show it.
+            self._leave_current()
+            self._view.attach(kept)
+            self._input.set_answering_elsewhere(self._running is not None and self._running is not kept)
             self._conversation_id = conversation_id
             self._invalidate_pending_load()
             return
@@ -118,12 +125,14 @@ class ChatSession(QObject):
         """Draws a reopened chat, and the card it's still waiting on, if any."""
         if generation != self._shown_generation:
             return
-        if column.has_messages():
-            # The user sent something while this loaded: keep it, with the history above.
+        # A message sent while this loaded already told the engine to skip the waiting action,
+        # so the card from this snapshot would approve something that is no longer waiting.
+        moved_on = column.has_messages()
+        if moved_on:
             column.insert_history(view.turns)
         else:
             self._view.load_history(view.turns)
-        if view.pending is not None and not column.has_open_card():
+        if view.pending is not None and not column.has_open_card() and not moved_on:
             self._ask_confirmation(column, view.pending.model_dump(), conversation_id)
 
     def _show_saved_error(self, message: str, conversation_id: str, generation: int) -> None:
@@ -154,18 +163,33 @@ class ChatSession(QObject):
         self._running_id = conversation_id
         self._input.set_busy(True)
 
+    def _take_kept(self, conversation_id: str) -> ConversationColumn | None:
+        """Takes a chat kept in memory out of its slot, if conversation_id is one."""
+        if self._set_aside is not None and conversation_id == self._set_aside_id:
+            column, self._set_aside, self._set_aside_id = self._set_aside, None, None
+            return column
+        if self._waiting is not None and conversation_id == self._waiting_id:
+            column, self._waiting, self._waiting_id = self._waiting, None, None
+            return column
+        return None
+
     def _leave_current(self) -> None:
-        """Clears the screen for another chat; a running conversation is set aside, not lost."""
+        """Clears the screen for another chat. A running conversation is set aside, and one with
+        a card still waiting is kept too; neither is lost."""
         if self._running is not None and self._view.column is self._running:
-            self._drop_set_aside()
             self._set_aside, self._set_aside_id = self._view.detach(), self._running_id
             self._input.set_answering_elsewhere(True)
         elif self._view.column.has_open_card() and self._conversation_id is not None:
-            # A card still waits for an answer: keep the chat as it is, to come back to.
-            self._drop_set_aside()
-            self._set_aside, self._set_aside_id = self._view.detach(), self._conversation_id
+            self._keep_waiting(self._view.detach(), self._conversation_id)
         else:
             self._view.clear()
+
+    def _keep_waiting(self, column: ConversationColumn, conversation_id: str | None) -> None:
+        """Keeps one chat with a waiting card in memory. A chat it replaces isn't lost either:
+        reopening it from History shows its card again."""
+        if self._waiting is not None:
+            self._waiting.deleteLater()
+        self._waiting, self._waiting_id = column, conversation_id
 
     def _drop_set_aside(self) -> None:
         if self._set_aside is not None:
@@ -249,8 +273,14 @@ class ChatSession(QObject):
         column, self._running = self._running, None
         if column is not None:
             column.end_reply()
-        if column is not None and column is self._set_aside and not column.has_open_card():
-            self._drop_set_aside()
+        if column is not None and column is self._set_aside:
+            # Off screen and no longer running: a waiting card keeps it in memory, otherwise
+            # reopening it loads the saved copy.
+            if column.has_open_card():
+                self._keep_waiting(column, self._set_aside_id)
+                self._set_aside, self._set_aside_id = None, None
+            else:
+                self._drop_set_aside()
         self._running_id = None
         self._input.set_answering_elsewhere(False)
         self._input.set_busy(False)

@@ -245,6 +245,14 @@ The full design (process model, data flows, storage layout and security model) i
 
 ## Getting started
 
+### Download
+
+Get **`Nimbus-<version>-win64.zip`** from the [latest release](https://github.com/DripYeager/Nimbus/releases/latest),
+unzip it anywhere (no installer, no admin rights) and run **`Nimbus.exe`**. For fully local
+answers, also install [Ollama](https://ollama.com); Nimbus suggests a model that fits your PC.
+The app isn't code-signed yet, so Windows SmartScreen may ask once: choose *More info*, then
+*Run anyway*.
+
 ### Run from source
 
 Requires Windows 10/11 and Python 3.11+.

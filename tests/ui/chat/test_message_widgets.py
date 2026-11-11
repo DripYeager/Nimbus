@@ -18,7 +18,15 @@ from ui.chat.message_widgets import (
     AssistantMessage,
     _copy_icon,
 )
-from ui.chat.user_bubble import PREVIEW_LINES, USER_BUBBLE_MAX_WIDTH, UserBubble, _text_width
+from ui.chat.user_bubble import (
+    BUBBLE_PADDING_PX,
+    BUBBLE_TEXT_SLACK_PX,
+    PREVIEW_LINES,
+    USER_BUBBLE_MAX_WIDTH,
+    USER_TEXT_PX,
+    UserBubble,
+    _text_width,
+)
 from ui.theme.energy import ORB_REST_GLOW
 from ui.theme.line_icons import line_icon
 from ui.theme.tokens import SUCCESS
@@ -283,6 +291,14 @@ def test_user_bubble_shows_markup_as_typed() -> None:
 
     label = bubble.findChild(QLabel, "UserText")
     assert label.textFormat() == Qt.TextFormat.PlainText and label.text() == "Why is <b>this</b> bold?"
+
+
+def test_user_bubble_stays_wide_enough_for_lines_past_the_preview() -> None:
+    long_line = "x" * 80
+    bubble = UserBubble("short\n" * PREVIEW_LINES + long_line)
+
+    width = _text_width(long_line, USER_TEXT_PX) + BUBBLE_TEXT_SLACK_PX
+    assert bubble.findChild(QLabel).minimumWidth() == min(width, USER_BUBBLE_MAX_WIDTH - BUBBLE_PADDING_PX)
 
 
 def test_user_bubble_previews_a_long_paste() -> None:

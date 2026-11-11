@@ -109,3 +109,23 @@ def test_registry_code_for_other_tools_is_none(printer: RecordingTool) -> None:
 
     assert registry.code_for(make_call("search_files", query="x")) is None
     assert registry.code_for(make_call("ghost")) is None
+
+
+def test_pending_confirmation_shows_a_card_even_for_a_tool_that_is_gone(printer: RecordingTool) -> None:
+    call = make_call("github_create_issue", title="Bug")
+
+    card = make_agent(ScriptedProvider([]), _code_registry(printer)).pending_confirmation(paused_history(call))
+
+    assert card is not None and card.call_id == "c1" and card.can_always_allow is False
+
+
+def test_run_saves_whether_a_tool_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "auto_approved_tools", ["run_python"])
+    failing = RecordingTool(ToolResult(content="Traceback ... KeyError", is_error=True))
+    provider = ScriptedProvider([[make_call("run_python", code="x")], [TextDelta(text="It failed.")]])
+    history = user_turn()
+
+    list(make_agent(provider, _code_registry(failing)).run(history))
+
+    [tool_turn] = [m for m in history if m.role == "tool"]
+    assert tool_turn.is_error is True

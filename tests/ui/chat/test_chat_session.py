@@ -542,3 +542,74 @@ def test_history_that_loads_after_a_message_was_sent_goes_above_it(
     widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
     texts = [w.findChild(QLabel, "UserText").text() for w in widgets if isinstance(w, UserBubble)]
     assert texts == ["older question", "newer question"]
+
+
+def test_a_message_sent_while_history_loads_does_not_revive_the_skipped_card(
+    session: ChatSession, mocker: MockerFixture, view: ChatView
+) -> None:
+    waiting: list[Any] = []
+    mocker.patch("ui.chat.chat_session.run_in_background", side_effect=lambda _fn, ok, _err=None: waiting.append(ok))
+    session.open_conversation("c5")
+    session.send("newer question")
+    pending = ConfirmationNeeded(call_id="t1", tool="run_command", description="Run a PowerShell command")
+
+    waiting[0](ConversationView(turns=[HistoryTurn(role="user", text="older question")], pending=pending))
+
+    assert view.findChild(ConfirmCard) is None
+
+
+def _card_chat_view(conversation_id: str) -> ConversationView:
+    pending = ConfirmationNeeded(call_id="t1", tool="run_command", description="Run a PowerShell command")
+    return ConversationView(turns=[HistoryTurn(role="user", text=f"q in {conversation_id}")], pending=pending)
+
+
+def test_a_running_reply_survives_leaving_a_chat_with_a_waiting_card(
+    session: ChatSession, view: ChatView, api: Mock
+) -> None:
+    session.send("long question")
+    session._handle_event("started", _started("cA"))
+    running = session._running
+    api.conversation_view.side_effect = lambda conversation_id: _card_chat_view(conversation_id)
+
+    session.open_conversation("cB")
+    session.open_conversation("cC")
+    session._handle_event("token", {"text": "still streaming"})
+
+    assert running is session._running and running.current_reply._markdown == "still streaming"
+    session.open_conversation("cA")
+    assert view.column is running
+
+
+def test_reopening_a_waiting_chat_keeps_the_reply_running_on_screen(
+    session: ChatSession, view: ChatView, chat_input: ChatInput
+) -> None:
+    session.send("q")
+    card = _confirm(session, view)
+    session.new_chat()
+    session.send("new question")
+    session._handle_event("started", _started("cN"))
+    running = session._running
+
+    session.open_conversation("c7")
+    session._handle_event("token", {"text": "answer for N"})
+
+    assert view.findChild(ConfirmCard) is card and card.is_open()
+    assert running.current_reply._markdown == "answer for N"
+    assert chat_input._field.placeholderText() == ELSEWHERE_PLACEHOLDER
+    session.open_conversation("cN")
+    assert view.column is running
+
+
+def test_a_finished_set_aside_reply_with_a_card_stays_in_memory(
+    session: ChatSession, view: ChatView, api: Mock
+) -> None:
+    session.send("q")
+    session._handle_event("started", _started("cA"))
+    session.new_chat()
+    session._handle_event("confirm", {"call_id": "t2", "tool": "open_app", "description": "Open Notepad"})
+    session._finish()
+
+    session.open_conversation("cA")
+
+    assert view.findChild(ConfirmCard).is_open()
+    api.conversation_view.assert_not_called()

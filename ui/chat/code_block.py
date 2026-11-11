@@ -75,6 +75,9 @@ class CodeBlock(QFrame):
         layout.addWidget(self._text)
         self._toggle.clicked.connect(self.toggle)
         self._copy.clicked.connect(self._copy_all)
+        # Owned by the block: a free timer would still fire after the block was deleted
+        # (the user copied, then switched chats) and touch a widget that is already gone.
+        self._copied_reset = _owned_single_shot(self, COPIED_RESET_MS, self._reset_copy)
         if self.can_expand():
             self.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -111,10 +114,18 @@ class CodeBlock(QFrame):
     def _copy_all(self) -> None:
         QGuiApplication.clipboard().setText(self._full)
         self._copy.setText(COPIED_TEXT)
-        QTimer.singleShot(COPIED_RESET_MS, self._reset_copy)
+        self._copied_reset.start()
 
     def _reset_copy(self) -> None:
         self._copy.setText(COPY_TEXT)
+
+
+def _owned_single_shot(owner: QWidget, interval_ms: int, slot: object) -> QTimer:
+    timer = QTimer(owner)
+    timer.setSingleShot(True)
+    timer.setInterval(interval_ms)
+    timer.timeout.connect(slot)
+    return timer
 
 
 def output_block(text: str, parent: QWidget | None = None) -> CodeBlock:

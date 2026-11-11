@@ -48,6 +48,8 @@ class ChatMessage(BaseModel):
     tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_call_id: str | None = None
     tool_name: str | None = None
+    # For a tool turn: whether the tool failed, so a reopened chat shows the step as it was.
+    is_error: bool = False
 
 
 class TextDelta(BaseModel):

@@ -193,17 +193,20 @@ class Agent:
         return self._registry.describe_call(call), self._registry.code_for(call)
 
     def pending_confirmation(self, messages: list[ChatMessage]) -> ConfirmationNeeded | None:
-        """The card a saved chat is still waiting on (its first unanswered call that asks)."""
-        for call in pending_tool_calls(messages):
-            if self._needs_confirmation(call, messages):
-                return ConfirmationNeeded(
-                    call_id=call.id,
-                    tool=call.name,
-                    description=self._registry.describe_call(call),
-                    can_always_allow=self._registry.can_always_allow(call.name),
-                    code=self._registry.code_for(call),
-                )
-        return None
+        """The card a saved chat is still waiting on: the call its turn paused at, the first one
+        unanswered. It's shown even if that call wouldn't ask any more (the tool was set to always
+        allow, or its MCP server was removed); otherwise the chat would sit with nothing to
+        answer. Allowing a tool that's gone just reports that it's unavailable."""
+        call = next(iter(pending_tool_calls(messages)), None)
+        if call is None:
+            return None
+        return ConfirmationNeeded(
+            call_id=call.id,
+            tool=call.name,
+            description=self._registry.describe_call(call),
+            can_always_allow=self._registry.can_always_allow(call.name),
+            code=self._registry.code_for(call),
+        )
 
 
 def latest_user_text(messages: list[ChatMessage]) -> str:
@@ -250,7 +253,9 @@ def _tool_message(call: ToolCall, result: ToolResult) -> ChatMessage:
     content = result.content
     if len(content) > MAX_TOOL_RESULT_CHARS:
         content = content[:MAX_TOOL_RESULT_CHARS] + "\n[cut short]"
-    return ChatMessage(role="tool", content=content, tool_call_id=call.id, tool_name=call.name)
+    return ChatMessage(
+        role="tool", content=content, tool_call_id=call.id, tool_name=call.name, is_error=result.is_error
+    )
 
 
 class SourceTracker:
