@@ -52,16 +52,17 @@ class TrayIcon(QObject):
         self._tray.setToolTip(TOOLTIP_TITLE)
         self._tray.setContextMenu(self._build_menu())
         self._tray.activated.connect(self._handle_activated)
+        self._tray.messageClicked.connect(self.summon_requested.emit)
         self._tray.show()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh_status)
         self._timer.start(STATUS_REFRESH_MS)
         self.refresh_status()
 
-    def notify(self, message: str) -> None:
-        """Shows a balloon notification."""
+    def notify(self, message: str, title: str = TOOLTIP_TITLE) -> None:
+        """Shows a Windows notification; clicking it opens Nimbus."""
         if self._tray is not None:
-            self._tray.showMessage(TOOLTIP_TITLE, message, app_icon(), NOTIFICATION_MS)
+            self._tray.showMessage(title, message, app_icon(), NOTIFICATION_MS)
 
     def hide(self) -> None:
         if self._timer is not None:

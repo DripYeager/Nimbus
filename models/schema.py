@@ -11,7 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 @dataclass
@@ -75,6 +75,19 @@ class IndexSource(BaseModel):
     def _expand_home(cls, value: str | Path) -> Path:
         """Lets saved settings and .env use ~."""
         return Path(value).expanduser()
+
+
+class McpServerConfig(BaseModel):
+    """Another program that offers tools over MCP. Nimbus starts it (command plus args) while
+    Nimbus runs, and its tools join Nimbus's own, each call asking the user first."""
+
+    name: str
+    command: str
+    args: list[str] = Field(default_factory=list)
+    # Extra environment variables some servers need (an access token, say). Only a small safe
+    # set of Nimbus's own variables is passed on besides these.
+    env: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = True
 
 
 class CatalogStatus(StrEnum):

@@ -53,5 +53,17 @@ httpx==0.28.1
 # API keys live in the OS credential store (Windows Credential Manager)
 keyring==25.7.0
 
-# Windows integration (start-at-sign-in shortcut)
+# Reading a web page the user gives: HTML to clean Markdown text
+beautifulsoup4==4.15.0
+markdownify==1.2.3
+
+# Data work in approved Python runs: tables and charts (numpy and openpyxl come with the
+# parsers above)
+pandas==3.1.1
+matplotlib==3.10.8
+
+# MCP: other AI apps search through Nimbus, and Nimbus uses their tools
+mcp==2.3.0
+
+# Windows integration (start-at-sign-in shortcut, clipboard, windows, job limits for code runs)
 pywin32==312; sys_platform == "win32"

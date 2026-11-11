@@ -81,9 +81,9 @@ class ConversationColumn(QWidget):
             self._current.deleteLater()
         self._current = None
 
-    def add_confirmation(self, description: str) -> ConfirmCard:
+    def add_confirmation(self, description: str, can_always_allow: bool = True) -> ConfirmCard:
         self.end_reply()
-        card = ConfirmCard(description, self)
+        card = ConfirmCard(description, self, can_always_allow)
         self._cards.append(card)
         self._append(card)
         return card

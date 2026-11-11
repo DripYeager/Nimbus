@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 
 from config.settings import get_settings
-from core.attachment_format import has_attachment
+from core.attachment_format import has_attachment, split_attachments
 from core.exceptions import ToolsUnsupportedError
 from core.logger import get_logger
 from llm.provider import LLMProvider
@@ -135,9 +135,12 @@ class Agent:
         for call in pending_tool_calls(messages):
             if decision is not None and call.id == decision.call_id:
                 result = yield from self._decide(call, decision.approved)
-            elif self._needs_confirmation(call):
+            elif self._needs_confirmation(call, messages):
                 yield ConfirmationNeeded(
-                    call_id=call.id, tool=call.name, description=self._registry.describe_call(call)
+                    call_id=call.id,
+                    tool=call.name,
+                    description=self._registry.describe_call(call),
+                    can_always_allow=self._registry.can_always_allow(call.name),
                 )
                 return True
             else:
@@ -162,12 +165,24 @@ class Agent:
         yield ToolActivity(call_id=call.id, tool=call.name, label=label, status="failed" if result.is_error else "done")
         return result
 
-    def _needs_confirmation(self, call: ToolCall) -> bool:
-        """Action tools ask first, unless the user chose "always allow" for that tool."""
+    def _needs_confirmation(self, call: ToolCall, messages: list[ChatMessage]) -> bool:
+        """Action tools ask first, unless the user chose "always allow" for that tool (which
+        tools that must always ask ignore, even if a setting says otherwise)."""
         tool = self._registry.get(call.name)
-        if tool is None or not tool.requires_confirmation:
+        if tool is None or not tool.needs_confirmation(call.arguments, latest_user_text(messages)):
             return False
+        if not tool.always_allowable:
+            return True
         return call.name not in get_settings().auto_approved_tools
+
+    def can_always_allow(self, tool_name: str) -> bool:
+        return self._registry.can_always_allow(tool_name)
+
+
+def latest_user_text(messages: list[ChatMessage]) -> str:
+    """What the user typed in their newest message, without any attached file's text."""
+    latest = next((m for m in reversed(messages) if m.role == "user"), None)
+    return split_attachments(latest.content)[0] if latest is not None else ""
 
 
 def pending_tool_calls(messages: list[ChatMessage]) -> list[ToolCall]:

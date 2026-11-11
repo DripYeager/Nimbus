@@ -126,6 +126,9 @@ class ChatService:
         """Remembers "always allow" for the tool behind call_id, and for any tool that shares its
         setting (allowing Word files allows spreadsheets too: Settings shows one switch)."""
         tool = next(c.name for c in pending_tool_calls(history) if c.id == call_id)
+        if not self._agent.can_always_allow(tool):
+            # The card hides the button for these; a hand-made request still mustn't stick.
+            return
         allowed = get_settings().auto_approved_tools
         missing = [name for name in approval_group(tool) if name not in allowed]
         if missing:

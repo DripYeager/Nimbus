@@ -117,7 +117,7 @@ class ConfirmCard(QFrame):
 
     decided = pyqtSignal(bool, bool)
 
-    def __init__(self, description: str, parent: QWidget | None = None) -> None:
+    def __init__(self, description: str, parent: QWidget | None = None, can_always_allow: bool = True) -> None:
         super().__init__(parent)
         self.setObjectName("ConfirmCard")
         self._open = True
@@ -136,7 +136,8 @@ class ConfirmCard(QFrame):
         self._buttons = QHBoxLayout()
         self._buttons.setSpacing(8)
         self._add_button("Allow", "primary", approved=True, always=False)
-        self._add_button("Always allow", "", approved=True, always=True)
+        if can_always_allow:
+            self._add_button("Always allow", "", approved=True, always=True)
         self._add_button("Don't", "ghost", approved=False, always=False)
         self._buttons.addStretch()
         layout = QVBoxLayout(self)

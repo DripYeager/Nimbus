@@ -18,6 +18,7 @@ from ui.api_client import ApiClient
 from ui.chat.chat_window import ChatWindow
 from ui.hotkey import HotkeyListener
 from ui.onboarding.onboarding_wizard import OnboardingWizard
+from ui.reminder_poller import ReminderPoller
 from ui.single_instance import InstanceServer
 from ui.tray import TrayIcon
 
@@ -39,6 +40,7 @@ class DesktopShell(QObject):
         self._hotkey = HotkeyListener(get_settings().hotkey)
         self._instances = InstanceServer()
         self._wizard: OnboardingWizard | None = None
+        self._reminders = ReminderPoller(api, lambda title, text: self._tray.notify(text, title))
 
     def start(self) -> None:
         """Shows the tray, registers the hotkey, and runs onboarding on first launch."""
@@ -52,6 +54,7 @@ class DesktopShell(QObject):
         self._instances.ask_requested.connect(self.ask_about_file)
         self._tray.capture_requested.connect(self._chat.capture_screen)
         self._instances.listen()
+        self._reminders.start()
         self.settings_changed.connect(self._apply_hotkey)
         hotkey_ready = self._register_hotkey()
         if not get_settings().onboarding_complete:
@@ -61,6 +64,7 @@ class DesktopShell(QObject):
             self._tray.notify(f"Nimbus is ready. Press {_readable(get_settings().hotkey)} to summon me.")
 
     def stop(self) -> None:
+        self._reminders.stop()
         self._hotkey.stop()
         self._tray.hide()
         self._chat.hide()

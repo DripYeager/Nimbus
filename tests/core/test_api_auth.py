@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import core.api_auth as auth_module
@@ -50,3 +52,29 @@ def test_is_valid_token_accepts_this_runs_token() -> None:
 )
 def test_is_allowed_host_only_accepts_this_machine_by_name(host: str | None, expected: bool) -> None:
     assert is_allowed_host(host) is expected
+
+
+def test_write_bridge_token_is_read_back(tmp_path: Path) -> None:
+    path = tmp_path / "data" / auth_module.BRIDGE_TOKEN_FILE
+    auth_module.write_bridge_token(path)
+
+    assert auth_module.is_valid_bridge_token(auth_module.read_bridge_token(path))
+
+
+def test_read_bridge_token_missing_file_is_none(tmp_path: Path) -> None:
+    assert auth_module.read_bridge_token(tmp_path / "none") is None
+
+
+def test_remove_bridge_token_deletes_the_file(tmp_path: Path) -> None:
+    path = tmp_path / "token"
+    auth_module.write_bridge_token(path)
+
+    auth_module.remove_bridge_token(path)
+    auth_module.remove_bridge_token(path)
+
+    assert not path.exists()
+
+
+def test_bridge_token_differs_from_the_app_token(fresh_token: None) -> None:
+    assert not auth_module.is_valid_bridge_token(session_token())
+    assert not auth_module.is_valid_bridge_token(None)

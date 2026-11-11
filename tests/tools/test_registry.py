@@ -134,3 +134,23 @@ def test_approval_group_ties_the_file_creation_tools_together() -> None:
 
 def test_approval_group_is_just_the_tool_otherwise() -> None:
     assert approval_group("open_app") == ("open_app",)
+
+
+def test_unregister_removes_only_that_tool(registry: ToolRegistry) -> None:
+    registry.unregister("alpha")
+
+    assert registry.names() == ["beta"]
+
+
+def test_unregister_unknown_name_is_harmless(registry: ToolRegistry) -> None:
+    registry.unregister("ghost")
+
+    assert registry.names() == ["alpha", "beta"]
+
+
+def test_register_leaves_an_earlier_snapshot_unchanged(registry: ToolRegistry) -> None:
+    before = registry.specs()
+
+    registry.register(_tool("gamma"))
+
+    assert [spec.name for spec in before] == ["alpha", "beta"]

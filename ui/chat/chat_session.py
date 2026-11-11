@@ -195,7 +195,7 @@ class ChatSession(QObject):
         """Shows an approve/decline card; the answer resumes the paused turn."""
         call_id = data["call_id"]
         conversation_id = self._running_id
-        card = column.add_confirmation(data["description"])
+        card = column.add_confirmation(data["description"], bool(data.get("can_always_allow", True)))
 
         def _decided(approved: bool, always: bool) -> None:
             if self._input.is_busy():

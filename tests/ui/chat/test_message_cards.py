@@ -142,3 +142,9 @@ def test_source_card_click_opens_the_pdf_at_its_page(mocker: MockerFixture) -> N
     card.click()
 
     opener.assert_called_once_with("C:/Docs/cv.pdf", 3)
+
+
+def test_confirm_card_can_leave_out_always_allow(qapp: object) -> None:
+    card = ConfirmCard("Run Remove-Item", can_always_allow=False)
+
+    assert "Always allow" not in [b.text() for b in card.findChildren(QPushButton)]

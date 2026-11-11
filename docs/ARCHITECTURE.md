@@ -29,9 +29,23 @@ One user process, four kinds of thread:
                │ in-process calls
 ┌──────────────▼──────── background threads ────────────────────────┐
 │ index-scan (catalog sync) · index-worker (content) · watchdog     │
-│ hotkey message loop · app-catalog build                            │
+│ hotkey message loop · app-catalog build · mcp-servers event loop   │
 └───────────────────────────────────────────────────────────────────┘
 ```
+
+Some work runs in child processes, always hidden and always ended with Nimbus:
+
+- **PowerShell** for `run_command` (`core/command_runner.py`), with a timeout and a process
+  tree kill.
+- **The Python sandbox** for `run_python` (`core/code_sandbox.py`, started by
+  `core/code_runner.py` as `python -I` from source or `Nimbus.exe --run-code` when packaged),
+  inside a Windows job object with a memory cap.
+- **The user's MCP servers** (`core/mcp_client.py`), one stdio connection each, held open on the
+  `mcp-servers` event loop; their tools are registered in the chat's `ToolRegistry` as they
+  connect (`tools/mcp_tools.py`).
+
+Other AI apps start one more process themselves: `Nimbus.exe --mcp` (`core/mcp_server.py`),
+an MCP server on stdio that forwards each call to the running engine's `/tools` routes.
 
 The UI talks to the engine over a loopback HTTP boundary even though both live in one process.
 That keeps the GUI thread thin, makes the engine fully testable with `curl` or a `TestClient`,
@@ -124,10 +138,19 @@ POST /chat {text, conversation_id?}
                         → run or record "declined" → continue the loop
 ```
 
-- **Tools** (`tools/`): `search_files`, `find_files_by_name`, `list_recent_files`,
-  `read_file`, `summarize_file`, `get_file_info`, `open_app`, `open_file`,
-  `reveal_in_explorer`, `open_website`, `open_windows_setting`, `save_note`, `search_notes`,
-  `system_status`.
+- **Tools** (`tools/`): files (`search_files`, `find_files_by_name`, `list_recent_files`,
+  `read_file`, `summarize_file`, `get_file_info`), actions (`open_app`, `open_file`,
+  `reveal_in_explorer`, `open_website`, `open_windows_setting`), notes (`save_note`,
+  `search_notes`), new files (`create_document`, `create_spreadsheet`), the PC
+  (`system_status`, `top_processes`, `run_command`), `run_python`, desktop
+  (`media_control`, `set_volume`, `list_open_windows`, `switch_to_window`, `close_window`,
+  `copy_to_clipboard`), reminders (`set_reminder`, `list_reminders`, `cancel_reminder`),
+  `read_web_page`, tidying (`move_file`, `rename_file`, `undo_file_change`), plus whatever the
+  user's MCP servers offer.
+- **When a call asks first**: a tool either always asks (`requires_confirmation`) or decides per
+  call (`confirm_when`): a read-only command or a link the user typed runs at once, anything
+  else asks. Tools that can change the PC in open-ended ways (`always_allowable=False`:
+  commands, code, file moves, pages Nimbus found itself) never get *Always allow*.
 - **Path guard**: every file tool resolves the path first (defeating `..` tricks) and refuses
   anything outside the user's shared folders or Nimbus's own notes folder.
 - **Persistence**: every message, tool call and tool result is stored (SQLite), so a paused
@@ -157,7 +180,11 @@ to `settings.json`, never returned by the API, and never logged.
 | Chats | `%APPDATA%\Nimbus\conversations.db` |
 | Notes | `%APPDATA%\Nimbus\notes\*.md` |
 | Embedding model cache | `%APPDATA%\Nimbus\models\` |
-| Logs (rotating) | `%APPDATA%\Nimbus\logs\nimbus.log` |
+| Logs (rotating) | `%APPDATA%\Nimbus\logs\nimbus.log` (the MCP bridge: `nimbus-mcp.log`) |
+| Reminders | `%APPDATA%\Nimbus\reminders.db` |
+| File move journal (for undo) | `%APPDATA%\Nimbus\file_changes.jsonl` |
+| MCP bridge secret (only while sharing is on) | `%APPDATA%\Nimbus\mcp_bridge_token` |
+| Python runs (code, output files, charts) | `Documents\Nimbus\Code runs\<time>\` |
 
 Settings resolve in this order: Settings window → environment → `.env` (developer fallback).
 Values from a 1.x `.env` are migrated automatically (`config/legacy_settings.py`).
@@ -169,9 +196,25 @@ Values from a 1.x `.env` are migrated automatically (`config/legacy_settings.py`
   in memory, never on disk; `NIMBUS_API_TOKEN` sets it for a standalone engine) or with a
   `Host` other than `127.0.0.1`/`localhost`, which blocks DNS-rebinding pages. `/health` needs
   no secret but still gets the host check.
-- Nimbus never modifies, moves or deletes user files. Apart from its own data it only writes
-  new files the user asked for (`create_document`, `create_spreadsheet`), never over an
-  existing one.
+- The `/tools` routes take a different secret, the bridge token, and nothing else does. It is
+  written to the user's profile only while *Share with other AI apps* is on, and the routes
+  serve only read-only tools (search, find, read, recent files, file info).
+- Nimbus never deletes or overwrites user files. Apart from its own data it writes only new
+  files the user asked for (`create_document`, `create_spreadsheet`), and moves or renames only
+  inside shared folders, one approved change at a time, journaled for undo.
+- `run_command`: an allow list of read-only cmdlets and native tools (with argument rules, for
+  example `netsh ... show` only), checked per `;` statement after single-quoted text is set
+  aside; `&`, redirection, subexpressions and script blocks make a command need approval;
+  elevation (`-Verb RunAs`, `runas`, `sudo`) is refused outright. Output is trimmed.
+- `run_python`: a separate process in a job object (2 GB, killed with Nimbus) with a time
+  limit. An audit hook allows reads only in shared folders, the run folder and Python's own
+  files, writes only in the run folder, and blocks process creation, sockets, registry writes
+  and `ctypes` native calls. numpy, pandas, openpyxl and matplotlib are imported before the hook
+  is installed.
+- `read_web_page`: http and https only, every redirect re-checked, private, loopback,
+  link-local and reserved addresses refused, 3 MB cap, an honest user agent.
+- MCP servers the user adds start with only a small set of environment variables plus the ones
+  configured for them, and every tool call shows its arguments on an approval card.
 - Launching apps, opening files/URLs, saving notes and creating files require an explicit
   click unless the user pre-approves that tool in Settings.
 - Voice input records with Qt Multimedia (`ui/voice_recorder.py`) and transcribes with a local

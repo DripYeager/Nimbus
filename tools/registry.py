@@ -21,15 +21,30 @@ ToolHandler = Callable[[dict[str, Any]], ToolResult]
 CallDescriber = Callable[[dict[str, Any]], str]
 
 
+# (the call's arguments, what the user typed in their latest message) -> must it ask first?
+ConfirmationRule = Callable[[dict[str, Any], str], bool]
+
+
 @dataclass(frozen=True)
 class Tool:
     """One callable capability. Action tools (anything that launches or writes) set
-    requires_confirmation, and describe() is what the confirmation card shows."""
+    requires_confirmation, and describe() is what the confirmation card shows. confirm_when,
+    if set, decides per call instead (a read-only terminal command runs freely; any other one
+    asks). always_allowable=False keeps a tool off "Always allow", so every call asks."""
 
     spec: ToolSpec
     handler: ToolHandler
     describe: CallDescriber
     requires_confirmation: bool = False
+    confirm_when: ConfirmationRule | None = None
+    always_allowable: bool = True
+
+    def needs_confirmation(self, arguments: dict[str, Any], user_text: str = "") -> bool:
+        """Whether this particular call has to wait for the user's go-ahead. user_text is what
+        the user typed this turn, for rules like "a link they gave us may be fetched"."""
+        if self.confirm_when is not None:
+            return self.confirm_when(arguments, user_text)
+        return self.requires_confirmation
 
 
 class ToolRegistry:
@@ -39,10 +54,15 @@ class ToolRegistry:
         self._tools: dict[str, Tool] = {}
 
     def register(self, tool: Tool) -> None:
-        """Adds tool; a duplicate name is a wiring bug, so it fails loudly."""
+        """Adds tool; a duplicate name is a wiring bug, so it fails loudly. Tools from other
+        apps come and go while chats run, so changes swap in a new dict rather than editing the
+        one a reader may be looping over."""
         if tool.spec.name in self._tools:
             raise ValueError(f"A tool named {tool.spec.name!r} is already registered.")
-        self._tools[tool.spec.name] = tool
+        self._tools = {**self._tools, tool.spec.name: tool}
+
+    def unregister(self, name: str) -> None:
+        self._tools = {key: tool for key, tool in self._tools.items() if key != name}
 
     def specs(self) -> list[ToolSpec]:
         return [tool.spec for tool in self._tools.values()]
@@ -69,6 +89,11 @@ class ToolRegistry:
             # tell the user that step failed.
             logger.exception("Tool crashed", extra={"tool": call.name})
             return ToolResult(content=f"{call.name} hit an unexpected error: {type(e).__name__}", is_error=True)
+
+    def can_always_allow(self, name: str) -> bool:
+        """False for tools that must ask every time (running commands or code)."""
+        tool = self._tools.get(name)
+        return tool is not None and tool.always_allowable
 
     def describe_call(self, call: ToolCall) -> str:
         """Plain-language summary of call, for chips and confirmation cards."""

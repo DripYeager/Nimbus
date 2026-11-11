@@ -13,8 +13,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from api import app_routes, chat_routes, index_routes, ollama_routes, settings_routes
-from core.api_auth import TOKEN_HEADER, is_allowed_host, is_valid_token
+from api import (
+    app_routes,
+    chat_routes,
+    index_routes,
+    mcp_routes,
+    ollama_routes,
+    reminder_routes,
+    settings_routes,
+    tool_routes,
+)
+from core.api_auth import BRIDGE_PATH_PREFIX, TOKEN_HEADER, is_allowed_host, is_valid_bridge_token, is_valid_token
 from core.exceptions import (
     AppLaunchError,
     ConversationNotFoundError,
@@ -61,15 +70,25 @@ app.include_router(index_routes.router)
 app.include_router(settings_routes.router)
 app.include_router(app_routes.router)
 app.include_router(ollama_routes.router)
+app.include_router(reminder_routes.router)
+app.include_router(tool_routes.router)
+app.include_router(mcp_routes.router)
 
 
 @app.middleware("http")
 async def _require_local_caller(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     """Rejects requests addressed to another host name (a DNS-rebinding web page) and any
-    request without this run's secret (another program on the PC)."""
+    request without this run's secret (another program on the PC). The MCP bridge's secret
+    opens the shared /tools routes and nothing else; the app's own secret doesn't open those."""
     if not is_allowed_host(request.headers.get("host")):
         return _refused(403, "Requests must be addressed to 127.0.0.1 or localhost.")
-    if request.url.path not in OPEN_PATHS and not is_valid_token(request.headers.get(TOKEN_HEADER)):
+    path = request.url.path
+    presented = request.headers.get(TOKEN_HEADER)
+    if path.startswith(BRIDGE_PATH_PREFIX):
+        allowed = is_valid_bridge_token(presented)
+    else:
+        allowed = path in OPEN_PATHS or is_valid_token(presented)
+    if not allowed:
         return _refused(401, "Missing or wrong Nimbus API token.")
     return await call_next(request)
 

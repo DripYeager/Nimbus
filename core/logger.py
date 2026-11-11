@@ -28,6 +28,10 @@ QUIET_LIBRARIES = ("httpx", "httpcore", "huggingface_hub")
 # explicitly means correctness doesn't depend on which handler runs first.
 _STANDARD_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime"}
 _configured = False
+# Where console logging goes. The MCP bridge speaks its protocol on stdout, so it moves logs
+# to stderr and to a file of its own (two processes rotating one file would clash).
+_console_stream_name = "stdout"
+_log_file_name = LOG_FILE_NAME
 
 
 class _ContextFormatter(logging.Formatter):
@@ -50,10 +54,11 @@ def _configure_root_logger() -> None:
     root = logging.getLogger()
     root.setLevel(DEFAULT_LOG_LEVEL)
     # A windowed build (or pythonw) has no console at all, so sys.stdout is None there.
-    if sys.stdout is not None:
-        stdout_handler = logging.StreamHandler(sys.stdout)
-        stdout_handler.setFormatter(formatter)
-        root.addHandler(stdout_handler)
+    console = getattr(sys, _console_stream_name)
+    if console is not None:
+        console_handler = logging.StreamHandler(console)
+        console_handler.setFormatter(formatter)
+        root.addHandler(console_handler)
     file_handler = _build_file_handler()
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
@@ -66,7 +71,7 @@ def _configure_root_logger() -> None:
 
 def log_file_path() -> Path:
     """Where the current log file lives, so error messages can point people at it."""
-    return log_dir() / LOG_FILE_NAME
+    return log_dir() / _log_file_name
 
 
 def _build_file_handler() -> RotatingFileHandler:
@@ -74,6 +79,14 @@ def _build_file_handler() -> RotatingFileHandler:
     path = log_file_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     return RotatingFileHandler(path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8")
+
+
+def log_beside_stdout(file_name: str) -> None:
+    """For a process whose stdout is a protocol channel: logs go to stderr and file_name instead.
+    Must run before the first get_logger call."""
+    global _console_stream_name, _log_file_name
+    _console_stream_name = "stderr"
+    _log_file_name = file_name
 
 
 def get_logger(name: str) -> logging.Logger:

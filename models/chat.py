@@ -126,6 +126,8 @@ class ConfirmationNeeded(BaseModel):
     call_id: str
     tool: str
     description: str
+    # False for tools that ask every time; the card then offers no "Always allow".
+    can_always_allow: bool = True
 
 
 class ChatDone(BaseModel):

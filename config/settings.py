@@ -21,7 +21,7 @@ from pydantic_settings import (
 from config.legacy_settings import migrate_legacy_values
 from config.paths import app_data_dir, user_settings_path
 from models.chat import ProviderName
-from models.schema import FileCategory, IndexSource
+from models.schema import FileCategory, IndexSource, McpServerConfig
 
 DEFAULT_SOURCE_DIRS = ["~/Downloads", "~/Desktop", "~/Documents"]
 CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "anthropic", "openai_compatible"})
@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     daily_llm_call_cap: int | None = None
     auto_approved_tools: list[str] = Field(default_factory=list)
     max_agent_steps: int = 6
+    # MCP: let other AI apps search through Nimbus, and use tools from other apps' MCP servers.
+    share_with_mcp_apps: bool = False
+    mcp_servers: list[McpServerConfig] = Field(default_factory=list)
     onboarding_complete: bool = False
 
     @classmethod

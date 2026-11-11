@@ -14,7 +14,15 @@ import httpx
 from config.settings import get_settings
 from core.api_auth import auth_headers
 from core.exceptions import NimbusError
-from models.api import ModelRecommendation, OllamaStatus, ProviderTestResult, SettingsView, UsageView
+from models.api import (
+    DueReminder,
+    McpServerStatus,
+    ModelRecommendation,
+    OllamaStatus,
+    ProviderTestResult,
+    SettingsView,
+    UsageView,
+)
 from models.chat import ChatMessage, ConversationSummary, ProviderConfig, ProviderName
 from models.schema import IndexStatus, SourceSummary
 
@@ -66,6 +74,12 @@ class ApiClient:
 
     def pull_ollama_model(self, model: str) -> OllamaStatus:
         return OllamaStatus(**self._request("POST", "/providers/ollama/pull", json={"model": model}))
+
+    def due_reminders(self) -> list[DueReminder]:
+        return [DueReminder(**item) for item in self._request("GET", "/reminders/due")]
+
+    def mcp_servers(self) -> list[McpServerStatus]:
+        return [McpServerStatus(**item) for item in self._request("GET", "/mcp/servers")]
 
     def usage(self) -> UsageView:
         return UsageView(**self._request("GET", "/usage"))

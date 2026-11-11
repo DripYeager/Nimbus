@@ -15,17 +15,21 @@ from pathlib import Path
 from config.paths import notes_dir
 from config.settings import get_settings
 from core.agent import Agent
+from core.api_auth import BRIDGE_TOKEN_FILE, remove_bridge_token, write_bridge_token
 from core.chat_service import ChatService
 from core.conversation_store import ConversationStore
 from core.embedder import get_embedder
 from core.fast_path import FastPath
 from core.file_catalog import FileCatalog
+from core.file_tidy import FileTidier
 from core.file_watcher import FileWatcher
 from core.index_service import IndexService
 from core.indexer import Indexer
 from core.logger import get_logger
+from core.mcp_client import McpConnections
 from core.ollama_setup import OllamaSetup
 from core.rag_answer import RagAnswerer
+from core.reminders import ReminderStore
 from core.reranker import get_reranker
 from core.retriever import Retriever
 from core.usage_meter import UsageMeter
@@ -34,14 +38,23 @@ from llm.active_provider import ActiveProvider
 from llm.prompts import build_system_prompt
 from tools.action_toolbox import ActionToolbox
 from tools.app_catalog import AppCatalog
+from tools.code_tools import CodeToolbox
 from tools.create_toolbox import CreateToolbox
+from tools.desktop_tools import DesktopToolbox
 from tools.file_toolbox import FileToolbox
+from tools.mcp_tools import McpToolbox
 from tools.registry import ToolRegistry
+from tools.reminder_tools import ReminderToolbox
+from tools.terminal_tools import TerminalToolbox
+from tools.tidy_tools import TidyToolbox
+from tools.web_tools import WebToolbox
 
 logger = get_logger(__name__)
 
 # Nimbus 2.0 kept its search index in a LanceDB folder; 2.1 moved it into one SQLite file.
 LEGACY_INDEX_DIR = "index"
+REMINDERS_FILE = "reminders.db"
+FILE_CHANGES_LOG = "file_changes.jsonl"
 LEGACY_INDEX_MARKER = "chunks.lance"
 
 SettingsListener = Callable[[], None]
@@ -61,6 +74,9 @@ class AppServices:
         self.chat: ChatService | None = None
         self.usage: UsageMeter | None = None
         self.ollama: OllamaSetup | None = None
+        self.reminders: ReminderStore | None = None
+        self.tools: ToolRegistry | None = None
+        self.mcp = McpConnections()
         self._settings_listeners: list[SettingsListener] = []
 
     @classmethod
@@ -78,6 +94,7 @@ class AppServices:
         services.usage = UsageMeter(settings.data_dir / "usage.json")
         services.provider = ActiveProvider(services.usage)
         services.ollama = OllamaSetup(lambda: get_settings().ollama_host)
+        services.reminders = ReminderStore(settings.data_dir / REMINDERS_FILE)
         services.index = IndexService(services.catalog, services.store, Indexer(services.store, get_embedder()))
         services.watcher = FileWatcher(services.index)
         services.apps = AppCatalog()
@@ -92,13 +109,17 @@ class AppServices:
         if reranker is not None:
             reranker.load_in_background()
         self.watcher.start(settings.sources)
+        self._apply_mcp_settings()
         threading.Thread(target=self._load_app_catalog, name="app-catalog", daemon=True).start()
 
     def stop(self) -> None:
+        remove_bridge_token(get_settings().data_dir / BRIDGE_TOKEN_FILE)
+        self.mcp.stop()
         self.watcher.stop()
         self.index.stop()
         self.store.close()
         self.catalog.close()
+        self.reminders.close()
 
     def add_settings_listener(self, listener: SettingsListener) -> None:
         """Registers a callback for after settings change, e.g. the UI rebinding the hotkey."""
@@ -110,9 +131,20 @@ class AppServices:
         already-saved folder and hotkey changes from taking effect."""
         self.index.apply_settings()
         self.watcher.restart(get_settings().sources)
+        self._apply_mcp_settings()
         for listener in self._settings_listeners:
             listener()
         self.provider.reload()
+
+    def _apply_mcp_settings(self) -> None:
+        """Connects the user's MCP servers, and lets the bridge in only while sharing is on."""
+        settings = get_settings()
+        token_file = settings.data_dir / BRIDGE_TOKEN_FILE
+        if settings.share_with_mcp_apps:
+            write_bridge_token(token_file)
+        else:
+            remove_bridge_token(token_file)
+        self.mcp.start(settings.mcp_servers)
 
     def is_path_shared(self, path: Path) -> bool:
         """True for a path the user shared with Nimbus, or one of Nimbus's own notes."""
@@ -127,7 +159,16 @@ class AppServices:
         FileToolbox(retriever, self.catalog, self.is_path_shared, self.provider).register(registry)
         actions = ActionToolbox(self.apps, self.is_path_shared)
         actions.register(registry)
-        CreateToolbox(lambda: [source.path.expanduser() for source in get_settings().sources]).register(registry)
+        CreateToolbox(shared_roots).register(registry)
+        TerminalToolbox().register(registry)
+        DesktopToolbox().register(registry)
+        ReminderToolbox(self.reminders).register(registry)
+        WebToolbox().register(registry)
+        tidier = FileTidier(get_settings().data_dir / FILE_CHANGES_LOG)
+        TidyToolbox(tidier, self.is_path_shared, shared_roots).register(registry)
+        CodeToolbox(shared_roots).register(registry)
+        self.mcp.on_change = McpToolbox(self.mcp, registry).sync
+        self.tools = registry
         agent = Agent(self.provider, registry, _system_prompt, RagAnswerer(retriever, self.provider).answer)
         self.chat = ChatService(self.conversations, agent, FastPath(self.catalog, actions), self.index.status)
 
@@ -137,6 +178,11 @@ class AppServices:
             self.apps.load_or_build()
         except Exception:
             logger.exception("Couldn't build the app catalog; app launching won't work this session")
+
+
+def shared_roots() -> list[Path]:
+    """The folders the user shared with Nimbus, as configured right now."""
+    return [source.path.expanduser() for source in get_settings().sources]
 
 
 def _remove_legacy_index(folder: Path) -> None:

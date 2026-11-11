@@ -19,6 +19,8 @@ def _no_background_ollama_checks(monkeypatch: pytest.MonkeyPatch) -> None:
     """The Model page's Ollama card checks the engine on its own; in tests that would hit a fake
     API from a worker thread. Tests of the card itself patch this again to drive it."""
     monkeypatch.setattr("ui.settings.ollama_helper.run_in_background", lambda *args, **kwargs: None)
+    # The reminder poller starts with the desktop shell; its tests drive it directly.
+    monkeypatch.setattr("ui.reminder_poller.run_in_background", lambda *args, **kwargs: None)
 
 
 @pytest.fixture(autouse=True)

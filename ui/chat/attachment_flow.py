@@ -11,6 +11,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject
 from PyQt6.QtGui import QGuiApplication
 
+from core.desktop_control import was_copied_by_nimbus
 from models.chat import Attachment
 from ui.chat.attachment_bar import COPIED_TEXT_NAME, SCREENSHOT_NAME, AttachmentBar
 from ui.chat.chat_session import ChatSession
@@ -41,7 +42,8 @@ class AttachmentFlow(QObject):
         anything already offered, so dismissing it sticks."""
         clipboard = QGuiApplication.clipboard()
         text = clipboard.text().strip()
-        if len(text) < MIN_CLIPBOARD_CHARS or text == self._offered_text or clipboard.ownsClipboard():
+        nimbus_copied = clipboard.ownsClipboard() or was_copied_by_nimbus(text)
+        if len(text) < MIN_CLIPBOARD_CHARS or text == self._offered_text or nimbus_copied:
             return
         if self._attached is not None:
             return

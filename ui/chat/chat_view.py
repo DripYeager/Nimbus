@@ -68,8 +68,8 @@ class ChatView(QStackedWidget):
     def end_reply(self) -> None:
         self._column.end_reply()
 
-    def add_confirmation(self, description: str) -> ConfirmCard:
-        return self._column.add_confirmation(description)
+    def add_confirmation(self, description: str, can_always_allow: bool = True) -> ConfirmCard:
+        return self._column.add_confirmation(description, can_always_allow)
 
     def load_history(self, messages: list[ChatMessage]) -> None:
         self._column.load_history(messages)

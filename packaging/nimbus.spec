@@ -39,13 +39,31 @@ for package in ("markitdown", "magika", "onnxruntime", "docx"):
     datas += collect_data_files(package)
     hiddenimports += collect_submodules(package, filter=_wanted)
 
+# Approved code runs use the app as their Python (Nimbus.exe --run-code), so the libraries and
+# standard modules people reach for in data work must be inside the bundle even where Nimbus
+# itself never imports them. matplotlib draws with the file-only Agg backend.
+SANDBOX_MODULES = (
+    "statistics", "csv", "math", "cmath", "decimal", "fractions", "datetime", "calendar", "zoneinfo",
+    "collections", "itertools", "functools", "operator", "heapq", "bisect", "json", "re", "random",
+    "string", "textwrap", "difflib", "pprint", "pathlib", "glob", "fnmatch", "io", "zipfile",
+    "hashlib", "base64", "uuid", "time", "dataclasses", "enum", "typing", "unicodedata",
+    "openpyxl", "matplotlib.pyplot", "matplotlib.backends.backend_agg",
+)
+hiddenimports += list(SANDBOX_MODULES)
+hiddenimports += collect_submodules("pandas", filter=lambda m: _wanted(m) and ".tests" not in m)
+datas += collect_data_files("matplotlib")
+# MCP: the bridge other apps start (Nimbus.exe --mcp) and connections to other apps' servers.
+# Its command-line extras aren't used and pull in packages Nimbus doesn't ship.
+hiddenimports += collect_submodules("mcp", filter=lambda m: _wanted(m) and not m.startswith("mcp.cli"))
+hiddenimports += collect_submodules("mcp_types")
+
 analysis = Analysis(
     [str(ROOT / "main.py")],
     pathex=[str(ROOT)],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    excludes=[*UNUSED, "matplotlib", "tkinter", "IPython", "pytest"],
+    excludes=[*UNUSED, "tkinter", "IPython", "pytest"],
     noarchive=False,
 )
 pyz = PYZ(analysis.pure)

@@ -41,8 +41,17 @@ Press **Ctrl+Space** in any app and Nimbus glides up, ready for a request:
 | Copy some text, then summon Nimbus | Offers *Use what I copied*, so you can ask about text from any app |
 | Click the scan button and drag over part of the screen | Reads it with Windows OCR and answers about it ("what does this error mean?") |
 | Click the microphone (or press Ctrl+M) and speak | Transcribes it on your PC with Whisper and puts the words in the message box, ready to send |
+| *"Why is my PC slow?"* · *"What's my IP address?"* | Measures what's using the CPU and memory, or runs a read-only PowerShell command and explains the result |
+| *"Total the sales column in Q3.xlsx and chart it by month"* | Writes a short Python program, shows it to you, and runs it in a locked-down sandbox |
+| *"Remind me to call Sam in 20 minutes"* | Shows a Windows notification when it's time, even with the window closed |
+| *"Summarize https://example.com/article"* | Reads the page and answers about it |
+| *"Pause the music"* · *"Volume to 30"* · *"Switch to Excel"* · *"Copy that to my clipboard"* | Controls media, volume, open windows and the clipboard |
+| *"Move the invoices into an Invoices folder"* · *"Undo that"* | Moves or renames files inside your shared folders, and can put them back |
+| Ask Claude Desktop or VS Code about your files | Nimbus can share its search with other AI apps over MCP, and use their tools too |
 
 Anything that **launches or writes** shows an approval card first: *Allow*, *Always allow*, or *Don't*.
+Commands that change something, code runs, file moves and pages Nimbus found on its own ask
+every time, with the exact command, code or address on the card.
 
 ## Highlights
 
@@ -53,8 +62,9 @@ Anything that **launches or writes** shows an approval card first: *Allow*, *Alw
 - **Search inside images.** Screenshots, scans and photos of whiteboards are read with the OCR engine built into Windows, so their text is searchable too.
 - **Works with slow local models.** A heartbeat keeps the connection alive while a local model thinks, a live indicator shows it's working, and a stop button ends a reply at any time. Switching chats never interrupts a running answer.
 - **You decide what it learns.** Pick folders, mark any folder "names only", choose file types, set a size limit and exclude patterns, all from the Settings window.
+- **Works with other AI apps.** Turn on sharing and Claude Desktop, VS Code or any MCP app can search and read your shared folders through Nimbus (read only). Add other apps' MCP servers in Settings and Nimbus can use their tools, asking before each call.
 - **Built for locked-down work laptops.** No admin rights, no services, no keyboard hooks: the hotkey uses the Windows `RegisterHotKey` API, data lives in `%APPDATA%`, and the API server binds to `127.0.0.1` only and requires a per-run secret.
-- **Small and fast.** No PyTorch and no separate database server. The whole search index is one SQLite file, and the standalone release is about 120 MB zipped.
+- **Small and fast.** No PyTorch and no separate database server. The whole search index is one SQLite file, and the standalone release is about 200 MB zipped, Python and its data libraries included.
 - **A UI with personality.** Original artwork inspired by a flying golden cloud: a sky header with speed lines, an energy orb that pulses while Nimbus thinks, a scouter-style power level for indexing progress, and comic-style headlines. Settings and history open inside the same window, with a back arrow to return to the chat.
 
 ## A look around
@@ -189,6 +199,17 @@ hotkey. Indexing starts in the background, and Nimbus lives in the system tray f
 - **Other servers:** *Custom OpenAI-compatible server* works with DeepInfra, Groq, LM Studio,
   vLLM and others. Just enter the base URL.
 
+### Connect other AI apps (MCP)
+
+- **Use Nimbus from Claude Desktop, VS Code or another MCP app:** in Settings, Connections, turn
+  on *Share with other AI apps*, save, and click *Copy setup*. Paste it into the other app's MCP
+  configuration (Claude Desktop: Settings, Developer, Edit Config) and restart that app. It can
+  then search, find and read your shared files while Nimbus is running. It can't change anything.
+- **Use another app's tools from Nimbus:** in the same section, add a name and the command its
+  MCP server documents, for example `npx -y @modelcontextprotocol/server-memory`. Once it shows
+  *Connected*, its tools appear in chat, named after the server, and ask before every use. A
+  server that needs an access token can be given one in `settings.json` under `env`.
+
 ### Build a standalone release
 
 ```powershell
@@ -200,13 +221,25 @@ python scripts/build_release.py      # creates dist/Nimbus/Nimbus.exe and dist/N
 
 - File contents only leave the machine if you choose a cloud model, and then only the excerpts
   needed to answer the current question.
-- Nimbus never modifies, moves or deletes your files. Apart from its own notes, index and
-  settings under `%APPDATA%\Nimbus`, it only writes new files you ask for, after you approve the
-  exact path, and never over an existing file.
+- Nimbus never deletes or overwrites your files. Apart from its own notes, index and settings
+  under `%APPDATA%\Nimbus`, it only writes new files you ask for, after you approve the exact
+  path. Moves and renames happen only inside your shared folders, after you approve each one;
+  a taken name gets "(2)", and every change is logged so "undo that" puts it back.
 - File tools refuse any path outside the folders you shared (path traversal is resolved first).
+- PowerShell commands run without a card only when they are on a read-only allow list (checked
+  statement by statement, with redirection and script blocks refused). Anything else shows the
+  exact command first, administrator rights are never requested, and every command has a time
+  limit.
+- Python runs in a separate process with a time limit and a memory cap. It can read only your
+  shared folders and write only to its own folder under `Documents\Nimbus\Code runs`; starting
+  programs, network access and native calls are blocked.
+- Web pages are fetched only for http and https addresses on the public internet, with
+  Nimbus's own honest user agent. Addresses you didn't type yourself need your approval.
 - The local API only answers requests that carry a secret made fresh at every start (shared in
-  memory between the window and the engine, never written to disk) and that are addressed to
-  `127.0.0.1` or `localhost`. Other programs on the PC and DNS-rebinding web pages are refused.
+  memory between the window and the engine) and that are addressed to `127.0.0.1` or
+  `localhost`. Other programs on the PC and DNS-rebinding web pages are refused. When you turn
+  on sharing with other AI apps, a second secret that opens only the read-only search tools is
+  kept in your profile folder for the MCP bridge to use, and removed when sharing is off.
 - Voice input is transcribed on your PC by a local Whisper model (faster-whisper, about 150 MB,
   downloaded on first use). The audio never leaves the machine and is never saved; the microphone
   is only opened after you click it.
@@ -220,10 +253,10 @@ config/     Settings model, saved-settings store, data paths, 1.x migration
 core/       Indexing pipeline, retrieval, agent loop, chat service, storage
 llm/        Provider interface + Ollama / OpenAI / Anthropic backends, prompts
 models/     Pydantic data contracts shared across layers
-tools/      Tools the agent can call: files, apps, system actions, notes
+tools/      Tools the agent can call: files, apps, commands, code, desktop, reminders, web, MCP
 ui/         Chat window, Settings, onboarding, tray, hotkey, theme
 scripts/    Retrieval benchmark, CLI indexer, release build
-tests/      1,500+ tests mirroring the source tree, fully offline
+tests/      1,900+ tests mirroring the source tree, fully offline
 ```
 
 ## Development
@@ -249,9 +282,9 @@ are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Roadmap
 
-Asking about the clipboard or a screenshot, the Explorer right-click action, searchable
-images and page-level PDF citations have shipped. What's next (reranking, browser history,
-Outlook, voice, an MCP server and more) is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Voice input, reranking, PC diagnostics, sandboxed Python, reminders, desktop control, web
+reading, file tidying and MCP in both directions have shipped. What's next is in
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## About the name
 

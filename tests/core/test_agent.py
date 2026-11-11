@@ -19,6 +19,7 @@ from core.exceptions import ProviderError, ToolsUnsupportedError
 from models.chat import (
     ChatMessage,
     ChatSources,
+    ConfirmationNeeded,
     ConfirmRequest,
     TextDelta,
     ToolActivity,
@@ -283,3 +284,46 @@ def test_source_tracker_falls_back_to_listed_files() -> None:
     tracker.add([listed], listing=True)
 
     assert tracker.final() == [listed]
+
+
+def _careful_registry(lookup: RecordingTool) -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.register(
+        Tool(
+            simple_spec("run_command"),
+            lookup,
+            lambda a: f"Run {a.get('command')}",
+            confirm_when=lambda a, _text: a.get("command") != "ipconfig",
+            always_allowable=False,
+        )
+    )
+    return registry
+
+
+def test_run_skips_the_card_when_the_rule_says_this_call_is_safe(lookup: RecordingTool) -> None:
+    call = make_call("run_command", command="ipconfig")
+    provider = ScriptedProvider([[call], [TextDelta(text="Done.")]])
+
+    events = list(make_agent(provider, _careful_registry(lookup)).run(user_turn()))
+
+    assert not any(isinstance(e, ConfirmationNeeded) for e in events)
+
+
+def test_run_asks_for_a_risky_call_and_offers_no_always_allow(lookup: RecordingTool) -> None:
+    call = make_call("run_command", command="Remove-Item C:/x")
+    provider = ScriptedProvider([[call]])
+
+    events = list(make_agent(provider, _careful_registry(lookup)).run(user_turn()))
+
+    [card] = [e for e in events if isinstance(e, ConfirmationNeeded)]
+    assert card.can_always_allow is False
+
+
+def test_run_asks_even_when_settings_say_always_allow(lookup: RecordingTool, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "auto_approved_tools", ["run_command"])
+    call = make_call("run_command", command="Remove-Item C:/x")
+    provider = ScriptedProvider([[call]])
+
+    events = list(make_agent(provider, _careful_registry(lookup)).run(user_turn()))
+
+    assert any(isinstance(e, ConfirmationNeeded) for e in events)

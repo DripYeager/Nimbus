@@ -31,6 +31,12 @@ from models.schema import IndexStatus, SourceRef
 class FakeAgent:
     """Appends one assistant reply, optionally asks for confirmation or fails, and records each run."""
 
+    # Tools that must ask every time, so "always allow" is refused for them.
+    always_ask = frozenset({"run_command"})
+
+    def can_always_allow(self, tool_name: str) -> bool:
+        return tool_name not in self.always_ask
+
     def __init__(self) -> None:
         self.reply = "Here you go."
         self.error: Exception | None = None
@@ -292,3 +298,17 @@ def test_confirm_with_always_allow_on_a_file_allows_every_file_type(
     list(service.confirm(conversation_id, ConfirmRequest(call_id="c2", approved=True, always_allow=True)))
 
     save.assert_called_once_with({"auto_approved_tools": ["create_document", "create_spreadsheet"]})
+
+
+def test_confirm_never_saves_always_allow_for_a_tool_that_must_ask(
+    service: ChatService, store: ConversationStore, mocker: MockerFixture
+) -> None:
+    conversation_id = store.create("run something")
+    call = ToolCall(id="c3", name="run_command", arguments={"command": "Remove-Item x"})
+    messages = [ChatMessage(role="user", content="x"), ChatMessage(role="assistant", tool_calls=[call])]
+    store.append(conversation_id, messages)
+    save = mocker.patch("core.chat_service.save_user_settings")
+
+    list(service.confirm(conversation_id, ConfirmRequest(call_id="c3", approved=True, always_allow=True)))
+
+    save.assert_not_called()

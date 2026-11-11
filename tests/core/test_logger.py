@@ -129,3 +129,16 @@ def test_get_logger_raises_when_the_log_dir_cannot_be_created(logs: Path) -> Non
 
     with pytest.raises(OSError):
         get_logger("nimbus.test")
+
+
+def test_log_beside_stdout_moves_console_logs_to_stderr_and_own_file(
+    logs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(logger_module, "_console_stream_name", "stdout")
+    monkeypatch.setattr(logger_module, "_log_file_name", logger_module.LOG_FILE_NAME)
+
+    logger_module.log_beside_stdout("bridge.log")
+    get_logger("bridge").info("hello")
+
+    assert [h.stream for h in _stream_handlers()] == [sys.stderr]
+    assert (logs / "bridge.log").exists()
