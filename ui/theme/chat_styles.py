@@ -13,6 +13,8 @@ from ui.theme.tokens import (
     DANGER,
     GI_ORANGE,
     LOCAL_BADGE,
+    MONO_FONT_FAMILY,
+    NIGHT_DEEP,
     RADIUS_BUBBLE,
     RADIUS_CARD,
     SURFACE,
@@ -63,6 +65,13 @@ QFrame#ConfirmCard {{ background: {SURFACE_RAISED}; border: 1px solid {BORDER_ST
     border-left: 3px solid {GI_ORANGE}; border-radius: {RADIUS_CARD}px; }}
 QLabel#ConfirmTitle {{ font-size: 12px; font-weight: 700; color: {GI_ORANGE}; letter-spacing: 0.5px; }}
 QLabel#ConfirmText {{ font-size: 14px; }}
+QFrame#CodeBlock {{ background: {NIGHT_DEEP}; border: 1px solid {BORDER}; border-radius: 10px; }}
+QFrame#CodeBlock:hover {{ border-color: {BORDER_STRONG}; }}
+QLabel#CodeTitle {{ font-size: 11px; font-weight: 700; color: {TEXT_MUTED}; letter-spacing: 0.5px; }}
+QLabel#CodeText {{ font-family: "{MONO_FONT_FAMILY}", Consolas; font-size: 12px; color: {TEXT}; }}
+QPushButton#CodeLink {{ background: transparent; border: none; padding: 0 2px; font-size: 11px;
+    font-weight: 600; color: {CLOUD_GOLD}; }}
+QPushButton#CodeLink:hover {{ color: {GI_ORANGE}; }}
 QPushButton#SuggestionCard {{ background: rgba(17, 26, 46, 0.85); border: 1px solid {BORDER}; border-radius: 14px;
     padding: 12px 14px; text-align: left; font-weight: 500; color: {TEXT}; }}
 QPushButton#SuggestionCard:hover {{ border-color: {GI_ORANGE}; background: {SURFACE_RAISED}; }}

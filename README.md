@@ -51,7 +51,10 @@ Press **Ctrl+Space** in any app and Nimbus glides up, ready for a request:
 
 Anything that **launches or writes** shows an approval card first: *Allow*, *Always allow*, or *Don't*.
 Commands that change something, code runs, file moves and pages Nimbus found on its own ask
-every time, with the exact command, code or address on the card.
+every time, with the exact command, code or address on the card. Code and commands also show in
+the chat as they run, a few lines at first and the rest a click away, followed by what they
+printed. If you'd rather not be asked, Settings, General can let code and commands run on their
+own (off by default; Python stays in its sandbox and admin rights are still refused).
 
 ## Highlights
 
@@ -202,13 +205,17 @@ hotkey. Indexing starts in the background, and Nimbus lives in the system tray f
 ### Connect other AI apps (MCP)
 
 - **Use Nimbus from Claude Desktop, VS Code or another MCP app:** in Settings, Connections, turn
-  on *Share with other AI apps*, save, and click *Copy setup*. Paste it into the other app's MCP
-  configuration (Claude Desktop: Settings, Developer, Edit Config) and restart that app. It can
-  then search, find and read your shared files while Nimbus is running. It can't change anything.
+  on *Share with other AI apps*, save, and click *Copy setup*. Add it to the other app's MCP
+  configuration (Claude Desktop: Settings, Developer, Edit Config; if the file already has
+  settings, put the `mcpServers` part inside it instead of replacing the file) and restart that
+  app. It can then search, find and read your shared files while Nimbus is running. It can't
+  change anything.
 - **Use another app's tools from Nimbus:** in the same section, add a name and the command its
-  MCP server documents, for example `npx -y @modelcontextprotocol/server-memory`. Once it shows
-  *Connected*, its tools appear in chat, named after the server, and ask before every use. A
-  server that needs an access token can be given one in `settings.json` under `env`.
+  MCP server documents, for example `uvx mcp-server-time` or
+  `npx -y @modelcontextprotocol/server-memory`. The first start downloads the server, so it can
+  take a minute; if it shows *Couldn't start*, save again to retry. Once it shows *Connected*,
+  its tools appear in chat, named after the server, and ask before every use. A server that
+  needs an access token can be given one in `settings.json` under `env`.
 
 ### Build a standalone release
 

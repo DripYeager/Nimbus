@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 import core.code_runner as runner_module
+from config.settings import MIN_CODE_MEMORY_MB
+from config.settings_store import save_user_settings
 from core.code_runner import run_python
 
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="The sandbox targets Windows")
@@ -77,3 +79,22 @@ def test_run_python_stops_code_that_runs_too_long(shared: Path) -> None:
     result = run_python("while True:\n    pass", [shared], timeout_s=3)
 
     assert result.timed_out is True
+
+
+@windows_only
+def test_run_python_stops_at_the_memory_limit_from_settings(shared: Path) -> None:
+    save_user_settings({"code_memory_limit_mb": 400})
+
+    result = run_python("big = bytearray(900 * 1024 * 1024)\nprint('allocated')", [shared])
+
+    assert result.exit_code != 0
+    assert "MemoryError" in result.output and "allocated" not in result.output
+
+
+@windows_only
+def test_run_python_works_at_the_smallest_memory_limit(shared: Path) -> None:
+    save_user_settings({"code_memory_limit_mb": MIN_CODE_MEMORY_MB})
+
+    result = run_python("import pandas as pd\nprint(pd.Series([1, 2, 3]).sum())", [shared])
+
+    assert result.exit_code == 0 and result.output.strip() == "6"

@@ -24,6 +24,7 @@ NAME_BOX_WIDTH = 130
 EMPTY_TEXT = "No apps added yet."
 NOT_SAVED_TEXT = "Starts when you save"
 STATUS_TEXT = {"starting": ("Starting...", "muted"), "failed": ("Couldn't start", "error")}
+RETRY_HINT = "Save changes again to retry."
 
 
 def split_command_line(text: str) -> tuple[str, list[str]]:
@@ -44,6 +45,9 @@ def describe_status(status: McpServerStatus | None) -> tuple[str, str]:
     if status.status == "ready":
         return f"Connected, {status.tool_count} tool{'' if status.tool_count == 1 else 's'}", "success"
     text, tone = STATUS_TEXT.get(status.status, (status.status, "muted"))
+    if status.status == "failed":
+        reason = f"{text}: {status.error}" if status.error else text
+        return f"{reason} {RETRY_HINT}", tone
     return (f"{text}: {status.error}" if status.error else text), tone
 
 

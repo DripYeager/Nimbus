@@ -8,7 +8,7 @@ from pytest_mock import MockerFixture
 
 from core.code_runner import CodeResult
 from core.exceptions import ToolError
-from tools.code_tools import CodeToolbox, describe_code, describe_failure, describe_run
+from tools.code_tools import CodeToolbox, describe_code, describe_failure, describe_run, show_code
 from tools.registry import ToolRegistry
 
 SHARED = Path("C:/Users/alex/Documents")
@@ -36,10 +36,13 @@ def test_run_python_refuses_empty_code(runner: Mock) -> None:
         CodeToolbox(lambda: [SHARED]).run_python({"code": " "})
 
 
-def test_describe_code_shows_the_whole_program() -> None:
+def test_show_code_gives_the_whole_program() -> None:
     code = "import pandas as pd\nprint(1)"
 
-    assert describe_code({"code": code}).endswith(code)
+    shown = show_code({"code": f"  {code}\n"})
+
+    assert (shown.title, shown.text) == ("Python", code)
+    assert describe_code({"code": code}) == "Run Python code"
 
 
 def test_describe_run_explains_a_failure(tmp_path: Path) -> None:
@@ -70,3 +73,7 @@ def test_describe_failure_finds_the_error_when_output_follows_it() -> None:
     output = "Traceback (most recent call last):\n  File \"script.py\", line 2\nKeyError: 'Sales'\nprinted late"
 
     assert describe_failure(output).startswith("The code failed with KeyError: 'Sales'")
+
+
+def test_describe_failure_out_of_memory_points_to_settings() -> None:
+    assert "Settings, General" in describe_failure("Traceback (most recent call last):\nMemoryError")

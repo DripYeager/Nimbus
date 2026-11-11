@@ -11,7 +11,7 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from core.attachment_format import AttachedItem, split_attachments
-from models.chat import ChatMessage
+from models.chat import ChatMessage, ShownCode
 from ui.chat.message_cards import ConfirmCard
 from ui.chat.message_widgets import AssistantMessage, UserBubble
 
@@ -81,9 +81,11 @@ class ConversationColumn(QWidget):
             self._current.deleteLater()
         self._current = None
 
-    def add_confirmation(self, description: str, can_always_allow: bool = True) -> ConfirmCard:
+    def add_confirmation(
+        self, description: str, can_always_allow: bool = True, code: ShownCode | None = None
+    ) -> ConfirmCard:
         self.end_reply()
-        card = ConfirmCard(description, self, can_always_allow)
+        card = ConfirmCard(description, self, can_always_allow, code)
         self._cards.append(card)
         self._append(card)
         return card

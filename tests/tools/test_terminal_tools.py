@@ -9,7 +9,7 @@ from core.command_policy import ELEVATION_MESSAGE
 from core.command_runner import CommandResult
 from core.exceptions import ToolError
 from tools.registry import ToolRegistry
-from tools.terminal_tools import TerminalToolbox, describe_command, describe_result, needs_approval
+from tools.terminal_tools import TerminalToolbox, describe_command, describe_result, needs_approval, show_command
 
 
 @pytest.fixture
@@ -44,10 +44,11 @@ def test_needs_approval_only_for_commands_that_could_change_something(command: s
     assert needs_approval({"command": command}) is expected
 
 
-def test_describe_command_shows_the_exact_command() -> None:
-    assert (
-        describe_command({"command": " Stop-Process -Name notepad "}) == "Run in PowerShell: Stop-Process -Name notepad"
-    )
+def test_show_command_gives_the_exact_command() -> None:
+    shown = show_command({"command": " Stop-Process -Name notepad "})
+
+    assert (shown.title, shown.text) == ("PowerShell", "Stop-Process -Name notepad")
+    assert describe_command({"command": "x"}) == "Run a PowerShell command"
 
 
 def test_describe_result_mentions_a_timeout_and_empty_output() -> None:

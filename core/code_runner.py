@@ -19,6 +19,7 @@ from pathlib import Path
 import psutil
 
 from config.paths import is_frozen
+from config.settings import get_settings
 from core.code_sandbox import RUN_CODE_FLAG
 from core.command_runner import trim_output
 from core.exceptions import ToolError
@@ -28,7 +29,9 @@ logger = get_logger(__name__)
 
 RUNS_DIR = Path("~/Documents/Nimbus/Code runs")
 DEFAULT_TIMEOUT_S = 60.0
-MEMORY_LIMIT_BYTES = 2 * 1024**3
+BYTES_PER_MB = 1024**2
+# Plenty for spreadsheet-sized work; see _environment.
+MATH_THREADS = "4"
 SANDBOX_SCRIPT = Path(__file__).with_name("code_sandbox.py")
 INTERNAL_FILES = frozenset({"script.py", "job.json"})
 
@@ -50,7 +53,7 @@ def run_python(code: str, read_roots: list[Path], timeout_s: float = DEFAULT_TIM
     """
     folder = _new_run_folder()
     process = _start(_write_job(folder, code, read_roots), folder)
-    job_handle = _limit(process)
+    job_handle = _limit(process, get_settings().code_memory_limit_mb * BYTES_PER_MB)
     try:
         raw, _ = process.communicate(timeout=timeout_s)
         timed_out = False
@@ -99,7 +102,9 @@ def _command(job: Path) -> list[str]:
 
 
 def _environment(folder: Path) -> dict[str, str]:
-    """Charts render off-screen, and temp and cache files land in the run's own folder."""
+    """Charts render off-screen, temp and cache files land in the run's own folder, and numpy's
+    math library uses a few threads: by default it reserves memory for every CPU thread, which
+    on a many-core PC is more than a modest memory limit allows before any code runs."""
     temp = folder / ".temp"
     temp.mkdir(exist_ok=True)
     environment = {key: value for key, value in os.environ.items() if not key.upper().startswith("PYTHON")}
@@ -110,6 +115,8 @@ def _environment(folder: Path) -> dict[str, str]:
             "TEMP": str(temp),
             "TMP": str(temp),
             "PYTHONIOENCODING": "utf-8",
+            "OPENBLAS_NUM_THREADS": MATH_THREADS,
+            "OMP_NUM_THREADS": MATH_THREADS,
         }
     )
     return environment
@@ -130,8 +137,9 @@ def _made_files(folder: Path) -> list[Path]:
     return sorted(path for path in folder.iterdir() if path.is_file() and path.name not in INTERNAL_FILES)
 
 
-def _limit(process: subprocess.Popen[bytes]) -> object | None:
-    """A job object with a memory cap that also ends the run if Nimbus itself goes away."""
+def _limit(process: subprocess.Popen[bytes], memory_bytes: int) -> object | None:
+    """A job object with a memory cap (from Settings) that also ends the run if Nimbus itself
+    goes away."""
     try:
         import win32api
         import win32con
@@ -139,7 +147,7 @@ def _limit(process: subprocess.Popen[bytes]) -> object | None:
 
         job = win32job.CreateJobObject(None, "")
         info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
-        info["ProcessMemoryLimit"] = MEMORY_LIMIT_BYTES
+        info["ProcessMemoryLimit"] = memory_bytes
         info["BasicLimitInformation"]["LimitFlags"] = (
             win32job.JOB_OBJECT_LIMIT_PROCESS_MEMORY | win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         )

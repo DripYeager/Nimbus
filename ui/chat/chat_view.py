@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QScrollArea, QStackedWidget, QWidget
 
 from core.attachment_format import AttachedItem
-from models.chat import ChatMessage
+from models.chat import ChatMessage, ShownCode
 from ui.chat.conversation_column import ConversationColumn
 from ui.chat.empty_state import EmptyState
 from ui.chat.message_cards import ConfirmCard
@@ -68,8 +68,10 @@ class ChatView(QStackedWidget):
     def end_reply(self) -> None:
         self._column.end_reply()
 
-    def add_confirmation(self, description: str, can_always_allow: bool = True) -> ConfirmCard:
-        return self._column.add_confirmation(description, can_always_allow)
+    def add_confirmation(
+        self, description: str, can_always_allow: bool = True, code: ShownCode | None = None
+    ) -> ConfirmCard:
+        return self._column.add_confirmation(description, can_always_allow, code)
 
     def load_history(self, messages: list[ChatMessage]) -> None:
         self._column.load_history(messages)

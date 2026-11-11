@@ -32,6 +32,10 @@ def _expanded(path: str | Path) -> Path:
     return Path(path).expanduser()
 
 
+# Below this, pandas and matplotlib can't even load.
+MIN_CODE_MEMORY_MB = 256
+
+
 def _default_sources() -> list[IndexSource]:
     """Downloads, Desktop and Documents, contents included, what most people mean by 'my files'."""
     return [IndexSource(path=_expanded(p)) for p in DEFAULT_SOURCE_DIRS]
@@ -94,6 +98,8 @@ class Settings(BaseSettings):
     daily_llm_call_cap: int | None = None
     auto_approved_tools: list[str] = Field(default_factory=list)
     max_agent_steps: int = 6
+    # The most memory one approved Python run may use before Windows stops it.
+    code_memory_limit_mb: int = Field(default=2048, ge=MIN_CODE_MEMORY_MB)
     # MCP: let other AI apps search through Nimbus, and use tools from other apps' MCP servers.
     share_with_mcp_apps: bool = False
     mcp_servers: list[McpServerConfig] = Field(default_factory=list)

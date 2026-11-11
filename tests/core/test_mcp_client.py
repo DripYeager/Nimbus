@@ -133,3 +133,32 @@ def test_quick_restarts_keep_track_of_every_server(connections: McpConnections, 
     assert [state.name for state in connections.states()] == ["three"]
     assert len(connections._tasks) == 1
     assert [task for task in connections._tasks if not task.done()]
+
+
+def test_start_same_list_again_retries_a_failed_server(connections: McpConnections) -> None:
+    broken = [McpServerConfig(name="broken", command="no-such-program-nimbus-test")]
+    connections.start(broken)
+    _wait_until_settled(connections)
+    changes: list[int] = []
+    connections.on_change = lambda: changes.append(1)
+
+    connections.start(broken)
+    deadline = time.monotonic() + WAIT_S
+    while time.monotonic() < deadline and len(changes) < 2:
+        time.sleep(0.05)
+    _wait_until_settled(connections)
+
+    assert len(changes) >= 2 and connections.states()[0].status == FAILED
+
+
+def test_start_same_list_again_leaves_working_servers_alone(connections: McpConnections, tmp_path: Path) -> None:
+    servers = [_bridge_config(tmp_path)]
+    connections.start(servers)
+    _wait_until_settled(connections)
+    changes: list[int] = []
+    connections.on_change = lambda: changes.append(1)
+
+    connections.start(servers)
+    time.sleep(0.5)
+
+    assert not changes and connections.states()[0].status == READY

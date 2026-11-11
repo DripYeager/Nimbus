@@ -42,6 +42,8 @@ EMPTY_ANSWER_MESSAGE = (
     "The model finished without writing an answer. Try asking again, or pick a larger model in Settings."
 )
 DECLINED_MESSAGE = "The user declined this action. Don't retry it unless they ask again."
+# How much of a command's or program's output the chat shows under it.
+SHOWN_OUTPUT_CHARS = 4000
 STEP_LIMIT_MESSAGE = "\n\n_I stopped here after several steps. Ask me to continue if you need more._"
 
 FallbackAnswer = Callable[[str], tuple[Iterator[str], list[SourceRef]]]
@@ -141,6 +143,7 @@ class Agent:
                     tool=call.name,
                     description=self._registry.describe_call(call),
                     can_always_allow=self._registry.can_always_allow(call.name),
+                    code=self._registry.code_for(call),
                 )
                 return True
             else:
@@ -160,9 +163,12 @@ class Agent:
     def _execute(self, call: ToolCall) -> Iterator[ChatEvent]:
         """Runs one tool, bracketed by running/done activity events."""
         label = self._registry.describe_call(call)
-        yield ToolActivity(call_id=call.id, tool=call.name, label=label, status="running")
+        code = self._registry.code_for(call)
+        yield ToolActivity(call_id=call.id, tool=call.name, label=label, status="running", code=code)
         result = self._registry.execute(call)
-        yield ToolActivity(call_id=call.id, tool=call.name, label=label, status="failed" if result.is_error else "done")
+        status = "failed" if result.is_error else "done"
+        output = result.content[:SHOWN_OUTPUT_CHARS] if code is not None else None
+        yield ToolActivity(call_id=call.id, tool=call.name, label=label, status=status, code=code, output=output)
         return result
 
     def _needs_confirmation(self, call: ToolCall, messages: list[ChatMessage]) -> bool:
@@ -171,7 +177,7 @@ class Agent:
         tool = self._registry.get(call.name)
         if tool is None or not tool.needs_confirmation(call.arguments, latest_user_text(messages)):
             return False
-        if not tool.always_allowable:
+        if not (tool.always_allowable or tool.can_skip_in_settings):
             return True
         return call.name not in get_settings().auto_approved_tools
 

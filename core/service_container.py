@@ -120,6 +120,7 @@ class AppServices:
         self.store.close()
         self.catalog.close()
         self.reminders.close()
+        self.conversations.close()
 
     def add_settings_listener(self, listener: SettingsListener) -> None:
         """Registers a callback for after settings change, e.g. the UI rebinding the hotkey."""

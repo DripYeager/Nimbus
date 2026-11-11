@@ -122,3 +122,14 @@ def test_make_title_shortens_a_long_message_with_an_ellipsis() -> None:
     assert len(title) <= TITLE_MAX_CHARS
     assert title.endswith("…")
     assert not title[:-1].endswith(" ")
+
+
+def test_close_releases_the_database_and_can_run_twice(tmp_path: Path) -> None:
+    store = ConversationStore(tmp_path / "chats.db")
+    store.connect()
+
+    store.close()
+    store.close()
+
+    (tmp_path / "chats.db").unlink()
+    assert not (tmp_path / "chats.db").exists()

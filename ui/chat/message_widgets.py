@@ -16,6 +16,7 @@ from core.attachment_format import AttachedItem
 from models.schema import SourceRef
 from ui.chat.answer_style import clean_answer
 from ui.chat.attachment_preview import image_preview
+from ui.chat.code_block import StepDetail
 from ui.chat.message_cards import SourceCard, ToolStep
 from ui.chat.thinking_indicator import ThinkingIndicator
 from ui.theme.energy import EnergyOrb
@@ -157,7 +158,7 @@ class AssistantMessage(QWidget):
         """True when nothing but the thinking state was ever shown."""
         return not self.has_text() and not self._steps and not self._has_error and self._sources.count() == 0
 
-    def show_tool(self, call_id: str, label: str, status: str) -> None:
+    def show_tool(self, call_id: str, label: str, status: str, detail: StepDetail | None = None) -> None:
         """Adds a step to the activity log, or updates it when the step finishes."""
         step = self._steps.get(call_id)
         if step is None:
@@ -165,6 +166,8 @@ class AssistantMessage(QWidget):
             self._steps[call_id] = step
             self._steps_column.addWidget(step)
         step.update_step(label, status)
+        if detail is not None:
+            step.show_detail(detail)
 
     def set_sources(self, sources: list[SourceRef]) -> None:
         for source in sources[:MAX_SOURCE_CARDS]:

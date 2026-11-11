@@ -3,7 +3,13 @@ from __future__ import annotations
 import pytest
 
 from models.api import McpServerStatus
-from ui.settings.mcp_server_list import NOT_SAVED_TEXT, McpServerList, describe_status, split_command_line
+from ui.settings.mcp_server_list import (
+    NOT_SAVED_TEXT,
+    RETRY_HINT,
+    McpServerList,
+    describe_status,
+    split_command_line,
+)
 
 MEMORY = {"name": "memory", "command": "npx", "args": ["-y", "server-memory"], "env": {"KEY": "v"}, "enabled": True}
 
@@ -31,7 +37,10 @@ def test_split_command_line_empty_is_refused() -> None:
         (None, (NOT_SAVED_TEXT, "muted")),
         (McpServerStatus(name="a", status="ready", tool_count=1), ("Connected, 1 tool", "success")),
         (McpServerStatus(name="a", status="ready", tool_count=3), ("Connected, 3 tools", "success")),
-        (McpServerStatus(name="a", status="failed", error="not found"), ("Couldn't start: not found", "error")),
+        (
+            McpServerStatus(name="a", status="failed", error="not found"),
+            (f"Couldn't start: not found {RETRY_HINT}", "error"),
+        ),
     ],
 )
 def test_describe_status_wording(status: McpServerStatus | None, expected: tuple[str, str]) -> None:

@@ -91,7 +91,8 @@ QKeySequenceEdit#Keycap QLineEdit {{ font-family: "{MONO_FONT_FAMILY}"; font-siz
     border-bottom: 3px solid {BORDER_STRONG}; border-radius: 10px; padding: 6px 12px;
     qproperty-alignment: AlignCenter; }}
 QKeySequenceEdit#Keycap QLineEdit:focus {{ border-color: {GI_ORANGE}; border-bottom-color: {GI_ORANGE_DEEP}; }}
-QWidget#SettingsPanel QSpinBox, QWidget#OnboardingWindow QSpinBox {{ qproperty-alignment: AlignRight; }}
+QWidget#SettingsPanel QSpinBox, QWidget#SettingsPanel QDoubleSpinBox,
+QWidget#OnboardingWindow QSpinBox {{ qproperty-alignment: AlignRight; }}
 """
 
 _ONBOARDING = f"""

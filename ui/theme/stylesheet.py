@@ -59,12 +59,14 @@ QMenu::separator {{ height: 1px; background: {BORDER}; margin: 6px 8px; }}
 """
 
 _INPUTS = f"""
-QLineEdit, QPlainTextEdit, QSpinBox, QComboBox, QKeySequenceEdit {{
+QLineEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QKeySequenceEdit {{
     background: {SURFACE}; border: 1px solid {BORDER}; border-radius: {RADIUS_CONTROL}px;
     padding: 8px 12px; selection-background-color: {GI_ORANGE}; selection-color: {TEXT_ON_ORANGE};
 }}
-QLineEdit:hover, QPlainTextEdit:hover, QSpinBox:hover, QComboBox:hover {{ border-color: {BORDER_STRONG}; }}
-QLineEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QComboBox:focus {{ border: 1px solid {GI_ORANGE}; }}
+QLineEdit:hover, QPlainTextEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover,
+QComboBox:hover {{ border-color: {BORDER_STRONG}; }}
+QLineEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+QComboBox:focus {{ border: 1px solid {GI_ORANGE}; }}
 QComboBox::drop-down {{ border: none; width: 26px; }}
 QComboBox::down-arrow {{ image: url("{_CHEVRON}"); width: 14px; height: 14px; margin-right: 10px; }}
 QComboBox QAbstractItemView {{ background: {SURFACE_RAISED}; border: 1px solid {BORDER_STRONG};

@@ -34,8 +34,9 @@ SHARE_HINT = (
     "while Nimbus is running. They can't open, change or delete anything."
 )
 SNIPPET_HINT = (
-    "Paste this into the other app's MCP settings. In Claude Desktop: Settings, Developer, Edit Config, "
-    "then restart it."
+    "Add this to the other app's MCP settings. In Claude Desktop: Settings, Developer, Edit Config. If the "
+    'file already has settings, put the "mcpServers" part inside it rather than replacing it, then restart '
+    "the app."
 )
 
 

@@ -6,14 +6,16 @@ from unittest.mock import Mock
 import pytest
 from pytest_mock import MockerFixture
 
+from config.settings import MIN_CODE_MEMORY_MB
 from core.exceptions import AutostartError, ExplorerMenuError
 from models.api import UsageView
 from ui.api_client import ApiClient
-from ui.settings.general_tab import GeneralTab, describe_usage
+from ui.settings.general_tab import GeneralTab, describe_usage, memory_box, total_memory_gb
 
 VALUES: dict[str, Any] = {
     "hotkey": "<ctrl>+<shift>+n",
     "daily_llm_call_cap": 200,
+    "code_memory_limit_mb": 3072,
     "auto_approved_tools": ["open_app", "save_note"],
 }
 
@@ -134,3 +136,40 @@ def test_create_files_switch_is_on_when_either_tool_was_allowed(api: Mock) -> No
     tab.load({"auto_approved_tools": ["create_spreadsheet"]})
 
     assert tab._action_rows["create_document"].switch.isChecked()
+
+
+def test_load_without_a_memory_limit_shows_the_default(api: Mock) -> None:
+    tab = GeneralTab(api)
+    tab.load({"hotkey": "<ctrl>+<space>"})
+
+    assert tab.collect()["code_memory_limit_mb"] == 2048
+
+
+def test_memory_box_stays_between_the_minimum_and_this_pcs_ram() -> None:
+    box = memory_box()
+
+    assert box.minimum() * 1024 == MIN_CODE_MEMORY_MB
+    assert box.maximum() == pytest.approx(total_memory_gb(), abs=0.01)
+
+
+def test_collect_includes_the_code_switches(api: Mock) -> None:
+    tab = GeneralTab(api)
+    tab.load({**VALUES, "auto_approved_tools": ["run_python"]})
+
+    tab._code_rows["run_command"].switch.setChecked(True)
+
+    assert set(tab.collect()["auto_approved_tools"]) == {"run_python", "run_command"}
+
+
+def test_code_switches_start_off(api: Mock) -> None:
+    tab = GeneralTab(api)
+    tab.load(VALUES)
+
+    assert not any(row.switch.isChecked() for row in tab._code_rows.values())
+
+
+def test_collect_keeps_tools_allowed_from_a_card(api: Mock) -> None:
+    tab = GeneralTab(api)
+    tab.load({**VALUES, "auto_approved_tools": ["units_convert", "open_app"]})
+
+    assert tab.collect()["auto_approved_tools"] == ["units_convert", "open_app"]

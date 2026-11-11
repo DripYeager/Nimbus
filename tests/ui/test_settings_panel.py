@@ -27,6 +27,7 @@ VALUES: dict[str, Any] = {
     "compatible_base_url": "",
     "hotkey": "<ctrl>+<space>",
     "daily_llm_call_cap": None,
+    "code_memory_limit_mb": 1536,
     "auto_approved_tools": [],
     "share_with_mcp_apps": False,
     "mcp_servers": [{"name": "memory", "command": "npx", "args": ["-y", "server-memory"], "env": {}, "enabled": True}],

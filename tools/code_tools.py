@@ -16,7 +16,7 @@ from typing import Any
 
 from core.code_runner import DEFAULT_TIMEOUT_S, CodeResult, run_python
 from core.exceptions import ToolError
-from models.chat import ToolResult
+from models.chat import ShownCode, ToolResult
 from tools.file_tools import source_ref_for
 from tools.registry import Tool, ToolRegistry, object_schema, string_param, tool_spec
 
@@ -32,6 +32,10 @@ RUN_PYTHON = tool_spec(
 )
 NO_OUTPUT = "(The code printed nothing.)"
 FAILURE_TAIL_LINES = 12
+OUT_OF_MEMORY_HINT = (
+    "It used up the memory allowed for code runs. Tell the user they can raise the limit in "
+    "Settings, General, or try reading less of the data at once."
+)
 # A traceback's last line: "KeyError: 'Sales'", "pandas.errors.ParserError: ...".
 ERROR_LINE = re.compile(r"^[A-Za-z_][\w.]*(Error|Exception|Exit|Interrupt|Warning)\b")
 
@@ -44,7 +48,15 @@ class CodeToolbox:
 
     def register(self, registry: ToolRegistry) -> None:
         registry.register(
-            Tool(RUN_PYTHON, self.run_python, describe_code, requires_confirmation=True, always_allowable=False)
+            Tool(
+                RUN_PYTHON,
+                self.run_python,
+                describe_code,
+                requires_confirmation=True,
+                always_allowable=False,
+                can_skip_in_settings=True,
+                show_code=show_code,
+            )
         )
 
     def run_python(self, args: dict[str, Any]) -> ToolResult:
@@ -56,8 +68,12 @@ class CodeToolbox:
 
 
 def describe_code(args: dict[str, Any]) -> str:
-    """The approval card shows the whole program, nothing paraphrased."""
-    return f"Run this Python code:\n\n{str(args.get('code', '')).strip()}"
+    """The chip and card line; the whole program is shown under it (show_code)."""
+    return "Run Python code"
+
+
+def show_code(args: dict[str, Any]) -> ShownCode:
+    return ShownCode(title="Python", text=str(args.get("code", "")).strip())
 
 
 def describe_failure(output: str) -> str:
@@ -67,7 +83,8 @@ def describe_failure(output: str) -> str:
     errors = [line for line in lines if ERROR_LINE.match(line)]
     error = errors[-1] if errors else (lines[-1] if lines else "an unknown error")
     tail = "\n".join(lines[-FAILURE_TAIL_LINES:])
-    return f"The code failed with {error}\nEnd of the traceback:\n{tail}"
+    hint = f"\n{OUT_OF_MEMORY_HINT}" if error.startswith("MemoryError") else ""
+    return f"The code failed with {error}{hint}\nEnd of the traceback:\n{tail}"
 
 
 def describe_run(result: CodeResult) -> str:

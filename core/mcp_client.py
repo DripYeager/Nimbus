@@ -23,7 +23,8 @@ from models.schema import McpServerConfig
 
 logger = get_logger(__name__)
 
-CONNECT_TIMEOUT_S = 45.0
+# Generous: the first start of an npx or uvx server downloads it.
+CONNECT_TIMEOUT_S = 90.0
 CALL_TIMEOUT_S = 120.0
 # Extra wait on top of the call's own timeout before the worker thread gives up on the loop.
 CALL_GRACE_S = 10.0
@@ -69,9 +70,10 @@ class McpConnections:
         self._configs: list[McpServerConfig] = []
 
     def start(self, servers: list[McpServerConfig]) -> None:
-        """Connects to every enabled server; a changed list replaces the old connections."""
+        """Connects to every enabled server; a changed list replaces the old connections, and
+        the same list again retries any server that failed."""
         enabled = [server for server in servers if server.enabled and server.command.strip()]
-        if enabled == self._configs and (self._thread is not None or not enabled):
+        if enabled == self._configs and (self._thread is not None or not enabled) and not self._any_failed():
             return
         self._configs = enabled
         self._ensure_loop()
@@ -89,6 +91,10 @@ class McpConnections:
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join(timeout=CALL_GRACE_S)
         self._thread = None
+
+    def _any_failed(self) -> bool:
+        with self._lock:
+            return any(state.status == FAILED for state in self._states.values())
 
     def states(self) -> list[ServerState]:
         with self._lock:

@@ -13,12 +13,14 @@ from typing import Any
 
 from core.exceptions import NimbusError
 from core.logger import get_logger
-from models.chat import ToolCall, ToolResult, ToolSpec
+from models.chat import ShownCode, ToolCall, ToolResult, ToolSpec
 
 logger = get_logger(__name__)
 
 ToolHandler = Callable[[dict[str, Any]], ToolResult]
 CallDescriber = Callable[[dict[str, Any]], str]
+# The code a call would run, for tools that run code or commands.
+CodeShower = Callable[[dict[str, Any]], ShownCode | None]
 
 
 # (the call's arguments, what the user typed in their latest message) -> must it ask first?
@@ -30,7 +32,9 @@ class Tool:
     """One callable capability. Action tools (anything that launches or writes) set
     requires_confirmation, and describe() is what the confirmation card shows. confirm_when,
     if set, decides per call instead (a read-only terminal command runs freely; any other one
-    asks). always_allowable=False keeps a tool off "Always allow", so every call asks."""
+    asks). always_allowable=False keeps a tool off "Always allow" on the card; can_skip_in_settings
+    still lets the user turn its approval off in Settings, as a deliberate choice. show_code
+    gives the code a call runs, so the chat can show it."""
 
     spec: ToolSpec
     handler: ToolHandler
@@ -38,6 +42,8 @@ class Tool:
     requires_confirmation: bool = False
     confirm_when: ConfirmationRule | None = None
     always_allowable: bool = True
+    can_skip_in_settings: bool = False
+    show_code: CodeShower | None = None
 
     def needs_confirmation(self, arguments: dict[str, Any], user_text: str = "") -> bool:
         """Whether this particular call has to wait for the user's go-ahead. user_text is what
@@ -94,6 +100,16 @@ class ToolRegistry:
         """False for tools that must ask every time (running commands or code)."""
         tool = self._tools.get(name)
         return tool is not None and tool.always_allowable
+
+    def code_for(self, call: ToolCall) -> ShownCode | None:
+        """The code or command call runs, for tools that run one."""
+        tool = self._tools.get(call.name)
+        if tool is None or tool.show_code is None:
+            return None
+        try:
+            return tool.show_code(call.arguments)
+        except (KeyError, TypeError, ValueError):
+            return None
 
     def describe_call(self, call: ToolCall) -> str:
         """Plain-language summary of call, for chips and confirmation cards."""

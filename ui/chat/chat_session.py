@@ -13,13 +13,14 @@ from typing import Any
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from core.attachment_format import AttachedItem
-from models.chat import Attachment, ChatMessage
+from models.chat import Attachment, ChatMessage, ShownCode
 from models.schema import IndexStatus, SourceRef
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
 from ui.chat.chat_input import ChatInput
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
+from ui.chat.code_block import StepDetail
 from ui.chat.conversation_column import ConversationColumn
 
 STILL_LEARNING_ID = "index-progress"
@@ -169,7 +170,7 @@ class ChatSession(QObject):
         elif name == "token":
             column.current_reply.append_text(data["text"])
         elif name == "tool":
-            column.current_reply.show_tool(data["call_id"], data["label"], data["status"])
+            column.current_reply.show_tool(data["call_id"], data["label"], data["status"], step_detail(data))
         elif name == "sources":
             column.current_reply.set_sources([SourceRef(**item) for item in data["sources"]])
         elif name == "confirm":
@@ -195,7 +196,8 @@ class ChatSession(QObject):
         """Shows an approve/decline card; the answer resumes the paused turn."""
         call_id = data["call_id"]
         conversation_id = self._running_id
-        card = column.add_confirmation(data["description"], bool(data.get("can_always_allow", True)))
+        code = ShownCode(**data["code"]) if data.get("code") else None
+        card = column.add_confirmation(data["description"], bool(data.get("can_always_allow", True)), code)
 
         def _decided(approved: bool, always: bool) -> None:
             if self._input.is_busy():
@@ -234,3 +236,12 @@ class ChatSession(QObject):
         self._input.set_answering_elsewhere(False)
         self._input.set_busy(False)
         self._input.focus()
+
+
+def step_detail(data: dict[str, Any]) -> StepDetail | None:
+    """The code and output a "tool" event carries, for code and command steps."""
+    code = data.get("code")
+    output = data.get("output")
+    if not code and output is None:
+        return None
+    return StepDetail(code=ShownCode(**code) if code else None, output=output)

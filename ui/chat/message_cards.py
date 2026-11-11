@@ -1,6 +1,7 @@
 """
-The small cards inside a reply: a tool step ("✓ Searched your files"), a source-file card that
-opens the file, and the approve/decline card for actions. Display only, clicks are reported
+The small cards inside a reply: a tool step ("✓ Searched your files", with the code it runs and
+its output for code and commands), a source-file card that opens the file, and the
+approve/decline card for actions, which shows the code too. Display only, clicks are reported
 through signals or handed to the OS to open.
 """
 
@@ -11,7 +12,9 @@ from pathlib import Path
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from models.chat import ShownCode
 from models.schema import SourceRef
+from ui.chat.code_block import CodeBlock, StepDetail, output_block
 from ui.source_opener import open_source
 from ui.theme.line_icons import line_icon, line_pixmap
 from ui.theme.tokens import CLOUD_GOLD, DANGER, GI_ORANGE, SUCCESS, TEXT_FAINT, TEXT_ON_GOLD
@@ -42,22 +45,44 @@ FILE_ICONS = {
 STEP_ICON_SIZE = 14
 SOURCE_ICON_SIZE = 18
 SOURCE_CARD_MAX_WIDTH = 460
+# Code under a step lines up with the step's text: past its icon and the gap after it.
+STEP_INDENT = STEP_ICON_SIZE + 8
 
 
 class ToolStep(QWidget):
-    """One line in a reply's activity log, updated in place as the step finishes."""
+    """One line in a reply's activity log, updated in place as the step finishes; a code or
+    command step also shows what it runs and, when done, what it printed."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._icon = QLabel(self)
         self._text = QLabel(self)
         self._text.setObjectName("ToolStepText")
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
+        self._code: CodeBlock | None = None
+        self._output: CodeBlock | None = None
+        row = QHBoxLayout()
         row.setSpacing(8)
         row.addWidget(self._icon)
         row.addWidget(self._text)
         row.addStretch()
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(6)
+        self._layout.addLayout(row)
+
+    def show_detail(self, detail: StepDetail) -> None:
+        """Adds the code block once, and the output block once the step has finished."""
+        if detail.code is not None and self._code is None:
+            self._code = self._indented(CodeBlock(detail.code, self))
+        if detail.output is not None and self._output is None:
+            self._output = self._indented(output_block(detail.output, self))
+
+    def _indented(self, block: CodeBlock) -> CodeBlock:
+        row = QHBoxLayout()
+        row.addSpacing(STEP_INDENT)
+        row.addWidget(block, 1)
+        self._layout.addLayout(row)
+        return block
 
     def update_step(self, label: str, status: str) -> None:
         icon, color = STEP_ICONS.get(status, STEP_ICONS["info"])
@@ -117,7 +142,13 @@ class ConfirmCard(QFrame):
 
     decided = pyqtSignal(bool, bool)
 
-    def __init__(self, description: str, parent: QWidget | None = None, can_always_allow: bool = True) -> None:
+    def __init__(
+        self,
+        description: str,
+        parent: QWidget | None = None,
+        can_always_allow: bool = True,
+        code: ShownCode | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("ConfirmCard")
         self._open = True
@@ -145,6 +176,9 @@ class ConfirmCard(QFrame):
         layout.setSpacing(8)
         layout.addLayout(heading)
         layout.addWidget(text)
+        if code is not None:
+            # The exact code or command, so the user approves what will really run.
+            layout.addWidget(CodeBlock(code, self))
         layout.addLayout(self._buttons)
 
     def _add_button(self, text: str, variant: str, approved: bool, always: bool) -> None:

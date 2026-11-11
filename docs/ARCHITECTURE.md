@@ -150,7 +150,12 @@ POST /chat {text, conversation_id?}
 - **When a call asks first**: a tool either always asks (`requires_confirmation`) or decides per
   call (`confirm_when`): a read-only command or a link the user typed runs at once, anything
   else asks. Tools that can change the PC in open-ended ways (`always_allowable=False`:
-  commands, code, file moves, pages Nimbus found itself) never get *Always allow*.
+  commands, code, file moves, pages Nimbus found itself) never get *Always allow* on the card.
+  Code and commands (`can_skip_in_settings`) can still be set to run unasked from Settings, as a
+  deliberate choice; the sandbox and the elevation refusal apply either way.
+- **Showing code**: tools that run code or commands expose it (`show_code`), so the approval card
+  and the step in the reply show the exact code, collapsed to a few lines with *Show all*, and the
+  finished step shows the start of its output (`ui/chat/code_block.py`).
 - **Path guard**: every file tool resolves the path first (defeating `..` tricks) and refuses
   anything outside the user's shared folders or Nimbus's own notes folder.
 - **Persistence**: every message, tool call and tool result is stored (SQLite), so a paused

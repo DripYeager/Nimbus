@@ -15,7 +15,7 @@ from core.command_policy import ELEVATION_MESSAGE, asks_for_elevation, is_read_o
 from core.command_runner import DEFAULT_TIMEOUT_S, CommandResult, run_powershell
 from core.exceptions import ToolError
 from core.process_monitor import busiest_programs, describe_usage
-from models.chat import ToolResult
+from models.chat import ShownCode, ToolResult
 from tools.registry import Tool, ToolRegistry, object_schema, string_param, tool_spec
 
 RUN_COMMAND = tool_spec(
@@ -49,6 +49,8 @@ class TerminalToolbox:
                 describe_command,
                 confirm_when=needs_approval,
                 always_allowable=False,
+                can_skip_in_settings=True,
+                show_code=show_command,
             )
         )
 
@@ -71,8 +73,12 @@ def needs_approval(args: dict[str, Any], user_text: str = "") -> bool:
 
 
 def describe_command(args: dict[str, Any]) -> str:
-    """The chip and approval-card text: the exact command, nothing paraphrased."""
-    return f"Run in PowerShell: {str(args.get('command', '')).strip()}"
+    """The chip and card line; the exact command is shown in full under it (show_command)."""
+    return "Run a PowerShell command"
+
+
+def show_command(args: dict[str, Any]) -> ShownCode:
+    return ShownCode(title="PowerShell", text=str(args.get("command", "")).strip())
 
 
 def describe_result(command: str, result: CommandResult) -> str:

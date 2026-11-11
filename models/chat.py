@@ -107,6 +107,13 @@ class ChatToken(BaseModel):
     text: str
 
 
+class ShownCode(BaseModel):
+    """Code or a command a step runs, as the chat shows it: a short preview the user can open."""
+
+    title: str
+    text: str
+
+
 class ToolActivity(BaseModel):
     """A tool step shown as a small chip in the chat ("Searched your files")."""
 
@@ -114,6 +121,10 @@ class ToolActivity(BaseModel):
     tool: str
     label: str
     status: Literal["running", "done", "failed", "denied"]
+    # For code and commands: what runs (shown as a block under the step), and, once it has
+    # finished, the start of what it printed.
+    code: ShownCode | None = None
+    output: str | None = None
 
 
 class ChatSources(BaseModel):
@@ -128,6 +139,7 @@ class ConfirmationNeeded(BaseModel):
     description: str
     # False for tools that ask every time; the card then offers no "Always allow".
     can_always_allow: bool = True
+    code: ShownCode | None = None
 
 
 class ChatDone(BaseModel):
