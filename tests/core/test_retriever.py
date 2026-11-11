@@ -9,7 +9,8 @@ from pytest_mock import MockerFixture
 
 from core.embedder import Embedder
 from core.exceptions import QueryError
-from core.retriever import CANDIDATE_MULTIPLIER, RRF_K, Retriever, fuse_rankings
+from core.reranker import Reranker
+from core.retriever import CANDIDATE_MULTIPLIER, RERANK_POOL, RRF_K, Retriever, fuse_rankings
 from core.vector_store import VectorStore
 from models.schema import IndexedChunk, SearchResult
 
@@ -149,3 +150,24 @@ def test_retrieve_finds_an_exact_token_in_a_real_store(tmp_path: Path, embedder:
     results = Retriever(store, embedder).retrieve("INV-2231", top_k=1)
 
     assert [r.chunk_id for r in results] == ["target"]
+
+
+def test_retrieve_hands_a_wider_pool_to_a_ready_reranker(store: Mock, embedder: Mock, mocker: MockerFixture) -> None:
+    store.search.return_value = [_result(f"c{i}") for i in range(30)]
+    reranker = mocker.Mock(spec=Reranker)
+    reranker.is_ready.return_value = True
+    reranker.rerank.side_effect = lambda query, pool, top_k: pool[:top_k]
+
+    Retriever(store, embedder, reranker).retrieve("q", top_k=5)
+
+    query, pool, top_k = reranker.rerank.call_args.args
+    assert (query, len(pool), top_k) == ("q", RERANK_POOL, 5)
+
+
+def test_retrieve_skips_a_reranker_that_is_not_ready(store: Mock, embedder: Mock, mocker: MockerFixture) -> None:
+    reranker = mocker.Mock(spec=Reranker)
+    reranker.is_ready.return_value = False
+
+    Retriever(store, embedder, reranker).retrieve("q", top_k=5)
+
+    reranker.rerank.assert_not_called()

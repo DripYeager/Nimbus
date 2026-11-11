@@ -14,6 +14,7 @@ import httpx
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from config.settings import get_settings
+from core.api_auth import auth_headers
 from core.logger import get_logger
 from core.sse import parse_sse_events
 from models.chat import Attachment
@@ -117,7 +118,7 @@ class _StreamRequest:
     def _stream(self) -> None:
         """Opens the SSE connection and relays each event until done or cancelled."""
         timeout = httpx.Timeout(get_settings().thinking_timeout_seconds, connect=CONNECT_TIMEOUT_SECONDS)
-        with httpx.stream("POST", self._url, json=self._body, timeout=timeout) as response:
+        with httpx.stream("POST", self._url, json=self._body, timeout=timeout, headers=auth_headers()) as response:
             self._response = response
             if response.is_error:
                 response.read()

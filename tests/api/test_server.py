@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
 from api.server import API_VERSION, app
+from core.api_auth import TOKEN_HEADER
 from core.exceptions import AppLaunchError, ConversationNotFoundError, ProviderError
 from core.service_container import AppServices
 from models.schema import AppEntry
@@ -67,3 +68,21 @@ def test_lifespan_builds_starts_and_stops_services_when_none_are_attached(mocker
         del app.state.services
 
     built.stop.assert_called_once()
+
+
+def test_requests_without_the_token_are_refused(client: TestClient) -> None:
+    response = client.get("/index/status", headers={TOKEN_HEADER: "guess"})
+
+    assert (response.status_code, response.json()["type"]) == (401, "Unauthorized")
+
+
+def test_requests_addressed_to_another_host_are_refused(client: TestClient) -> None:
+    response = client.get("/index/status", headers={"host": "evil.example:8765"})
+
+    assert response.status_code == 403
+
+
+def test_health_needs_no_token(client: TestClient) -> None:
+    response = client.get("/health", headers={TOKEN_HEADER: ""})
+
+    assert response.status_code == 200

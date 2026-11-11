@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QTextBrowser, QToolButt
 
 from core.attachment_format import AttachedItem
 from models.schema import SourceRef
-from ui.chat.answer_style import remove_dashes
+from ui.chat.answer_style import clean_answer
 from ui.chat.attachment_preview import image_preview
 from ui.chat.message_cards import SourceCard, ToolStep
 from ui.chat.thinking_indicator import ThinkingIndicator
@@ -144,7 +144,7 @@ class AssistantMessage(QWidget):
         self._markdown += token
         self._answer.show()
         self._copy.show()
-        self._answer.setMarkdown(remove_dashes(self._markdown))
+        self._answer.setMarkdown(clean_answer(self._markdown))
 
     def set_text(self, markdown: str) -> None:
         self._markdown = ""
@@ -202,7 +202,7 @@ class AssistantMessage(QWidget):
 
     def _copy_answer(self) -> None:
         """Copies the answer's Markdown and flashes a check mark."""
-        QGuiApplication.clipboard().setText(remove_dashes(self._markdown))
+        QGuiApplication.clipboard().setText(clean_answer(self._markdown))
         self._copy.setIcon(line_icon("check", SUCCESS, COPY_ICON_SIZE))
         self._copied_reset.start()
 

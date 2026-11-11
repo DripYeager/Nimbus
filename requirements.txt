@@ -22,6 +22,9 @@ winrt-Windows.Globalization==4!10.0.28000.2957
 winrt-Windows.Graphics.Imaging==4!10.0.28000.2957
 winrt-Windows.Media.Ocr==4!10.0.28000.2957
 winrt-Windows.Storage.Streams==4!10.0.28000.2957
+# Push-to-talk uses the speech recognizer built into Windows
+winrt-Windows.Media.SpeechRecognition==4!10.0.28000.2957
+winrt-Windows.Foundation.Collections==4!10.0.28000.2957
 
 # Embeddings (ONNX, no torch); search index is SQLite with sqlite-vec + built-in FTS5
 fastembed==0.9.1

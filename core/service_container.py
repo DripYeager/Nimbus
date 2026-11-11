@@ -26,6 +26,7 @@ from core.indexer import Indexer
 from core.logger import get_logger
 from core.ollama_setup import OllamaSetup
 from core.rag_answer import RagAnswerer
+from core.reranker import get_reranker
 from core.retriever import Retriever
 from core.usage_meter import UsageMeter
 from core.vector_store import VectorStore
@@ -87,6 +88,9 @@ class AppServices:
         """Starts indexing, the watcher, and the app-catalog scan. Returns immediately."""
         settings = get_settings()
         self.index.start(settings.embedding_model)
+        reranker = get_reranker()
+        if reranker is not None:
+            reranker.load_in_background()
         self.watcher.start(settings.sources)
         threading.Thread(target=self._load_app_catalog, name="app-catalog", daemon=True).start()
 
@@ -118,7 +122,7 @@ class AppServices:
 
     def _build_chat(self) -> None:
         """Wires tools, the assistant and the fast path into the chat service."""
-        retriever = Retriever(self.store, get_embedder())
+        retriever = Retriever(self.store, get_embedder(), get_reranker())
         registry = ToolRegistry()
         FileToolbox(retriever, self.catalog, self.is_path_shared, self.provider).register(registry)
         actions = ActionToolbox(self.apps, self.is_path_shared)

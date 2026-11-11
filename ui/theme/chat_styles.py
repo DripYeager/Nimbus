@@ -49,6 +49,8 @@ QLabel#ToolStepText {{ font-size: 12px; color: {TEXT_MUTED}; }}
 QLabel#ToolStepText[status="failed"], QLabel#ToolStepText[status="denied"] {{ color: {DANGER}; }}
 QLabel#ErrorLine {{ color: {DANGER}; font-size: 13px; }}
 QToolButton#MessageAction {{ border-radius: 8px; padding: 4px; }}
+QToolButton#MicButton {{ border: none; background: transparent; border-radius: 16px; padding: 7px; }}
+QToolButton#MicButton:hover {{ background: {SURFACE_HOVER}; }}
 """
 
 _CARDS = f"""

@@ -29,6 +29,7 @@ from ui.chat.chat_session import ChatSession
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
 from ui.chat.history_panel import HistoryPanel
+from ui.chat.voice_input import VoiceInput
 from ui.screen_capture import RegionCapture, save_capture
 from ui.settings.settings_panel import SettingsPanel
 from ui.theme.backdrop import NightBackdrop
@@ -74,6 +75,7 @@ class ChatWindow(QWidget):
         self._attachments = AttachmentBar()
         self._flow = AttachmentFlow(self._attachments, self._session)
         self._capture: RegionCapture | None = None
+        self._voice = VoiceInput(self._input, self)
 
     def setup(self) -> None:
         """Builds the window and wires every signal."""
@@ -82,6 +84,7 @@ class ChatWindow(QWidget):
         self._session.connect_signals()
         self._session.status_received.connect(self._show_status)
         self._flow.connect_signals()
+        self._voice.connect_signals()
         self._header.capture_clicked.connect(self.capture_screen)
         self._header.new_chat_clicked.connect(self._new_chat)
         self._header.history_clicked.connect(self.show_history)
@@ -95,6 +98,7 @@ class ChatWindow(QWidget):
         self._settings.saved.connect(self._poll_status)
         self._status_timer.timeout.connect(self._poll_status)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self._new_chat)
+        QShortcut(QKeySequence("Ctrl+M"), self, activated=self._voice.listen)
 
     def toggle(self) -> None:
         """The hotkey: summon if hidden or in the background, hide if already in front."""
@@ -132,8 +136,7 @@ class ChatWindow(QWidget):
         self._animation.start()
 
     def close_to_tray(self) -> None:
-        """Hides like minimize, but the next summon opens on the chat page. A running reply
-        keeps going either way; only the stop button ends one."""
+        """Hides like minimize, but reopens on the chat page; a running reply keeps going."""
         self.dismiss()
         self._go_to(CHAT_PAGE)
 
@@ -222,8 +225,7 @@ class ChatWindow(QWidget):
         self.setMinimumHeight(CHAT_MIN_HEIGHT + 2 * SHADOW_MARGIN)
 
     def _build_layout(self) -> None:
-        """The night panel (its shadow is painted by paintEvent): header on top, the pages, and
-        a slim footer."""
+        """The night panel (shadow painted by paintEvent): header, the pages, a slim footer."""
         panel = self._panel
         outer = QVBoxLayout(self)
         outer.setContentsMargins(SHADOW_MARGIN, SHADOW_MARGIN, SHADOW_MARGIN, SHADOW_MARGIN)

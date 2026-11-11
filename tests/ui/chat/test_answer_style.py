@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from ui.chat.answer_style import remove_dashes
+from ui.chat.answer_style import clean_answer
 
-EM = "—"
-EN = "–"
+EM = chr(0x2014)
+EN = chr(0x2013)
 
 
 @pytest.mark.parametrize(
@@ -18,11 +18,31 @@ EN = "–"
         ("built-in hyphens stay", "built-in hyphens stay"),
     ],
 )
-def test_remove_dashes_rewrites_prose(text: str, expected: str) -> None:
-    assert remove_dashes(text) == expected
+def test_clean_answer_rewrites_prose(text: str, expected: str) -> None:
+    assert clean_answer(text) == expected
 
 
-def test_remove_dashes_leaves_code_blocks_alone() -> None:
-    text = f"Run this {EM} now\n```\nx = a {EM} b\n```"
+def test_clean_answer_leaves_code_blocks_alone() -> None:
+    text = "Run this " + EM + " now\n```\nx = a " + EM + " b\n```"
 
-    assert remove_dashes(text) == f"Run this, now\n```\nx = a {EM} b\n```"
+    assert clean_answer(text) == "Run this, now\n```\nx = a " + EM + " b\n```"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Done.\n<tool_code>file:///C:/a.docx</tool_code>", "Done."),
+        ("Done.\n<tool_code>file:///C:/a.docx</tool_code", "Done."),
+        ("<think>let me plan this</think>The answer is 4.", "The answer is 4."),
+        ("Here it is.<|im_end|>", "Here it is."),
+        ("Stray </tool_call> closing tag", "Stray  closing tag"),
+    ],
+)
+def test_clean_answer_removes_stray_model_markup(text: str, expected: str) -> None:
+    assert clean_answer(text) == expected
+
+
+def test_clean_answer_keeps_markup_inside_code_blocks() -> None:
+    text = "Example:\n```\n<think>x</think>\n```"
+
+    assert clean_answer(text) == text

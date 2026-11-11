@@ -40,6 +40,7 @@ Press **Ctrl+Space** in any app and Nimbus glides up, ready for a request:
 | Right-click a file in Explorer, *Ask Nimbus about this* | Opens with the file attached and one-click questions ready |
 | Copy some text, then summon Nimbus | Offers *Use what I copied*, so you can ask about text from any app |
 | Click the scan button and drag over part of the screen | Reads it with Windows OCR and answers about it ("what does this error mean?") |
+| Click the microphone (or press Ctrl+M) and speak | Types what you said into the message box, ready to send |
 
 Anything that **launches or writes** shows an approval card first: *Allow*, *Always allow*, or *Don't*.
 
@@ -52,7 +53,7 @@ Anything that **launches or writes** shows an approval card first: *Allow*, *Alw
 - **Search inside images.** Screenshots, scans and photos of whiteboards are read with the OCR engine built into Windows, so their text is searchable too.
 - **Works with slow local models.** A heartbeat keeps the connection alive while a local model thinks, a live indicator shows it's working, and a stop button ends a reply at any time. Switching chats never interrupts a running answer.
 - **You decide what it learns.** Pick folders, mark any folder "names only", choose file types, set a size limit and exclude patterns, all from the Settings window.
-- **Built for locked-down work laptops.** No admin rights, no services, no keyboard hooks: the hotkey uses the Windows `RegisterHotKey` API, data lives in `%APPDATA%`, and the API server binds to `127.0.0.1` only.
+- **Built for locked-down work laptops.** No admin rights, no services, no keyboard hooks: the hotkey uses the Windows `RegisterHotKey` API, data lives in `%APPDATA%`, and the API server binds to `127.0.0.1` only and requires a per-run secret.
 - **Small and fast.** No PyTorch and no separate database server. The whole search index is one SQLite file, and the standalone release is about 120 MB zipped.
 - **A UI with personality.** Original artwork inspired by a flying golden cloud: a sky header with speed lines, an energy orb that pulses while Nimbus thinks, a scouter-style power level for indexing progress, and comic-style headlines. Settings and history open inside the same window, with a back arrow to return to the chat.
 
@@ -74,13 +75,23 @@ Anything that **launches or writes** shows an approval card first: *Allow*, *Alw
 **Hybrid retrieval.** Every question runs vector search (meaning) and BM25 keyword search (exact
 tokens like `INV-2231` or a surname) in parallel and merges them with **reciprocal rank fusion**.
 Keyword queries drop filler words and match each remaining word as a phrase, so a code matches
-exactly and a long question stays fast. On the labelled benchmark in
-[`tests/fixtures/eval_corpus`](tests/fixtures/eval_corpus) (`python scripts/eval_retrieval.py`):
+exactly and a long question stays fast. A **cross-encoder reranker** (Jina's 8K-context model,
+ONNX) then re-scores the top 20 candidates, blended with the first-pass rank so it refines the
+order instead of overruling it. It downloads once in the background and search runs without
+it until it's ready. Labelled benchmark in [`tests/fixtures/eval_corpus`](tests/fixtures/eval_corpus)
+(`python scripts/eval_retrieval.py`), with direct questions and paraphrases that share almost no
+words with the answer:
 
-| Strategy | recall@1 | recall@5 | MRR | ms / query |
-|---|---|---|---|---|
-| Vector only | 0.92 | 1.00 | 0.95 | 22 |
-| **Hybrid (vector + BM25, RRF)** | **1.00** | **1.00** | **1.00** | 22 |
+| Strategy | Direct: recall@1 | Direct: MRR | Paraphrased: recall@1 | Paraphrased: MRR | ms / query |
+|---|---|---|---|---|---|
+| Vector only | 0.92 | 0.95 | 1.00 | 1.00 | 19 |
+| Hybrid (vector + BM25, RRF) | 1.00 | 1.00 | 0.88 | 0.93 | 19 |
+| **Hybrid + rerank** | **1.00** | **1.00** | **0.96** | **0.98** | 230 |
+
+Keyword search is what makes codes like `INV-2231` exact, but it costs accuracy on paraphrases;
+the reranker wins most of that back. Recall@5 is 1.00 for every strategy on both sets. A
+512-token reranker tried first scored *worse* than no reranker, because it missed facts near the
+end of long excerpts.
 
 **One SQLite file for search.** Chunk text, 384-dim embeddings ([sqlite-vec](https://github.com/asg017/sqlite-vec))
 and an FTS5 full-text index share one database with WAL mode, so searches run while indexing
@@ -176,6 +187,12 @@ python scripts/build_release.py      # creates dist/Nimbus/Nimbus.exe and dist/N
   settings under `%APPDATA%\Nimbus`, it only writes new files you ask for, after you approve the
   exact path, and never over an existing file.
 - File tools refuse any path outside the folders you shared (path traversal is resolved first).
+- The local API only answers requests that carry a secret made fresh at every start (shared in
+  memory between the window and the engine, never written to disk) and that are addressed to
+  `127.0.0.1` or `localhost`. Other programs on the PC and DNS-rebinding web pages are refused.
+- Voice input uses Windows' own speech recognition, which sends the audio to Microsoft's speech
+  service and needs *Online speech recognition* turned on. It only listens after you click the
+  microphone.
 - Logs record paths, counts and timings, never file contents, prompts or API keys.
 
 ## Project structure

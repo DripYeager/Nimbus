@@ -12,6 +12,7 @@ from urllib.parse import quote
 import httpx
 
 from config.settings import get_settings
+from core.api_auth import auth_headers
 from core.exceptions import NimbusError
 from models.api import OllamaStatus, ProviderTestResult, SettingsView, UsageView
 from models.chat import ChatMessage, ConversationSummary, ProviderConfig, ProviderName
@@ -78,7 +79,9 @@ class ApiClient:
     def _request(self, method: str, path: str, json: Any = None, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> Any:
         """Sends one request; any failure becomes a NimbusError carrying a message fit to show."""
         try:
-            response = httpx.request(method, f"{self._base_url}{path}", json=json, timeout=timeout)
+            response = httpx.request(
+                method, f"{self._base_url}{path}", json=json, timeout=timeout, headers=auth_headers()
+            )
         except httpx.HTTPError as e:
             raise NimbusError(UNREACHABLE_MESSAGE) from e
         if response.is_error:

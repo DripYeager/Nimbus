@@ -164,10 +164,18 @@ Values from a 1.x `.env` are migrated automatically (`config/legacy_settings.py`
 
 ## 8. Security notes
 
-- The API binds to `127.0.0.1` only.
-- Nimbus never modifies, moves or deletes user files; the only writes are its own notes.
-- Launching apps, opening files/URLs and saving notes require an explicit click unless the
-  user pre-approves that tool.
+- The API binds to `127.0.0.1` only, and a middleware (`api/server.py`, `core/api_auth.py`)
+  refuses any request without this run's secret (`X-Nimbus-Token`, made at startup and shared
+  in memory, never on disk; `NIMBUS_API_TOKEN` sets it for a standalone engine) or with a
+  `Host` other than `127.0.0.1`/`localhost`, which blocks DNS-rebinding pages. `/health` needs
+  no secret but still gets the host check.
+- Nimbus never modifies, moves or deletes user files. Apart from its own data it only writes
+  new files the user asked for (`create_document`, `create_spreadsheet`), never over an
+  existing one.
+- Launching apps, opening files/URLs, saving notes and creating files require an explicit
+  click unless the user pre-approves that tool in Settings.
+- Voice input (`core/speech.py`) uses Windows' online dictation, so audio goes to Microsoft's
+  speech service; it runs only after a click on the microphone.
 - Logs record paths, counts and durations, never file contents, prompts or keys.
 
 ## 9. Testing

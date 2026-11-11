@@ -40,6 +40,8 @@ ACTION_ROWS: dict[str, tuple[str, str]] = {
     "open_website": ("Open websites", "globe"),
     "open_windows_setting": ("Open Windows settings pages", "settings"),
     "save_note": ("Save notes", "notebook-pen"),
+    "create_document": ("Create documents (Word, text, Markdown)", "file-text"),
+    "create_spreadsheet": ("Create spreadsheets (Excel, CSV)", "file-spreadsheet"),
 }
 MAX_DAILY_CALLS = 10_000
 CAP_BOX_WIDTH = 110

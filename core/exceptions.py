@@ -72,3 +72,7 @@ class AutostartError(NimbusError):
 
 class ExplorerMenuError(NimbusError):
     """The File Explorer right-click entry couldn't be added or removed."""
+
+
+class SpeechError(NimbusError):
+    """Voice input couldn't hear or understand anything; the message says why."""

@@ -10,6 +10,7 @@ import httpx
 import pytest
 from pytest_mock import MockerFixture
 
+from core.api_auth import auth_headers
 from ui.chat.chat_stream import CONNECT_TIMEOUT_SECONDS, UNREACHABLE_MESSAGE, ChatStream, _message_for
 
 BASE_URL = "http://127.0.0.1:8765"
@@ -78,7 +79,9 @@ def recorder(stream: ChatStream) -> Recorder:
 
 def _patch_stream(mocker: MockerFixture, response: FakeResponse | None = None, error: Exception | None = None) -> Mock:
     @contextmanager
-    def fake_stream(method: str, url: str, json: Any, timeout: httpx.Timeout) -> Iterator[FakeResponse]:
+    def fake_stream(
+        method: str, url: str, json: Any, timeout: httpx.Timeout, headers: dict[str, str]
+    ) -> Iterator[FakeResponse]:
         if error is not None:
             raise error
         yield response
@@ -243,3 +246,11 @@ def test_events_from_a_superseded_request_are_dropped(
     stream._relay_event.emit(stale_id, "token", {"text": "late"})
 
     assert recorder.events == []
+
+
+def test_send_carries_the_api_token(mocker: MockerFixture, stream: ChatStream) -> None:
+    http_stream = _patch_stream(mocker, FakeResponse([]))
+
+    stream.send("hello", None)
+
+    assert http_stream.call_args.kwargs["headers"] == auth_headers()
