@@ -132,4 +132,5 @@ class IndexWorker:
         if self._since_optimize == 0 or (not force and self._since_optimize < OPTIMIZE_EVERY_N_FILES):
             return
         self._since_optimize = 0
-        self._indexer.optimize_store()
+        # The full rewrite waits until the queue is empty; meanwhile a bounded merge keeps up.
+        self._indexer.optimize_store(full=force)

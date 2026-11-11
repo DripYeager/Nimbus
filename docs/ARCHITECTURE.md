@@ -159,7 +159,14 @@ POST /chat {text, conversation_id?}
 - **Path guard**: every file tool resolves the path first (defeating `..` tricks) and refuses
   anything outside the user's shared folders or Nimbus's own notes folder.
 - **Persistence**: every message, tool call and tool result is stored (SQLite), so a paused
-  turn survives a restart and chats can be continued later.
+  turn survives a restart and chats can be continued later. Reopening a chat goes through
+  `GET /conversations/{id}/view` (`core/history_view.py`): each reply comes back as one unit
+  with its steps, code and output, as it looked live, and a card still waiting for an answer is
+  shown again.
+- **Prompt caching for local models**: the system prompt holds only the date (the time is noted
+  on the latest message, for the model only), and long chats are trimmed in steps of ten
+  messages, so everything before the newest message stays identical between turns and Ollama can
+  reuse its work instead of reprocessing the tools and history every time.
 - **Models without tool support** (some small Ollama models) fall back to a single
   retrieve-then-answer call.
 

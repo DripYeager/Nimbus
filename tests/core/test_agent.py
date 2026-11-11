@@ -11,6 +11,7 @@ from core.agent import (
     EMPTY_ANSWER_MESSAGE,
     MAX_TOOL_RESULT_CHARS,
     STEP_LIMIT_MESSAGE,
+    TRIM_STEP,
     SourceTracker,
     pending_tool_calls,
 )
@@ -191,7 +192,8 @@ def test_run_trims_long_history_to_start_at_a_user_message(registry: ToolRegistr
 
     seen = provider.seen[0]
     assert seen[0].role == "user"
-    assert len(seen) <= CONTEXT_MESSAGES
+    # The cut moves in TRIM_STEP steps, so the window can run up to TRIM_STEP - 1 over.
+    assert len(seen) < CONTEXT_MESSAGES + TRIM_STEP
 
 
 def test_run_keeps_the_latest_user_message_when_a_tool_run_fills_the_window(registry: ToolRegistry) -> None:
@@ -205,7 +207,8 @@ def test_run_keeps_the_latest_user_message_when_a_tool_run_fills_the_window(regi
 
     list(make_agent(provider, registry).run(history))
 
-    assert provider.seen[0][0] == ChatMessage(role="user", content="dig deep")
+    first = provider.seen[0][0]
+    assert first.role == "user" and first.content.startswith("dig deep")
 
 
 def test_pending_tool_calls_returns_only_unanswered_calls() -> None:

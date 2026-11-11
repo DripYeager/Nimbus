@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 # MarkItDown pulls in magika, which calls load_dotenv() on import and would copy whatever .env
 # sits in the working directory into os.environ for the whole process. Nimbus reads .env through
@@ -18,12 +19,14 @@ from pathlib import Path
 os.environ.setdefault("PYTHON_DOTENV_DISABLED", "1")
 
 import pypdfium2 as pdfium  # noqa: E402
-from markitdown import MarkItDown, UnsupportedFormatException  # noqa: E402
 
 from core.exceptions import ParsingError, UnsupportedFileTypeError  # noqa: E402
 from core.logger import get_logger  # noqa: E402
 from core.ocr_fallback import extract_pages_with_ocr, extract_text_from_image  # noqa: E402
 from models.schema import DocumentPage, ParsedDocument  # noqa: E402
+
+if TYPE_CHECKING:
+    from markitdown import MarkItDown
 
 logger = get_logger(__name__)
 
@@ -103,16 +106,21 @@ def _read_pdf_page(pdf: pdfium.PdfDocument, index: int) -> str:
 
 
 def _get_markitdown() -> MarkItDown:
-    """Builds MarkItDown once, constructing it loads every converter plugin."""
+    """Builds MarkItDown once, constructing it loads every converter plugin. Imported here: it
+    pulls in pandas and more, about a second of startup, and only indexing needs it."""
     global _markitdown
     with _markitdown_lock:
         if _markitdown is None:
+            from markitdown import MarkItDown
+
             _markitdown = MarkItDown()
         return _markitdown
 
 
 def _parse_with_markitdown(path: Path) -> str:
     """Runs MarkItDown, the parser for every office/ebook/email format."""
+    from markitdown import UnsupportedFormatException
+
     try:
         result = _get_markitdown().convert(str(path))
     except UnsupportedFormatException as e:

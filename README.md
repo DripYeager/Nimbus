@@ -14,7 +14,7 @@
 <p align="center">
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB">
   <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4">
-  <img alt="Tests: 1,950+" src="https://img.shields.io/badge/tests-1%2C950%2B%20passing-2BB673">
+  <img alt="Tests: 2,050+" src="https://img.shields.io/badge/tests-2%2C050%2B%20passing-2BB673">
   <img alt="MCP: server and client" src="https://img.shields.io/badge/MCP-server%20%2B%20client-8A63D2">
   <img alt="Runs locally" src="https://img.shields.io/badge/runs-100%25%20local-1FAF6B">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-FFC940">
@@ -324,7 +324,7 @@ models/     Pydantic data contracts shared across layers
 tools/      Tools the agent can call: files, apps, commands, code, desktop, reminders, web, MCP
 ui/         Chat window, Settings, onboarding, tray, hotkey, theme
 scripts/    Retrieval benchmark, CLI indexer, release build
-tests/      1,950+ tests mirroring the source tree, fully offline
+tests/      2,050+ tests mirroring the source tree, fully offline
 ```
 
 ## Development

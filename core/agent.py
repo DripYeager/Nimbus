@@ -8,6 +8,7 @@ live elsewhere.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from datetime import datetime
 
 from config.settings import get_settings
 from core.attachment_format import has_attachment, split_attachments
@@ -21,6 +22,7 @@ from models.chat import (
     ChatToken,
     ConfirmationNeeded,
     ConfirmRequest,
+    ShownCode,
     TextDelta,
     ToolActivity,
     ToolCall,
@@ -34,6 +36,8 @@ logger = get_logger(__name__)
 
 # How much history the model sees; older turns stay saved but stop costing tokens.
 CONTEXT_MESSAGES = 30
+TRIM_STEP = 10
+TIME_NOTE = "\n\n(Local time now: {:%H:%M})"
 # A tool result bigger than this is almost always a whole document the model asked for,
 # trimming keeps one call from blowing a small local model's context window.
 MAX_TOOL_RESULT_CHARS = 12000
@@ -87,7 +91,7 @@ class Agent:
         text, calls = "", []
         try:
             for item in self._provider.stream_chat(
-                self._system_prompt(), _model_view(messages), self._tools_for(messages)
+                self._system_prompt(), with_time(_model_view(messages), datetime.now()), self._tools_for(messages)
             ):
                 if isinstance(item, TextDelta):
                     text += item.text
@@ -184,6 +188,23 @@ class Agent:
     def can_always_allow(self, tool_name: str) -> bool:
         return self._registry.can_always_allow(tool_name)
 
+    def describe_step(self, call: ToolCall) -> tuple[str, ShownCode | None]:
+        """A saved call's step label and code, for a reopened chat."""
+        return self._registry.describe_call(call), self._registry.code_for(call)
+
+    def pending_confirmation(self, messages: list[ChatMessage]) -> ConfirmationNeeded | None:
+        """The card a saved chat is still waiting on (its first unanswered call that asks)."""
+        for call in pending_tool_calls(messages):
+            if self._needs_confirmation(call, messages):
+                return ConfirmationNeeded(
+                    call_id=call.id,
+                    tool=call.name,
+                    description=self._registry.describe_call(call),
+                    can_always_allow=self._registry.can_always_allow(call.name),
+                    code=self._registry.code_for(call),
+                )
+        return None
+
 
 def latest_user_text(messages: list[ChatMessage]) -> str:
     """What the user typed in their newest message, without any attached file's text."""
@@ -203,13 +224,26 @@ def pending_tool_calls(messages: list[ChatMessage]) -> list[ToolCall]:
 def _model_view(messages: list[ChatMessage]) -> list[ChatMessage]:
     """The recent tail of the conversation, cut at a user message so a tool result is never
     separated from the call that produced it. A long tool run with no user message in the tail
-    keeps everything back to the latest user message instead."""
+    keeps everything back to the latest user message instead. The cut moves in steps of
+    TRIM_STEP messages, so the start of what the model sees stays the same for several turns
+    and a local model can reuse its cached work on it."""
     if len(messages) <= CONTEXT_MESSAGES:
         return messages
     user_indexes = [i for i, m in enumerate(messages) if m.role == "user"]
-    tail_start = len(messages) - CONTEXT_MESSAGES
+    tail_start = (len(messages) - CONTEXT_MESSAGES) // TRIM_STEP * TRIM_STEP
     cut = next((i for i in user_indexes if i >= tail_start), user_indexes[-1] if user_indexes else 0)
     return messages[cut:]
+
+
+def with_time(messages: list[ChatMessage], now: datetime) -> list[ChatMessage]:
+    """The messages with the local time noted at the end of the latest user message (for the
+    model only; nothing saved changes). Kept out of the system prompt, which then stays the same
+    all day, so only the newest message is new to the model each turn."""
+    latest = next((i for i in range(len(messages) - 1, -1, -1) if messages[i].role == "user"), None)
+    if latest is None:
+        return messages
+    noted = messages[latest].model_copy(update={"content": f"{messages[latest].content}{TIME_NOTE.format(now)}"})
+    return [*messages[:latest], noted, *messages[latest + 1 :]]
 
 
 def _tool_message(call: ToolCall, result: ToolResult) -> ChatMessage:

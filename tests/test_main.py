@@ -57,3 +57,28 @@ def test_main_with_run_code_flag_runs_the_job(mocker: MockerFixture, monkeypatch
     main.main()
 
     assert job.call_args.args[0].name == "job.json"
+
+
+def test_main_hands_over_to_a_running_nimbus_without_starting(
+    mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notify = mocker.patch("ui.single_instance.notify_running_instance", return_value=True)
+    runtime = mocker.patch("core.app_runtime.AppRuntime")
+    monkeypatch.setattr(sys, "argv", ["Nimbus.exe", "--ask", r"C:\Docs\report.pdf"])
+
+    main.main()
+
+    notify.assert_called_once_with(r"C:\Docs\report.pdf")
+    runtime.assert_not_called()
+
+
+def test_main_starts_when_no_nimbus_is_running(mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    mocker.patch("ui.single_instance.notify_running_instance", return_value=False)
+    runtime = mocker.patch("core.app_runtime.AppRuntime")
+    runtime.return_value.start.return_value = 0
+    monkeypatch.setattr(sys, "argv", ["Nimbus.exe"])
+
+    with pytest.raises(SystemExit):
+        main.main()
+
+    runtime.return_value.start.assert_called_once()

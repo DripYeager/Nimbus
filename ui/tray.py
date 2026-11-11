@@ -22,7 +22,8 @@ from ui.theme.tokens import CLOUD_GOLD
 
 logger = get_logger(__name__)
 
-STATUS_REFRESH_MS = 3000
+# The tooltip refreshes this often; the menu also refreshes as it opens.
+STATUS_REFRESH_MS = 15000
 MENU_ICON_SIZE = 16
 NOTIFICATION_MS = 4000
 TOOLTIP_TITLE = "Nimbus"
@@ -50,7 +51,9 @@ class TrayIcon(QObject):
         """Builds the icon and menu, shows it, and starts polling for status."""
         self._tray = QSystemTrayIcon(app_icon(), self)
         self._tray.setToolTip(TOOLTIP_TITLE)
-        self._tray.setContextMenu(self._build_menu())
+        menu = self._build_menu()
+        menu.aboutToShow.connect(self.refresh_status)
+        self._tray.setContextMenu(menu)
         self._tray.activated.connect(self._handle_activated)
         self._tray.messageClicked.connect(self.summon_requested.emit)
         self._tray.show()

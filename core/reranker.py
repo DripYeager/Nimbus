@@ -10,13 +10,15 @@ search simply runs without it. Owns re-scoring only; finding the candidates is t
 from __future__ import annotations
 
 import threading
-
-from fastembed.rerank.cross_encoder import TextCrossEncoder
+from typing import TYPE_CHECKING
 
 from config.paths import model_cache_dir
 from config.settings import get_settings
 from core.logger import get_logger
 from models.schema import SearchResult
+
+if TYPE_CHECKING:
+    from fastembed.rerank.cross_encoder import TextCrossEncoder
 
 logger = get_logger(__name__)
 
@@ -44,6 +46,8 @@ class Reranker:
                 return
             try:
                 logger.info("Loading reranker", extra={"model": self._model_name})
+                from fastembed.rerank.cross_encoder import TextCrossEncoder
+
                 self._model = TextCrossEncoder(
                     self._model_name, cache_dir=str(model_cache_dir()), threads=self._threads
                 )

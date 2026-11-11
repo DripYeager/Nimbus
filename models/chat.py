@@ -142,6 +142,32 @@ class ConfirmationNeeded(BaseModel):
     code: ShownCode | None = None
 
 
+class HistoryStep(BaseModel):
+    """A tool step of a saved conversation, as the chat shows it again."""
+
+    call_id: str
+    label: str
+    status: Literal["done", "failed", "denied"]
+    code: ShownCode | None = None
+    output: str | None = None
+
+
+class HistoryTurn(BaseModel):
+    """One message in a reopened chat: the user's text, or one reply with its steps (several
+    assistant messages of the same turn are merged, as they looked live)."""
+
+    role: Literal["user", "assistant"]
+    text: str = ""
+    steps: list[HistoryStep] = Field(default_factory=list)
+
+
+class ConversationView(BaseModel):
+    """A saved conversation ready to show, plus the action still waiting for an answer, if any."""
+
+    turns: list[HistoryTurn]
+    pending: ConfirmationNeeded | None = None
+
+
 class ChatDone(BaseModel):
     used_llm: bool
     elapsed_ms: int

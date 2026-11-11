@@ -17,6 +17,7 @@ from ui.theme.tokens import (
     NIGHT_DEEP,
     RADIUS_BUBBLE,
     RADIUS_CARD,
+    SUCCESS,
     SURFACE,
     SURFACE_HOVER,
     SURFACE_RAISED,
@@ -65,6 +66,15 @@ QFrame#ConfirmCard {{ background: {SURFACE_RAISED}; border: 1px solid {BORDER_ST
     border-left: 3px solid {GI_ORANGE}; border-radius: {RADIUS_CARD}px; }}
 QLabel#ConfirmTitle {{ font-size: 12px; font-weight: 700; color: {GI_ORANGE}; letter-spacing: 0.5px; }}
 QLabel#ConfirmText {{ font-size: 14px; }}
+QToolButton#DeleteChat {{ color: {DANGER}; font-weight: 700; }}
+QPushButton#BubbleLink {{ background: transparent; border: none; padding: 0; font-size: 12px;
+    font-weight: 700; color: {TEXT_ON_ORANGE}; text-decoration: underline; }}
+QFrame#ConfirmCard[answered="allowed"] {{ border-left: 3px solid {SUCCESS}; background: {SURFACE}; }}
+QFrame#ConfirmCard[answered="declined"] {{ border-left: 3px solid {DANGER}; background: {SURFACE}; }}
+QFrame#ConfirmCard[answered="allowed"] QLabel#ConfirmTitle {{ color: {SUCCESS}; }}
+QFrame#ConfirmCard[answered="declined"] QLabel#ConfirmTitle {{ color: {DANGER}; }}
+QFrame#ConfirmCard[answered="skipped"] {{ border-left: 3px solid {BORDER_STRONG}; background: {SURFACE}; }}
+QFrame#ConfirmCard[answered="skipped"] QLabel#ConfirmTitle {{ color: {TEXT_MUTED}; }}
 QFrame#CodeBlock {{ background: {NIGHT_DEEP}; border: 1px solid {BORDER}; border-radius: 10px; }}
 QFrame#CodeBlock:hover {{ border-color: {BORDER_STRONG}; }}
 QLabel#CodeTitle {{ font-size: 11px; font-weight: 700; color: {TEXT_MUTED}; letter-spacing: 0.5px; }}

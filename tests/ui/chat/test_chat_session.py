@@ -9,15 +9,16 @@ from PyQt6.QtWidgets import QLabel
 from pytest_mock import MockerFixture
 
 from core.exceptions import NimbusError
-from models.chat import Attachment, ChatMessage
+from models.chat import Attachment, ConfirmationNeeded, ConversationView, HistoryTurn
 from models.schema import IndexStatus
 from ui.api_client import ApiClient
 from ui.chat.chat_input import ELSEWHERE_PLACEHOLDER, ChatInput
-from ui.chat.chat_session import STILL_LEARNING_ID, ChatSession
+from ui.chat.chat_session import BUSY_HERE_MESSAGE, STILL_LEARNING_ID, ChatSession
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
 from ui.chat.message_cards import ConfirmCard, SourceCard
-from ui.chat.message_widgets import STOPPED_TEXT, AssistantMessage, UserBubble
+from ui.chat.message_widgets import STOPPED_TEXT, AssistantMessage
+from ui.chat.user_bubble import UserBubble
 from ui.theme.tokens import PLACEHOLDER_TEXT
 
 
@@ -318,11 +319,11 @@ def test_set_aside_reply_keeps_streaming_and_comes_back(session: ChatSession, vi
     session.open_conversation("c1")
 
     assert (view.column is running, running.current_reply._markdown) == (True, "Still going")
-    api.conversation.assert_not_called()
+    api.conversation_view.assert_not_called()
 
 
 def test_finished_set_aside_reply_reloads_from_history(session: ChatSession, view: ChatView, api: Mock) -> None:
-    api.conversation.return_value = []
+    api.conversation_view.return_value = ConversationView(turns=[])
     session.send("hi")
     session._handle_event("started", _started("c1"))
     session.new_chat()
@@ -330,18 +331,18 @@ def test_finished_set_aside_reply_reloads_from_history(session: ChatSession, vie
 
     session.open_conversation("c1")
 
-    api.conversation.assert_called_once_with("c1")
+    api.conversation_view.assert_called_once_with("c1")
 
 
 def test_open_conversation_loads_and_continues_it(
     session: ChatSession, view: ChatView, api: Mock, stream: Mock
 ) -> None:
-    api.conversation.return_value = [ChatMessage(role="user", content="hi")]
+    api.conversation_view.return_value = ConversationView(turns=[HistoryTurn(role="user", text="hi")])
 
     session.open_conversation("c5")
     session.send("more")
 
-    api.conversation.assert_called_once_with("c5")
+    api.conversation_view.assert_called_once_with("c5")
     stream.send.assert_called_once_with("more", "c5", None)
 
 
@@ -353,8 +354,8 @@ def test_a_late_history_load_does_not_replace_the_chat_opened_after_it(
 
     session.open_conversation("old")
     session.open_conversation("new")
-    pending[1]([ChatMessage(role="user", content="the new one")])
-    pending[0]([ChatMessage(role="user", content="the old one")])
+    pending[1](ConversationView(turns=[HistoryTurn(role="user", text="the new one")]))
+    pending[0](ConversationView(turns=[HistoryTurn(role="user", text="the old one")]))
 
     shown = [label.text() for label in view.findChildren(QLabel) if label.objectName() == "UserText"]
     assert (session._conversation_id, shown) == ("new", ["the new one"])
@@ -372,7 +373,7 @@ def test_a_message_sent_while_history_loads_joins_that_chat(
 
 
 def test_open_conversation_shows_a_load_error(session: ChatSession, view: ChatView, api: Mock) -> None:
-    api.conversation.side_effect = NimbusError("Chat not found")
+    api.conversation_view.side_effect = NimbusError("Chat not found")
 
     session.open_conversation("missing")
 
@@ -433,7 +434,7 @@ def test_finish_restores_the_normal_placeholder(session: ChatSession, chat_input
     assert chat_input._field.placeholderText() == PLACEHOLDER_TEXT
 
 
-def test_confirmation_answer_waits_while_another_reply_runs(session: ChatSession, view: ChatView, stream: Mock) -> None:
+def test_sending_a_new_message_skips_an_open_card(session: ChatSession, view: ChatView, stream: Mock) -> None:
     session.send("q")
     card = _confirm(session, view)
     session.send("another")
@@ -441,7 +442,45 @@ def test_confirmation_answer_waits_while_another_reply_runs(session: ChatSession
     card.decided.emit(True, False)
 
     stream.answer_confirmation.assert_not_called()
+    assert card.is_skipped() and not card.is_open()
+
+
+def test_confirmation_answer_waits_while_this_chat_is_answering(
+    session: ChatSession, view: ChatView, stream: Mock
+) -> None:
+    session.send("q")
+    card = _confirm(session, view)
+    session._start_running("c7")
+
+    card.decided.emit(True, False)
+
+    stream.answer_confirmation.assert_not_called()
     assert card.is_open()
+    assert view.column.findChild(QLabel, "ErrorLine").text() == BUSY_HERE_MESSAGE
+
+
+def test_switching_away_keeps_a_chat_whose_card_waits(session: ChatSession, view: ChatView, api: Mock) -> None:
+    session.send("q")
+    card = _confirm(session, view)
+    session._conversation_id = "c7"
+
+    session.new_chat()
+    session.open_conversation("c7")
+
+    assert view.findChild(ConfirmCard) is card and card.is_open()
+    api.conversation_view.assert_not_called()
+
+
+def test_reopening_a_chat_shows_the_card_it_still_waits_on(
+    session: ChatSession, view: ChatView, api: Mock, stream: Mock
+) -> None:
+    pending = ConfirmationNeeded(call_id="t1", tool="run_command", description="Run a PowerShell command")
+    api.conversation_view.return_value = ConversationView(turns=[HistoryTurn(role="user", text="q")], pending=pending)
+
+    session.open_conversation("c9")
+    view.findChild(ConfirmCard).decided.emit(True, False)
+
+    stream.answer_confirmation.assert_called_once_with("c9", {"call_id": "t1", "approved": True, "always_allow": False})
 
 
 def test_send_takes_the_attachment_along_once(session: ChatSession, stream: Mock) -> None:
@@ -468,7 +507,7 @@ def test_send_tells_the_bar_the_attachment_was_used(session: ChatSession) -> Non
 def test_a_failed_history_load_does_not_keep_sending_into_that_chat(
     session: ChatSession, api: Mock, stream: Mock
 ) -> None:
-    api.conversation.side_effect = NimbusError("Chat not found")
+    api.conversation_view.side_effect = NimbusError("Chat not found")
     session.open_conversation("gone")
 
     session.send("hello")
@@ -486,7 +525,7 @@ def test_opening_the_running_chat_while_it_is_on_screen_keeps_the_live_reply(
     session.open_conversation("c1")
 
     assert view.column is live
-    api.conversation.assert_not_called()
+    api.conversation_view.assert_not_called()
 
 
 def test_history_that_loads_after_a_message_was_sent_goes_above_it(
@@ -497,7 +536,7 @@ def test_history_that_loads_after_a_message_was_sent_goes_above_it(
     session.open_conversation("c5")
     session.send("newer question")
 
-    pending[0]([ChatMessage(role="user", content="older question")])
+    pending[0](ConversationView(turns=[HistoryTurn(role="user", text="older question")]))
 
     layout = view.column._layout
     widgets = [layout.itemAt(i).widget() for i in range(layout.count())]

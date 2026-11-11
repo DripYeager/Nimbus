@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import Mock
 
 import pytest
-from PyQt6.QtCore import QAbstractAnimation, QUrl
+from PyQt6.QtCore import QAbstractAnimation, Qt, QUrl
 from PyQt6.QtGui import QIcon, QImage
 from PyQt6.QtWidgets import QLabel
 from pytest_mock import MockerFixture
@@ -14,13 +14,11 @@ from ui.chat.message_widgets import (
     COPIED_FEEDBACK_MS,
     COPY_ICON_SIZE,
     MAX_SOURCE_CARDS,
-    USER_BUBBLE_MAX_WIDTH,
     AnswerText,
     AssistantMessage,
-    UserBubble,
     _copy_icon,
-    _text_width,
 )
+from ui.chat.user_bubble import PREVIEW_LINES, USER_BUBBLE_MAX_WIDTH, UserBubble, _text_width
 from ui.theme.energy import ORB_REST_GLOW
 from ui.theme.line_icons import line_icon
 from ui.theme.tokens import SUCCESS
@@ -119,8 +117,40 @@ def test_append_text_hides_the_thinking_label_on_the_first_token(reply: Assistan
 def test_append_text_accumulates_streamed_tokens(reply: AssistantMessage) -> None:
     reply.append_text("**Hel")
     reply.append_text("lo**")
+    reply.flush()
 
     assert (reply._markdown, reply._answer.toPlainText()) == ("**Hello**", "Hello")
+
+
+def test_append_text_waits_for_the_next_render(reply: AssistantMessage) -> None:
+    reply.append_text("Hello")
+
+    assert reply._answer.toPlainText() == "" and reply._render_timer.isActive()
+
+
+def test_append_text_after_a_step_starts_a_new_paragraph(reply: AssistantMessage) -> None:
+    reply.append_text("Let me check.")
+    reply.show_tool("a", "Read report.pdf", "done")
+    reply.append_text("The total is 8,080.")
+
+    assert reply._markdown == "Let me check.\n\nThe total is 8,080."
+
+
+def test_mark_stopped_settles_running_steps(reply: AssistantMessage) -> None:
+    reply.show_tool("a", "Run Python code", "running")
+
+    reply.mark_stopped()
+
+    assert reply._steps["a"].status == "stopped"
+
+
+def test_show_error_marks_running_steps_failed(reply: AssistantMessage) -> None:
+    reply.show_tool("a", "Run Python code", "running")
+    reply.show_tool("b", "Read a file", "done")
+
+    reply.show_error("The model stopped answering.")
+
+    assert (reply._steps["a"].status, reply._steps["b"].status) == ("failed", "done")
 
 
 def test_append_text_reveals_the_answer_and_copy_button(reply: AssistantMessage) -> None:
@@ -246,3 +276,20 @@ def test_text_width_measures_the_longest_line() -> None:
 
 def test_text_width_is_zero_for_empty_text() -> None:
     assert _text_width("", 14) == 0
+
+
+def test_user_bubble_shows_markup_as_typed() -> None:
+    bubble = UserBubble("Why is <b>this</b> bold?")
+
+    label = bubble.findChild(QLabel, "UserText")
+    assert label.textFormat() == Qt.TextFormat.PlainText and label.text() == "Why is <b>this</b> bold?"
+
+
+def test_user_bubble_previews_a_long_paste() -> None:
+    text = "\n".join(f"line {n}" for n in range(40))
+    bubble = UserBubble(text)
+    label = bubble.findChild(QLabel, "UserText")
+
+    assert label.text().splitlines()[:PREVIEW_LINES] == text.splitlines()[:PREVIEW_LINES]
+    bubble.toggle()
+    assert label.text() == text

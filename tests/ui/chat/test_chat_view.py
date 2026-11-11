@@ -5,11 +5,13 @@ from PyQt6.QtCore import QCoreApplication, QEvent
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
 
 from core.attachment_format import with_attachment
-from models.chat import ChatMessage
+from models.chat import HistoryStep, HistoryTurn, ShownCode
 from ui.chat.chat_view import ChatView
+from ui.chat.code_block import CodeBlock
 from ui.chat.empty_state import SUGGESTIONS, EmptyState
 from ui.chat.message_cards import ConfirmCard
-from ui.chat.message_widgets import AssistantMessage, UserBubble
+from ui.chat.message_widgets import AssistantMessage
+from ui.chat.user_bubble import UserBubble
 
 
 @pytest.fixture
@@ -173,9 +175,9 @@ def test_clear_returns_to_the_welcome_page_and_empties_the_chat(view: ChatView) 
 def test_load_history_renders_user_and_assistant_turns(view: ChatView) -> None:
     view.add_user_message("old chat")
     messages = [
-        ChatMessage(role="user", content="Find my resume"),
-        ChatMessage(role="assistant", content="Here it is."),
-        ChatMessage(role="user", content="Thanks"),
+        HistoryTurn(role="user", text="Find my resume"),
+        HistoryTurn(role="assistant", text="Here it is."),
+        HistoryTurn(role="user", text="Thanks"),
     ]
 
     view.load_history(messages)
@@ -184,13 +186,13 @@ def test_load_history_renders_user_and_assistant_turns(view: ChatView) -> None:
 
 
 def test_load_history_skips_blank_assistant_turns(view: ChatView) -> None:
-    view.load_history([ChatMessage(role="user", content="Open Notepad"), ChatMessage(role="assistant", content=" ")])
+    view.load_history([HistoryTurn(role="user", text="Open Notepad"), HistoryTurn(role="assistant", text=" ")])
 
     assert _messages(view) == ["UserBubble"]
 
 
 def test_load_history_shows_the_assistant_text(view: ChatView) -> None:
-    view.load_history([ChatMessage(role="assistant", content="**Done**")])
+    view.load_history([HistoryTurn(role="assistant", text="**Done**")])
 
     assert view.column.findChild(AssistantMessage)._markdown == "**Done**"
 
@@ -235,9 +237,48 @@ def test_attach_puts_a_detached_column_back(view: ChatView) -> None:
 def test_load_history_shows_a_tag_instead_of_attached_text(view: ChatView) -> None:
     content = with_attachment("Summarize it", "report.pdf", "pages and pages of text")
 
-    view.load_history([ChatMessage(role="user", content=content)])
+    view.load_history([HistoryTurn(role="user", text=content)])
 
     labels = [label.text() for label in view.column.findChildren(QLabel)]
     assert "Summarize it" in labels
     assert any(text.endswith("report.pdf") for text in labels)
     assert not any("pages and pages" in text for text in labels)
+
+
+def test_load_history_shows_steps_with_code_and_no_time(view: ChatView) -> None:
+    step = HistoryStep(
+        call_id="c1",
+        label="Run a PowerShell command",
+        status="done",
+        code=ShownCode(title="PowerShell", text="ipconfig"),
+        output="IPv4 192.168.1.24",
+    )
+    view.load_history(
+        [HistoryTurn(role="user", text="IP?"), HistoryTurn(role="assistant", text="It's .24", steps=[step])]
+    )
+
+    reply = view.column.findChild(AssistantMessage)
+    assert list(reply._steps) == ["c1"] and reply._time.isHidden()
+    assert len(reply.findChildren(CodeBlock)) == 2
+
+
+def test_stick_to_bottom_stays_put_while_the_user_reads_further_up(view: ChatView) -> None:
+    bar = view._scroll.verticalScrollBar()
+    bar.setRange(0, 500)
+    bar.setValue(100)
+    view._scroll_timer.stop()
+
+    view._stick_to_bottom(0, 900)
+
+    assert not view._scroll_timer.isActive()
+
+
+def test_sending_a_message_follows_new_content_again(view: ChatView) -> None:
+    bar = view._scroll.verticalScrollBar()
+    bar.setRange(0, 500)
+    bar.setValue(100)
+
+    view.add_user_message("next question")
+    view._stick_to_bottom(0, 900)
+
+    assert view._scroll_timer.isActive()

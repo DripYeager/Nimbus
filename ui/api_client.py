@@ -23,7 +23,7 @@ from models.api import (
     SettingsView,
     UsageView,
 )
-from models.chat import ChatMessage, ConversationSummary, ProviderConfig, ProviderName
+from models.chat import ChatMessage, ConversationSummary, ConversationView, ProviderConfig, ProviderName
 from models.schema import IndexStatus, SourceSummary
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
@@ -89,6 +89,9 @@ class ApiClient:
 
     def conversation(self, conversation_id: str) -> list[ChatMessage]:
         return [ChatMessage(**item) for item in self._request("GET", f"/conversations/{conversation_id}")]
+
+    def conversation_view(self, conversation_id: str) -> ConversationView:
+        return ConversationView(**self._request("GET", f"/conversations/{conversation_id}/view"))
 
     def delete_conversation(self, conversation_id: str) -> None:
         self._request("DELETE", f"/conversations/{conversation_id}")

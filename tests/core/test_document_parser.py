@@ -93,7 +93,7 @@ def test_parse_document_raises_unsupported_file_type_error_when_no_converter_fit
 
 def test_get_markitdown_builds_the_converter_once(monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture) -> None:
     monkeypatch.setattr(parser_module, "_markitdown", None)
-    markitdown_cls = mocker.patch("core.document_parser.MarkItDown")
+    markitdown_cls = mocker.patch("markitdown.MarkItDown")
 
     first = _get_markitdown()
 

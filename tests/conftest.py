@@ -44,7 +44,7 @@ def _no_reranker_download(monkeypatch: pytest.MonkeyPatch) -> None:
     def refuse(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("Tests don't download models.")
 
-    monkeypatch.setattr("core.reranker.TextCrossEncoder", refuse)
+    monkeypatch.setattr("fastembed.rerank.cross_encoder.TextCrossEncoder", refuse)
 
 
 @pytest.fixture(autouse=True)

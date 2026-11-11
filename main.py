@@ -26,6 +26,13 @@ def main() -> None:
 
         run_headless(run_bridge)
         return
+    # A second launch (or File Explorer's "Ask Nimbus") only hands over to the running Nimbus,
+    # so it checks before loading the engine's libraries, which takes seconds.
+    from core.launch_args import ask_path_from
+    from ui.single_instance import notify_running_instance
+
+    if notify_running_instance(ask_path_from(sys.argv)):
+        return
     # Imported here, so a code run doesn't load Qt and the whole app first.
     from core.app_runtime import AppRuntime
 

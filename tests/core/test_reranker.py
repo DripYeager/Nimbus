@@ -24,7 +24,7 @@ def _result(chunk_id: str) -> SearchResult:
 @pytest.fixture
 def model(mocker: MockerFixture) -> Mock:
     fake = mocker.Mock()
-    return mocker.patch("core.reranker.TextCrossEncoder", return_value=fake).return_value
+    return mocker.patch("fastembed.rerank.cross_encoder.TextCrossEncoder", return_value=fake).return_value
 
 
 def test_rerank_keeps_the_first_pass_order_until_the_model_is_ready() -> None:
@@ -54,7 +54,7 @@ def test_rerank_falls_back_when_the_model_fails(model: Mock) -> None:
 
 
 def test_load_remembers_a_failure_and_stays_off(mocker: MockerFixture) -> None:
-    loader = mocker.patch("core.reranker.TextCrossEncoder", side_effect=OSError("offline"))
+    loader = mocker.patch("fastembed.rerank.cross_encoder.TextCrossEncoder", side_effect=OSError("offline"))
     reranker = Reranker("m", 1)
 
     reranker.load()

@@ -17,6 +17,7 @@ from core.attachments import attach
 from core.conversation_store import ConversationStore
 from core.exceptions import NimbusError
 from core.fast_path import FastPath
+from core.history_view import history_turns
 from core.logger import get_logger
 from models.chat import (
     ChatDone,
@@ -29,6 +30,7 @@ from models.chat import (
     ChatToken,
     ConfirmationNeeded,
     ConfirmRequest,
+    ConversationView,
 )
 from models.schema import IndexStatus
 from tools.registry import approval_group
@@ -73,6 +75,15 @@ class ChatService:
             return
         history = [*self._store.load(conversation_id), user_message]
         yield from self._run_agent(conversation_id, history, None, start)
+
+    def view(self, conversation_id: str) -> ConversationView:
+        """A saved chat as it looked live: replies with their steps, and the card still waiting
+        for an answer, if any."""
+        messages = self._store.load(conversation_id)
+        return ConversationView(
+            turns=history_turns(messages, self._agent.describe_step),
+            pending=self._agent.pending_confirmation(messages),
+        )
 
     def confirm(self, conversation_id: str, decision: ConfirmRequest) -> Iterator[ChatEvent]:
         """Resumes a paused turn with the user's answer to a confirmation card."""

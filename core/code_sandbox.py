@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -199,7 +200,9 @@ def attach_std_streams() -> None:
 
 def preload_libraries() -> None:
     """Imports the data libraries while native loading is still allowed; any that aren't
-    installed are simply left out."""
+    installed are simply left out. matplotlib's notes ("building the font cache") would land in
+    the run's output as if the code had printed them, so only its errors are kept."""
+    logging.getLogger("matplotlib").setLevel(logging.ERROR)
     for name in PRELOADED:
         try:
             importlib.import_module(name)

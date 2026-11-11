@@ -11,13 +11,17 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QScrollArea, QStackedWidget, QWidget
 
 from core.attachment_format import AttachedItem
-from models.chat import ChatMessage, ShownCode
+from models.chat import HistoryTurn, ShownCode
 from ui.chat.conversation_column import ConversationColumn
 from ui.chat.empty_state import EmptyState
 from ui.chat.message_cards import ConfirmCard
 from ui.chat.message_widgets import AssistantMessage
 
 WELCOME_PAGE, CONVERSATION_PAGE = 0, 1
+
+
+# Within this many pixels of the bottom counts as reading the newest message.
+FOLLOW_MARGIN_PX = 40
 
 
 class ChatView(QStackedWidget):
@@ -43,7 +47,10 @@ class ChatView(QStackedWidget):
         self._scroll_timer.setSingleShot(True)
         self._scroll_timer.setInterval(0)
         self._scroll_timer.timeout.connect(self._scroll_to_end)
+        # Follow new content only while the user is at the bottom; reading further up stays put.
+        self._following = True
         self._scroll.verticalScrollBar().rangeChanged.connect(self._stick_to_bottom)
+        self._scroll.verticalScrollBar().valueChanged.connect(self._note_position)
 
     @property
     def column(self) -> ConversationColumn:
@@ -63,6 +70,7 @@ class ChatView(QStackedWidget):
         self.setCurrentIndex(WELCOME_PAGE)
 
     def add_user_message(self, text: str, attachments: tuple[AttachedItem, ...] = ()) -> None:
+        self._following = True
         self._column.add_user_message(text, attachments)
 
     def end_reply(self) -> None:
@@ -73,8 +81,9 @@ class ChatView(QStackedWidget):
     ) -> ConfirmCard:
         return self._column.add_confirmation(description, can_always_allow, code)
 
-    def load_history(self, messages: list[ChatMessage]) -> None:
-        self._column.load_history(messages)
+    def load_history(self, turns: list[HistoryTurn]) -> None:
+        self._following = True
+        self._column.load_history(turns)
         self.setCurrentIndex(CONVERSATION_PAGE if self._column.has_messages() else WELCOME_PAGE)
 
     def detach(self) -> ConversationColumn:
@@ -93,6 +102,7 @@ class ChatView(QStackedWidget):
         shown = self._scroll.takeWidget()
         if shown is not None:
             shown.deleteLater()
+        self._following = True
         self._column = self._install(column)
         column.show()
         self.setCurrentIndex(CONVERSATION_PAGE if column.has_messages() else WELCOME_PAGE)
@@ -111,8 +121,13 @@ class ChatView(QStackedWidget):
             self.setCurrentIndex(CONVERSATION_PAGE)
 
     def _stick_to_bottom(self, _minimum: int, _maximum: int) -> None:
-        """Follows new content down, after Qt has finished laying it out."""
-        self._scroll_timer.start()
+        """Follows new content down, after Qt has finished laying it out, unless the user has
+        scrolled up to read (sending a message or opening a chat follows again)."""
+        if self._following:
+            self._scroll_timer.start()
+
+    def _note_position(self, value: int) -> None:
+        self._following = value >= self._scroll.verticalScrollBar().maximum() - FOLLOW_MARGIN_PX
 
     def _scroll_to_end(self) -> None:
         bar = self._scroll.verticalScrollBar()

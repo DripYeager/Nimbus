@@ -6,7 +6,8 @@ Display and selection only; the window handles navigation.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -26,6 +27,8 @@ from ui.theme.tokens import DANGER, GI_ORANGE, TEXT_FAINT, TEXT_MUTED
 
 ROW_ICON_SIZE = 18
 SEARCH_ICON_SIZE = 16
+DELETE_CONFIRM_MS = 3000
+CONFIRM_DELETE_TEXT = "Delete?"
 
 
 class ConversationRow(QPushButton):
@@ -49,18 +52,44 @@ class ConversationRow(QPushButton):
         text.setSpacing(1)
         text.addWidget(title)
         text.addWidget(date)
-        delete = QToolButton(self)
-        delete.setIcon(line_icon("trash-2", TEXT_FAINT, ROW_ICON_SIZE - 2, hover_color=DANGER))
-        delete.setIconSize(QSize(ROW_ICON_SIZE - 2, ROW_ICON_SIZE - 2))
-        delete.setToolTip("Delete this chat")
-        delete.clicked.connect(lambda: self.delete_requested.emit(self.conversation_id))
+        self._build_delete()
         row = QHBoxLayout(self)
         row.setContentsMargins(12, 10, 8, 10)
         row.setSpacing(12)
         row.addWidget(icon)
         row.addLayout(text, stretch=1)
-        row.addWidget(delete)
+        row.addWidget(self._delete)
         self.setMinimumHeight(56)
+
+    def _build_delete(self) -> None:
+        """The trash button; a first click turns it into "Delete?" for a few seconds."""
+        self._delete = QToolButton(self)
+        self._delete.setObjectName("DeleteChat")
+        self._delete.setIconSize(QSize(ROW_ICON_SIZE - 2, ROW_ICON_SIZE - 2))
+        self._delete.clicked.connect(self._on_delete_clicked)
+        self._disarm = QTimer(self)
+        self._disarm.setSingleShot(True)
+        self._disarm.setInterval(DELETE_CONFIRM_MS)
+        self._disarm.timeout.connect(self._show_trash)
+        self._show_trash()
+
+    def _on_delete_clicked(self) -> None:
+        """The first click asks ("Delete?"); a second one within a few seconds deletes."""
+        if self._disarm.isActive():
+            self._disarm.stop()
+            self.delete_requested.emit(self.conversation_id)
+            return
+        self._delete.setIcon(QIcon())
+        self._delete.setText(CONFIRM_DELETE_TEXT)
+        self._delete.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._delete.setToolTip("Click again to delete this chat")
+        self._disarm.start()
+
+    def _show_trash(self) -> None:
+        self._delete.setText("")
+        self._delete.setIcon(line_icon("trash-2", TEXT_FAINT, ROW_ICON_SIZE - 2, hover_color=DANGER))
+        self._delete.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self._delete.setToolTip("Delete this chat")
 
 
 class HistoryPanel(QWidget):

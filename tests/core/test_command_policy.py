@@ -9,6 +9,13 @@ from core.command_policy import asks_for_elevation, is_read_only
 from core.command_text import blank_single_quoted
 
 
+@pytest.fixture
+def windows_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every native tool counts as Windows' own, whatever this machine has installed (a build
+    server may have no winget). Whether a name really resolves to Windows is tested separately."""
+    monkeypatch.setattr("core.command_policy.resolves_to_windows", lambda name: True)
+
+
 @pytest.mark.parametrize(
     "command",
     [
@@ -42,7 +49,7 @@ from core.command_text import blank_single_quoted
         "Get-Process | Select-String -Patt chrome -SimpleMatch",
     ],
 )
-def test_is_read_only_lets_information_commands_run(command: str) -> None:
+def test_is_read_only_lets_information_commands_run(command: str, windows_tools: None) -> None:
     assert is_read_only(command) is True
 
 
@@ -107,7 +114,7 @@ def test_is_read_only_lets_information_commands_run(command: str) -> None:
         r"Get-Date | findstr -g:C:\patterns.txt x",
     ],
 )
-def test_is_read_only_holds_back_anything_that_could_change_something(command: str) -> None:
+def test_is_read_only_holds_back_anything_that_could_change_something(command: str, windows_tools: None) -> None:
     assert is_read_only(command) is False
 
 

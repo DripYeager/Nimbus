@@ -11,13 +11,14 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from mcp.server.mcpserver import MCPServer
-from mcp.server.mcpserver.exceptions import ToolError as McpToolError
 
 from core.api_auth import BRIDGE_TOKEN_FILE, TOKEN_HEADER, read_bridge_token
+
+if TYPE_CHECKING:
+    from mcp.server.mcpserver import MCPServer
 
 MCP_FLAG = "--mcp"
 SERVER_NAME = "nimbus"
@@ -36,9 +37,8 @@ INSTRUCTIONS = (
 MAIN_SCRIPT = Path(__file__).resolve().parent.parent / "main.py"
 
 
-class BridgeError(McpToolError):
-    """A call the running Nimbus couldn't answer. Being the SDK's own tool error, its text
-    reaches the other app (anything else is hidden behind "Error executing tool")."""
+class BridgeError(Exception):
+    """A call the running Nimbus couldn't answer; the text is shown to the other app."""
 
 
 def launch_command() -> tuple[str, list[str]]:
@@ -83,26 +83,42 @@ def _answer(response: httpx.Response) -> str:
 
 
 def build_server(bridge: EngineBridge) -> MCPServer:
-    """The MCP server and its tools; each just forwards to the engine."""
+    """The MCP server and its tools; each just forwards to the engine. The MCP SDK is imported
+    here, so Settings can use launch_command without loading it."""
+    from mcp.server.mcpserver import MCPServer
+    from mcp.server.mcpserver.exceptions import ToolError as McpToolError
+
     server = MCPServer(SERVER_NAME, instructions=INSTRUCTIONS)
+
+    async def forward(tool: str, arguments: dict[str, Any]) -> str:
+        return await _forward(bridge, tool, arguments, McpToolError)
 
     @server.tool(description="Search the user's shared files by topic or meaning. Returns files with excerpts.")
     async def search_files(query: str, limit: int = 8) -> str:
-        return await bridge.call("search_files", {"query": query, "limit": limit})
+        return await forward("search_files", {"query": query, "limit": limit})
 
     @server.tool(description="Find files by (part of) their name, any file type.")
     async def find_files_by_name(name: str, limit: int = 20) -> str:
-        return await bridge.call("find_files_by_name", {"name": name, "limit": limit})
+        return await forward("find_files_by_name", {"name": name, "limit": limit})
 
     @server.tool(description="Read the text of one file: a full path, or an exact file name.")
     async def read_file(path: str, max_words: int = 1500) -> str:
-        return await bridge.call("read_file", {"path": path, "max_words": max_words})
+        return await forward("read_file", {"path": path, "max_words": max_words})
 
     @server.tool(description="List files changed in the last N days (1 = today), optionally in one folder.")
     async def list_recent_files(days: int = 1, folder: str = "", limit: int = 20) -> str:
-        return await bridge.call("list_recent_files", {"days": days, "folder": folder, "limit": limit})
+        return await forward("list_recent_files", {"days": days, "folder": folder, "limit": limit})
 
     return server
+
+
+async def _forward(bridge: EngineBridge, tool: str, arguments: dict[str, Any], tool_error: type[Exception]) -> str:
+    """The SDK's own tool error carries the reason to the other app; anything else would be
+    hidden behind "Error executing tool"."""
+    try:
+        return await bridge.call(tool, arguments)
+    except BridgeError as e:
+        raise tool_error(str(e)) from e
 
 
 def run_bridge() -> None:

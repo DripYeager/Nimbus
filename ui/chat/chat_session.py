@@ -13,7 +13,7 @@ from typing import Any
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from core.attachment_format import AttachedItem
-from models.chat import Attachment, ChatMessage, ShownCode
+from models.chat import Attachment, ConversationView, ShownCode
 from models.schema import IndexStatus, SourceRef
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
@@ -25,6 +25,7 @@ from ui.chat.conversation_column import ConversationColumn
 
 STILL_LEARNING_ID = "index-progress"
 BUSY_ELSEWHERE_MESSAGE = "Nimbus is still answering in another chat. Wait for it to finish, or stop it first."
+BUSY_HERE_MESSAGE = "Nimbus is still answering. Wait for it to finish, or stop it first."
 
 
 class ChatSession(QObject):
@@ -73,6 +74,7 @@ class ChatSession(QObject):
             return
         attachment, self._attachment = self._attachment, None
         attached = (AttachedItem(attachment.name, attachment.path),) if attachment else ()
+        self._view.column.skip_open_cards()
         self._view.add_user_message(text, attached)
         self._view.begin_reply()
         self._start_running(self._conversation_id)
@@ -104,25 +106,33 @@ class ChatSession(QObject):
         self._conversation_id = conversation_id
         generation = self._invalidate_pending_load()
         column = self._view.column
+        run_in_background(
+            lambda: self._api.conversation_view(conversation_id),
+            lambda view: self._show_saved(view, column, conversation_id, generation),
+            lambda message: self._show_saved_error(message, conversation_id, generation),
+        )
 
-        def _show(messages: list[ChatMessage]) -> None:
-            if generation != self._shown_generation:
-                return
-            if column.has_messages():
-                # The user sent something while this loaded: keep it, with the history above.
-                column.insert_history(messages)
-            else:
-                self._view.load_history(messages)
+    def _show_saved(
+        self, view: ConversationView, column: ConversationColumn, conversation_id: str, generation: int
+    ) -> None:
+        """Draws a reopened chat, and the card it's still waiting on, if any."""
+        if generation != self._shown_generation:
+            return
+        if column.has_messages():
+            # The user sent something while this loaded: keep it, with the history above.
+            column.insert_history(view.turns)
+        else:
+            self._view.load_history(view.turns)
+        if view.pending is not None and not column.has_open_card():
+            self._ask_confirmation(column, view.pending.model_dump(), conversation_id)
 
-        def _error(message: str) -> None:
-            if generation != self._shown_generation:
-                return
-            # The chat can't be opened (deleted, say), so don't keep sending into it.
-            if self._conversation_id == conversation_id:
-                self._conversation_id = None
-            self._show_load_error(message)
-
-        run_in_background(lambda: self._api.conversation(conversation_id), _show, _error)
+    def _show_saved_error(self, message: str, conversation_id: str, generation: int) -> None:
+        if generation != self._shown_generation:
+            return
+        # The chat can't be opened (deleted, say), so don't keep sending into it.
+        if self._conversation_id == conversation_id:
+            self._conversation_id = None
+        self._show_load_error(message)
 
     def _invalidate_pending_load(self) -> int:
         """Drops whichever history load is in flight; returns the new generation."""
@@ -150,6 +160,10 @@ class ChatSession(QObject):
             self._drop_set_aside()
             self._set_aside, self._set_aside_id = self._view.detach(), self._running_id
             self._input.set_answering_elsewhere(True)
+        elif self._view.column.has_open_card() and self._conversation_id is not None:
+            # A card still waits for an answer: keep the chat as it is, to come back to.
+            self._drop_set_aside()
+            self._set_aside, self._set_aside_id = self._view.detach(), self._conversation_id
         else:
             self._view.clear()
 
@@ -192,16 +206,21 @@ class ChatSession(QObject):
             label = f"Still learning your files ({percent}%), so some may not be searchable yet"
             column.current_reply.show_tool(STILL_LEARNING_ID, label, "info")
 
-    def _ask_confirmation(self, column: ConversationColumn, data: dict[str, Any]) -> None:
+    def _ask_confirmation(
+        self, column: ConversationColumn, data: dict[str, Any], conversation_id: str | None = None
+    ) -> None:
         """Shows an approve/decline card; the answer resumes the paused turn."""
         call_id = data["call_id"]
-        conversation_id = self._running_id
+        conversation_id = conversation_id or self._running_id
         code = ShownCode(**data["code"]) if data.get("code") else None
         card = column.add_confirmation(data["description"], bool(data.get("can_always_allow", True)), code)
 
         def _decided(approved: bool, always: bool) -> None:
+            if card.is_skipped():
+                return
             if self._input.is_busy():
-                column.current_reply.show_error(BUSY_ELSEWHERE_MESSAGE)
+                busy = BUSY_HERE_MESSAGE if self._running is column else BUSY_ELSEWHERE_MESSAGE
+                column.current_reply.show_error(busy)
                 column.end_reply()
                 card.reopen()
                 return

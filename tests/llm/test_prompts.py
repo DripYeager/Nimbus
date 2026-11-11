@@ -18,10 +18,12 @@ def test_build_system_prompt_says_when_no_folders_are_shared() -> None:
     assert "Folders you can see: none yet" in prompt
 
 
-def test_build_system_prompt_includes_the_local_time() -> None:
-    prompt = build_system_prompt([], datetime(2026, 11, 10, 9, 5))
+def test_build_system_prompt_has_the_date_but_not_the_minute() -> None:
+    """The same all day, so a local model can reuse its cached work between turns."""
+    morning = build_system_prompt([], datetime(2026, 11, 10, 9, 5))
 
-    assert "Tuesday 10 November 2026, 09:05" in prompt
+    assert "Tuesday 10 November 2026" in morning and "09:05" not in morning
+    assert morning == build_system_prompt([], datetime(2026, 11, 10, 17, 42))
 
 
 def test_build_system_prompt_names_the_search_tools() -> None:

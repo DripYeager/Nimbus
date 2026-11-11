@@ -7,6 +7,7 @@ saving lives in settings_store.py.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +33,16 @@ def _expanded(path: str | Path) -> Path:
     return Path(path).expanduser()
 
 
+MIN_EMBEDDING_THREADS = 2
+MAX_EMBEDDING_THREADS = 6
 # Below this, pandas and matplotlib can't even load.
 MIN_CODE_MEMORY_MB = 256
+
+
+def _default_embedding_threads() -> int:
+    """Half the CPU cores, between 2 and 6: about three times faster indexing than 2 on a big
+    CPU, while leaving most of it free for whatever the user is doing."""
+    return max(MIN_EMBEDDING_THREADS, min(MAX_EMBEDDING_THREADS, (os.cpu_count() or MIN_EMBEDDING_THREADS) // 2))
 
 
 def _default_sources() -> list[IndexSource]:
@@ -69,7 +78,7 @@ class Settings(BaseSettings):
     # gte-base beat bge-small (0.73 to 0.78 top-1 on paraphrased questions over 100 look-alike
     # documents) with no losses elsewhere; changing it rebuilds the index once.
     embedding_model: str = "thenlper/gte-base"
-    embedding_threads: int = 2
+    embedding_threads: int = Field(default_factory=_default_embedding_threads)
     # A cross-encoder that re-scores the top search candidates (downloads 150 MB once). Off by
     # default: with query-aware hybrid search it added no accuracy on the benchmark and cost
     # about 250 ms per question (see the README's retrieval notes).

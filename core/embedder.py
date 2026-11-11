@@ -7,13 +7,15 @@ about files, chunks, or the vector store.
 from __future__ import annotations
 
 import threading
-
-from fastembed import TextEmbedding
+from typing import TYPE_CHECKING
 
 from config.paths import model_cache_dir
 from config.settings import get_settings
 from core.exceptions import IndexingError
 from core.logger import get_logger
+
+if TYPE_CHECKING:
+    from fastembed import TextEmbedding
 
 logger = get_logger(__name__)
 
@@ -41,6 +43,9 @@ class Embedder:
                 return
             try:
                 logger.info("Loading embedding model", extra={"model": self._model_name})
+                # Imported here: onnxruntime and fastembed are slow to import and only needed now.
+                from fastembed import TextEmbedding
+
                 self._model = TextEmbedding(self._model_name, cache_dir=str(model_cache_dir()), threads=self._threads)
             except Exception as e:
                 raise IndexingError(

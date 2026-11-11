@@ -18,9 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from models.schema import IndexStatus
 from ui.api_client import ApiClient
-from ui.background_call import run_in_background
 from ui.chat.attachment_bar import AttachmentBar
 from ui.chat.attachment_flow import AttachmentFlow
 from ui.chat.chat_header import ChatHeader
@@ -28,6 +26,7 @@ from ui.chat.chat_input import ChatInput
 from ui.chat.chat_session import ChatSession
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
+from ui.chat.header_status import HeaderStatus
 from ui.chat.history_panel import HistoryPanel
 from ui.chat.voice_input import VoiceInput
 from ui.screen_capture import RegionCapture, save_capture
@@ -61,8 +60,8 @@ class ChatWindow(QWidget):
         super().__init__()
         self._api = api
         self._animation: QAbstractAnimation | None = None
-        self._status_timer = QTimer(self)
         self._header = ChatHeader()
+        self._status = HeaderStatus(api, self._header, self)
         self._view = ChatView()
         self._history = HistoryPanel(api)
         self._settings = SettingsPanel(api)
@@ -82,7 +81,7 @@ class ChatWindow(QWidget):
         self._configure_window()
         self._build_layout()
         self._session.connect_signals()
-        self._session.status_received.connect(self._show_status)
+        self._session.status_received.connect(self._status.show)
         self._flow.connect_signals()
         self._voice.connect_signals()
         self._header.capture_clicked.connect(self.capture_screen)
@@ -95,10 +94,10 @@ class ChatWindow(QWidget):
         self._history.opened.connect(self._open_conversation)
         self._settings.back_requested.connect(self.show_chat)
         # A save can switch between a local and a cloud model; refresh the header badge at once.
-        self._settings.saved.connect(self._poll_status)
-        self._status_timer.timeout.connect(self._poll_status)
+        self._settings.saved.connect(self._status.refresh_privacy)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self._new_chat)
         QShortcut(QKeySequence("Ctrl+M"), self, activated=self._voice.listen)
+        QShortcut(QKeySequence("Ctrl+."), self, activated=self._session.stop)
 
     def toggle(self) -> None:
         """The hotkey: summon if hidden or in the background, hide if already in front."""
@@ -122,14 +121,13 @@ class ChatWindow(QWidget):
         self.activateWindow()
         self._input.focus()
         self._flow.offer_clipboard()
-        self._status_timer.start(STATUS_POLL_MS)
-        self._poll_status()
+        self._status.start()
 
     def dismiss(self) -> None:
         """Glides away and hides; the conversation and current page are kept for next time."""
         if not self.isVisible():
             return
-        self._status_timer.stop()
+        self._status.stop()
         stop_animation(self._animation)
         self._animation = build_dismiss_animation(self, self.pos())
         self._animation.finished.connect(self.hide)
@@ -279,16 +277,6 @@ class ChatWindow(QWidget):
     def _open_conversation(self, conversation_id: str) -> None:
         self.show_chat()
         self._session.open_conversation(conversation_id)
-
-    def _poll_status(self) -> None:
-        run_in_background(self._fetch_status, lambda result: self._show_status(*result), lambda _: None)
-
-    def _fetch_status(self) -> tuple[IndexStatus, bool]:
-        return self._api.index_status(), self._api.settings().is_cloud
-
-    def _show_status(self, status: IndexStatus, is_cloud: bool) -> None:
-        self._header.set_status(status)
-        self._header.set_privacy(is_cloud)
 
 
 def _padded(widget: QWidget) -> QWidget:

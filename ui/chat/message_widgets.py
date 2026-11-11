@@ -6,66 +6,32 @@ answer, source cards and a copy button. Display only; neither talks to the API.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 
 from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtGui import QDesktopServices, QFont, QFontMetrics, QGuiApplication, QIcon, QResizeEvent
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QTextBrowser, QToolButton, QVBoxLayout, QWidget
+from PyQt6.QtGui import QDesktopServices, QGuiApplication, QIcon, QResizeEvent
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QTextBrowser, QToolButton, QVBoxLayout, QWidget
 
-from core.attachment_format import AttachedItem
 from models.schema import SourceRef
 from ui.chat.answer_style import clean_answer
-from ui.chat.attachment_preview import image_preview
 from ui.chat.code_block import StepDetail
 from ui.chat.message_cards import SourceCard, ToolStep
 from ui.chat.thinking_indicator import ThinkingIndicator
 from ui.theme.energy import EnergyOrb
-from ui.theme.line_icons import line_icon, line_pixmap
-from ui.theme.tokens import SUCCESS, TEXT, TEXT_MUTED, TEXT_ON_ORANGE
+from ui.theme.line_icons import line_icon
+from ui.theme.tokens import SUCCESS, TEXT, TEXT_MUTED
 
 MAX_SOURCE_CARDS = 6
 ANSWER_PADDING_PX = 6
-USER_BUBBLE_MAX_WIDTH = 520
-BUBBLE_PADDING_PX = 32
-BUBBLE_TEXT_SLACK_PX = 8
-# Must match QLabel#UserText's font-size in the stylesheet.
-USER_TEXT_PX = 14
 AVATAR_SIZE = 34
 COPY_ICON_SIZE = 15
-TAG_ICON_SIZE = 13
-BUBBLE_PREVIEW_WIDTH = 260
-BUBBLE_PREVIEW_HEIGHT = 170
 COPIED_FEEDBACK_MS = 1500
 STOPPED_TEXT = "Stopped."
 
 
-class UserBubble(QWidget):
-    """The user's message, right-aligned in a gi-orange bubble, with a tag for each attachment."""
-
-    def __init__(self, text: str, parent: QWidget | None = None, attachments: tuple[AttachedItem, ...] = ()) -> None:
-        super().__init__(parent)
-        bubble = QFrame(self)
-        bubble.setObjectName("UserBubble")
-        label = QLabel(text, bubble)
-        label.setObjectName("UserText")
-        label.setWordWrap(True)
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        # A wrapping QLabel otherwise collapses to its narrowest width; size it to the text.
-        text_width = _text_width(text, USER_TEXT_PX) + BUBBLE_TEXT_SLACK_PX
-        label.setMinimumWidth(min(text_width, USER_BUBBLE_MAX_WIDTH - BUBBLE_PADDING_PX))
-        inner = QVBoxLayout(bubble)
-        inner.setContentsMargins(16, 10, 16, 10)
-        inner.addWidget(label)
-        for item in attachments:
-            preview = image_preview(item.path, BUBBLE_PREVIEW_WIDTH, BUBBLE_PREVIEW_HEIGHT, bubble)
-            if preview is not None:
-                inner.addWidget(preview)
-            inner.addLayout(_attachment_tag(item.name, bubble))
-        bubble.setMaximumWidth(USER_BUBBLE_MAX_WIDTH)
-        row = QHBoxLayout(self)
-        row.setContentsMargins(60, 0, 0, 0)
-        row.addStretch()
-        row.addWidget(bubble)
+# How often a streaming answer is redrawn.
+RENDER_INTERVAL_MS = 60
 
 
 class AnswerText(QTextBrowser):
@@ -100,17 +66,23 @@ class AssistantMessage(QWidget):
         self._markdown = ""
         self._steps: dict[str, ToolStep] = {}
         self._has_error = False
+        # Text after a tool step starts a new paragraph, not glued to the text before it.
+        self._break_before_text = False
+        # Streaming re-renders at most this often: parsing the whole answer per token made long
+        # answers slower and slower to draw.
+        self._render_timer = _single_shot(self, RENDER_INTERVAL_MS, self._render)
         self._avatar = EnergyOrb(AVATAR_SIZE, self)
         self._thinking = ThinkingIndicator(self)
         self._copy = _copy_button(self)
         self._copy.clicked.connect(self._copy_answer)
-        self._copied_reset = QTimer(self)
-        self._copied_reset.setSingleShot(True)
-        self._copied_reset.setInterval(COPIED_FEEDBACK_MS)
-        self._copied_reset.timeout.connect(lambda: self._copy.setIcon(_copy_icon()))
+        self._copied_reset = _single_shot(self, COPIED_FEEDBACK_MS, lambda: self._copy.setIcon(_copy_icon()))
         self._copy.hide()
         self._answer = AnswerText(self)
         self._answer.hide()
+        self._build_layout()
+
+    def _build_layout(self) -> None:
+        """Author row, thinking line, steps, answer and sources beside the avatar."""
         self._content = QVBoxLayout()
         self._content.setSpacing(6)
         self._content.addLayout(self._author_row())
@@ -140,16 +112,38 @@ class AssistantMessage(QWidget):
         self._avatar.stop()
 
     def append_text(self, token: str) -> None:
-        """Adds streamed text and re-renders the Markdown."""
+        """Adds streamed text; the Markdown is redrawn shortly after, at most every
+        RENDER_INTERVAL_MS, so a long answer streams as smoothly as a short one."""
         self.stop_thinking()
+        if self._break_before_text and token.strip() and self._markdown.strip():
+            self._markdown = self._markdown.rstrip() + "\n\n"
+            token = token.lstrip()
+        self._break_before_text = self._break_before_text and not token.strip()
         self._markdown += token
         self._answer.show()
         self._copy.show()
-        self._answer.setMarkdown(clean_answer(self._markdown))
+        if not self._render_timer.isActive():
+            self._render_timer.start()
 
     def set_text(self, markdown: str) -> None:
         self._markdown = ""
         self.append_text(markdown)
+        self.flush()
+
+    def flush(self) -> None:
+        """Draws any text still waiting for the next render (the reply ended, say)."""
+        if self._render_timer.isActive():
+            self._render_timer.stop()
+            self._render()
+
+    def _render(self) -> None:
+        self._answer.setMarkdown(clean_answer(self._markdown))
+
+    def settle_steps(self, status: str) -> None:
+        """Steps still spinning when the reply ends (stopped, failed) stop spinning."""
+        for step in self._steps.values():
+            if step.status == "running":
+                step.update_step(step.label, status)
 
     def has_text(self) -> bool:
         return bool(self._markdown.strip())
@@ -168,6 +162,8 @@ class AssistantMessage(QWidget):
         step.update_step(label, status)
         if detail is not None:
             step.show_detail(detail)
+        if self._markdown.strip():
+            self._break_before_text = True
 
     def set_sources(self, sources: list[SourceRef]) -> None:
         for source in sources[:MAX_SOURCE_CARDS]:
@@ -175,6 +171,8 @@ class AssistantMessage(QWidget):
 
     def show_error(self, message: str) -> None:
         self.stop_thinking()
+        self.flush()
+        self.settle_steps("failed")
         self._has_error = True
         label = QLabel(message, self)
         label.setObjectName("ErrorLine")
@@ -184,6 +182,8 @@ class AssistantMessage(QWidget):
     def mark_stopped(self) -> None:
         """Ends the reply where it is, with a quiet note that the user stopped it."""
         self.stop_thinking()
+        self.flush()
+        self.settle_steps("stopped")
         self._has_error = True
         label = QLabel(STOPPED_TEXT, self)
         label.setObjectName("StoppedLine")
@@ -193,15 +193,20 @@ class AssistantMessage(QWidget):
         """ "Nimbus · 10:42" with the copy button at the far end."""
         author = QLabel("Nimbus", self)
         author.setObjectName("ReplyAuthor")
-        meta = QLabel(datetime.now().strftime("%H:%M"), self)
-        meta.setObjectName("ReplyMeta")
+        self._time = QLabel(datetime.now().strftime("%H:%M"), self)
+        self._time.setObjectName("ReplyMeta")
         row = QHBoxLayout()
         row.setSpacing(8)
         row.addWidget(author)
-        row.addWidget(meta)
+        row.addWidget(self._time)
         row.addStretch()
         row.addWidget(self._copy)
         return row
+
+    def hide_time(self) -> None:
+        """For a reopened chat: saved messages don't record when they were written, so no time
+        is better than today's."""
+        self._time.hide()
 
     def _copy_answer(self) -> None:
         """Copies the answer's Markdown and flashes a check mark."""
@@ -210,18 +215,12 @@ class AssistantMessage(QWidget):
         self._copied_reset.start()
 
 
-def _attachment_tag(name: str, parent: QWidget) -> QHBoxLayout:
-    """A paperclip and the attachment's name, inside the user's bubble."""
-    icon = QLabel(parent)
-    icon.setPixmap(line_pixmap("paperclip", TEXT_ON_ORANGE, TAG_ICON_SIZE))
-    label = QLabel(name, parent)
-    label.setObjectName("AttachmentTag")
-    row = QHBoxLayout()
-    row.setSpacing(6)
-    row.addWidget(icon)
-    row.addWidget(label)
-    row.addStretch()
-    return row
+def _single_shot(parent: QWidget, interval_ms: int, slot: Callable[[], object]) -> QTimer:
+    timer = QTimer(parent)
+    timer.setSingleShot(True)
+    timer.setInterval(interval_ms)
+    timer.timeout.connect(slot)
+    return timer
 
 
 def _copy_icon() -> QIcon:
@@ -236,11 +235,3 @@ def _copy_button(parent: QWidget) -> QToolButton:
     button.setToolTip("Copy answer")
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     return button
-
-
-def _text_width(text: str, pixel_size: int) -> int:
-    """Width of the longest line of text at the given font size."""
-    font = QFont()
-    font.setPixelSize(pixel_size)
-    metrics = QFontMetrics(font)
-    return max(metrics.horizontalAdvance(line) for line in text.splitlines() or [""])

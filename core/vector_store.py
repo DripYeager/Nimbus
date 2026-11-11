@@ -42,6 +42,10 @@ READER_MMAP_BYTES = 256 * 1024 * 1024
 READER_CACHE_KIB = 64 * 1024
 
 
+# Pages a bounded full-text merge may write in one go, while indexing is running.
+FTS_MERGE_PAGES = 500
+
+
 class VectorStore:
     """Chunks with vector and full-text search, in one SQLite file. A writer and a reader
     connection in WAL mode let searches run while the index worker is writing."""
@@ -177,11 +181,16 @@ class VectorStore:
             conn.execute("DELETE FROM chunk_fts")
             conn.execute("DELETE FROM chunks")
 
-    def optimize(self) -> None:
-        """Merges the full-text index's segments. Cheap to skip, so failures are only logged."""
+    def optimize(self, full: bool = True) -> None:
+        """Merges the full-text index's segments. full rewrites the whole index (seconds on a
+        big one, holding the write lock), so while indexing runs only a bounded merge is done.
+        Cheap to skip, so failures are only logged."""
         try:
             with self._transaction() as conn:
-                conn.execute("INSERT INTO chunk_fts(chunk_fts) VALUES ('optimize')")
+                if full:
+                    conn.execute("INSERT INTO chunk_fts(chunk_fts) VALUES ('optimize')")
+                else:
+                    conn.execute("INSERT INTO chunk_fts(chunk_fts, rank) VALUES ('merge', ?)", (FTS_MERGE_PAGES,))
         except (sqlite3.Error, IndexingError) as e:
             logger.warning("Index optimize failed", extra={"error": str(e)})
 

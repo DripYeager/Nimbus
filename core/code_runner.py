@@ -33,6 +33,7 @@ BYTES_PER_MB = 1024**2
 # Plenty for spreadsheet-sized work; see _environment.
 MATH_THREADS = "4"
 SANDBOX_SCRIPT = Path(__file__).with_name("code_sandbox.py")
+MATPLOTLIB_CACHE = ".matplotlib"
 INTERNAL_FILES = frozenset({"script.py", "job.json"})
 
 
@@ -101,6 +102,14 @@ def _command(job: Path) -> list[str]:
     return [sys.executable, "-I", "-X", "utf8", str(SANDBOX_SCRIPT), str(job)]
 
 
+def _matplotlib_cache() -> Path:
+    """One matplotlib cache for all runs: in a fresh folder it rescans every Windows font first,
+    seconds per run (it's built while loading, before the sandbox's guard goes up)."""
+    cache = RUNS_DIR.expanduser() / MATPLOTLIB_CACHE
+    cache.mkdir(parents=True, exist_ok=True)
+    return cache
+
+
 def _environment(folder: Path) -> dict[str, str]:
     """Charts render off-screen, temp and cache files land in the run's own folder, and numpy's
     math library uses a few threads: by default it reserves memory for every CPU thread, which
@@ -111,7 +120,7 @@ def _environment(folder: Path) -> dict[str, str]:
     environment.update(
         {
             "MPLBACKEND": "Agg",
-            "MPLCONFIGDIR": str(temp),
+            "MPLCONFIGDIR": str(_matplotlib_cache()),
             "TEMP": str(temp),
             "TMP": str(temp),
             "PYTHONIOENCODING": "utf-8",

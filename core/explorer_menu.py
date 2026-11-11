@@ -1,4 +1,4 @@
-"""
+r"""
 Adds "Ask Nimbus about this" to File Explorer's right-click menu for every file. It's a
 per-user registry entry (HKEY_CURRENT_USER\Software\Classes\*\shell), so no admin rights are
 needed, and it runs Nimbus with --ask and the file's path; a running Nimbus picks that up.

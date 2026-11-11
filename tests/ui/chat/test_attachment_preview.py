@@ -11,7 +11,7 @@ from core.attachment_format import AttachedItem
 from models.chat import Attachment
 from ui.chat.attachment_bar import AttachmentBar
 from ui.chat.attachment_preview import ImagePreview, image_preview, is_image, thumbnail
-from ui.chat.message_widgets import UserBubble
+from ui.chat.user_bubble import UserBubble
 
 
 @pytest.fixture

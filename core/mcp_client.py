@@ -12,14 +12,15 @@ import asyncio
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
-
-from mcp import Client, StdioServerParameters
-from mcp_types import CallToolResult, EmbeddedResource, Implementation, TextContent, TextResourceContents
+from typing import TYPE_CHECKING, Any
 
 from core.exceptions import ToolError
 from core.logger import get_logger
 from models.schema import McpServerConfig
+
+if TYPE_CHECKING:
+    from mcp import Client
+    from mcp_types import CallToolResult
 
 logger = get_logger(__name__)
 
@@ -32,7 +33,8 @@ CALL_GRACE_S = 10.0
 CLOSE_TIMEOUT_S = 5.0
 MAX_RESULT_CHARS = 12_000
 MAX_TOOL_PAGES = 20
-CLIENT_INFO = Implementation(name="Nimbus", version="2.1")
+CLIENT_NAME = "Nimbus"
+CLIENT_VERSION = "2.1"
 
 STARTING, READY, FAILED = "starting", "ready", "failed"
 
@@ -151,8 +153,13 @@ class McpConnections:
     async def _serve(self, server: McpServerConfig, stop: asyncio.Event) -> None:
         """Holds one server's connection open until it's asked to stop."""
         try:
+            # The MCP SDK loads only once a server is configured; it adds most of a second to startup.
+            from mcp import Client, StdioServerParameters
+            from mcp_types import Implementation
+
             params = StdioServerParameters(command=server.command, args=server.args, env=server.env or None)
-            async with Client(params, client_info=CLIENT_INFO, read_timeout_seconds=CALL_TIMEOUT_S) as client:
+            info = Implementation(name=CLIENT_NAME, version=CLIENT_VERSION)
+            async with Client(params, client_info=info, read_timeout_seconds=CALL_TIMEOUT_S) as client:
                 tools = await _list_tools(client, server.name)
                 self._clients[server.name] = client
                 self._set(server.name, READY, tools=tools)
@@ -196,6 +203,8 @@ async def _list_tools(client: Client, server: str) -> list[ExternalTool]:
 
 def result_text(result: CallToolResult) -> str:
     """The text a tool returned, trimmed; an error result becomes a ToolError."""
+    from mcp_types import EmbeddedResource, TextContent, TextResourceContents
+
     parts = []
     for block in result.content:
         if isinstance(block, TextContent):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QLabel, QPushButton
 
 from models.chat import ShownCode
 from ui.chat.chat_session import step_detail
@@ -16,7 +16,7 @@ from ui.chat.code_block import (
     preview_of,
     show_all_text,
 )
-from ui.chat.message_cards import ConfirmCard, ToolStep
+from ui.chat.message_cards import ALLOWED_TITLE, DECLINED_TITLE, ConfirmCard, ToolStep
 
 LONG = "\n".join(f"print({n})" for n in range(12))
 
@@ -117,3 +117,30 @@ def test_confirm_card_shows_a_long_one_line_command_whole(qapp: object) -> None:
 
     [block] = card.findChildren(CodeBlock)
     assert "Remove-Item" in block._text.text() and not block.can_expand()
+
+
+def test_confirm_card_shrinks_to_the_answer_once_allowed(qapp: object) -> None:
+    card = ConfirmCard("Run Python code", None, False, ShownCode(title="Python", text="print(6)"))
+    card.show()
+    allow = next(b for b in card.findChildren(QPushButton) if b.text() == "Allow")
+
+    allow.click()
+
+    assert card._title.text() == ALLOWED_TITLE and card.property("answered") == "allowed"
+    assert card._code.isHidden() and allow.isHidden()
+
+
+def test_confirm_card_shows_declined(qapp: object) -> None:
+    card = ConfirmCard("Close Notepad", None, True)
+    next(b for b in card.findChildren(QPushButton) if b.text() == "Don't").click()
+
+    assert card._title.text() == DECLINED_TITLE and card.property("answered") == "declined"
+
+
+def test_confirm_card_reopens_with_code_and_buttons(qapp: object) -> None:
+    card = ConfirmCard("Run Python code", None, False, ShownCode(title="Python", text="print(6)"))
+    next(b for b in card.findChildren(QPushButton) if b.text() == "Allow").click()
+
+    card.reopen()
+
+    assert card.is_open() and not card._code.isHidden() and card.property("answered") == ""

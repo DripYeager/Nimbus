@@ -11,9 +11,11 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from core.attachment_format import AttachedItem, split_attachments
-from models.chat import ChatMessage, ShownCode
+from models.chat import HistoryTurn, ShownCode
+from ui.chat.code_block import StepDetail
 from ui.chat.message_cards import ConfirmCard
-from ui.chat.message_widgets import AssistantMessage, UserBubble
+from ui.chat.message_widgets import AssistantMessage
+from ui.chat.user_bubble import UserBubble
 
 MESSAGE_SPACING = 18
 # Long lines are hard to read; past this the conversation column stops growing.
@@ -76,6 +78,7 @@ class ConversationColumn(QWidget):
         if self._current is None:
             return
         self._current.stop_thinking()
+        self._current.flush()
         if self._current.is_empty():
             self._layout.removeWidget(self._current)
             self._current.deleteLater()
@@ -90,25 +93,40 @@ class ConversationColumn(QWidget):
         self._append(card)
         return card
 
-    def load_history(self, messages: list[ChatMessage]) -> None:
-        """Re-renders a saved conversation."""
+    def load_history(self, turns: list[HistoryTurn]) -> None:
+        """Re-renders a saved conversation: each reply with its steps, as it looked live."""
         self.clear()
-        for message in messages:
-            if message.role == "user":
+        for turn in turns:
+            if turn.role == "user":
                 # A saved message carries its attachment's full text; show a tag instead.
-                text, items = split_attachments(message.content)
+                text, items = split_attachments(turn.text)
                 self.add_user_message(text, tuple(items))
-            elif message.content.strip():
-                self.current_reply.set_text(message.content)
-                self.end_reply()
+                continue
+            if not turn.text.strip() and not turn.steps:
+                continue
+            reply = self.current_reply
+            reply.hide_time()
+            for step in turn.steps:
+                detail = StepDetail(code=step.code, output=step.output) if step.code else None
+                reply.show_tool(step.call_id, step.label, step.status, detail)
+            if turn.text.strip():
+                reply.set_text(turn.text)
+            self.end_reply()
 
-    def insert_history(self, messages: list[ChatMessage]) -> None:
+    def skip_open_cards(self) -> None:
+        """The user moved on without answering: open cards stop waiting (the engine skips
+        those actions too), so a late click can't send a stale answer."""
+        for card in self._cards:
+            if card.is_open():
+                card.mark_skipped()
+
+    def insert_history(self, turns: list[HistoryTurn]) -> None:
         """Puts a saved conversation above what's already shown: a message the user sent while
         the history was still loading, and its (possibly still streaming) reply."""
         shown = [self._layout.takeAt(0).widget() for _ in range(self._layout.count() - 1)]
         current, cards = self._current, list(self._cards)
         self._current = None
-        self.load_history(messages)
+        self.load_history(turns)
         for widget in shown:
             if widget is not None:
                 self._layout.insertWidget(self._layout.count() - 1, widget)

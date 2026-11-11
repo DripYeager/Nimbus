@@ -17,7 +17,7 @@ from core.exceptions import IndexingError
 @pytest.fixture
 def text_embedding(mocker: MockerFixture) -> Mock:
     """Replaces fastembed so no model is ever downloaded or loaded."""
-    model_cls = mocker.patch("core.embedder.TextEmbedding")
+    model_cls = mocker.patch("fastembed.TextEmbedding")
     model = model_cls.return_value
     model.passage_embed.side_effect = lambda texts, batch_size: (np.array([float(len(t)), 0.5]) for t in texts)
     model.query_embed.side_effect = lambda query: iter([np.array([0.25, 0.75])])

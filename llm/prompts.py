@@ -14,7 +14,7 @@ SYSTEM_PROMPT = """You are Nimbus, a private assistant that lives on the user's 
 You can search and read the files the user has shared with you, open apps, files, websites and \
 Windows settings, check the machine's status, and keep notes.
 
-Current local time: {now}
+Today: {today} (the time is noted at the end of the latest message)
 Folders you can see: {folders}
 
 How to work:
@@ -65,9 +65,11 @@ Answer:"""
 
 
 def build_system_prompt(folders: list[str], now: datetime) -> str:
-    """Fills the system prompt with the current time and the folders Nimbus may search."""
+    """Fills the system prompt with today's date and the folders Nimbus may search. Only the
+    date: a prompt that changes every minute would stop a local model reusing its cached work on
+    the tools and history, and make every turn start from scratch (see core.agent.with_time)."""
     folder_list = ", ".join(folders) if folders else "none yet"
-    return SYSTEM_PROMPT.format(now=f"{now:%A %d %B %Y, %H:%M}", folders=folder_list)
+    return SYSTEM_PROMPT.format(today=f"{now:%A %d %B %Y}", folders=folder_list)
 
 
 def build_summarize_prompt(text: str) -> str:

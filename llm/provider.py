@@ -11,9 +11,6 @@ from typing import Protocol
 from config.settings import Settings, get_settings
 from core.exceptions import ProviderError
 from core.secret_store import get_api_key
-from llm.anthropic_provider import AnthropicProvider
-from llm.ollama_provider import OllamaProvider
-from llm.openai_provider import OpenAIProvider
 from models.chat import ChatMessage, ProviderConfig, TextDelta, ToolCall, ToolSpec
 
 # The OpenAI SDK insists on some key, but local OpenAI-compatible servers (LM Studio, vLLM)
@@ -38,14 +35,21 @@ class LLMProvider(Protocol):
 
 
 def build_provider(config: ProviderConfig, ollama_host: str | None = None) -> LLMProvider:
-    """Builds the concrete provider config describes."""
+    """Builds the concrete provider config describes. Each backend is imported only when chosen:
+    the cloud SDKs take over two seconds to load, which a local-only user shouldn't pay."""
     if config.name == "ollama":
+        from llm.ollama_provider import OllamaProvider
+
         settings = get_settings()
         return OllamaProvider(
             ollama_host or settings.ollama_host, config.model, settings.ollama_context_tokens, settings.ollama_thinking
         )
     if config.name == "anthropic":
+        from llm.anthropic_provider import AnthropicProvider
+
         return AnthropicProvider(config.api_key, config.model)
+    from llm.openai_provider import OpenAIProvider
+
     if config.name == "openai":
         return OpenAIProvider(config.api_key, config.model)
     if config.name == "openai_compatible":

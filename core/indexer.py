@@ -52,9 +52,9 @@ class Indexer:
         logger.info("Indexed file", extra={"path": str(path), "chunks": len(chunks)})
         return len(chunks)
 
-    def optimize_store(self) -> None:
+    def optimize_store(self, full: bool = True) -> None:
         """Lets the store fold freshly written rows into its search indexes."""
-        self._store.optimize()
+        self._store.optimize(full)
 
 
 def hash_file(path: Path) -> str:

@@ -1,11 +1,5 @@
-"""Everything the user sees: the chat window, Settings, onboarding, the tray icon and the hotkey."""
+"""Everything the user sees: the chat window, Settings, onboarding, the tray icon and the hotkey.
 
-from __future__ import annotations
-
-from ui.api_client import ApiClient
-from ui.chat.chat_window import ChatWindow
-from ui.desktop_shell import DesktopShell
-from ui.hotkey import HotkeyListener
-from ui.tray import TrayIcon
-
-__all__ = ["ApiClient", "ChatWindow", "DesktopShell", "HotkeyListener", "TrayIcon"]
+Nothing is imported here, so a module like ui.single_instance loads on its own: a second launch
+hands over to the running Nimbus without loading the whole interface and engine first.
+"""

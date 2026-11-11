@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import QLabel, QWidget
 
 from ui.theme.tokens import CLOUD_GOLD, CLOUD_GOLD_DEEP, TEXT
 
-PHRASES = ("Charging up", "Riding the cloud", "Searching your files", "Thinking it through", "Gathering energy")
+PHRASES = ("Charging up", "Riding the cloud", "Thinking it through", "Gathering energy", "Working on it")
 TICK_MS = 90
 TICKS_PER_DOT = 4
 DOT_FRAMES = ("", ".", "..", "...")

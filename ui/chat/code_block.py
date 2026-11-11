@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QGuiApplication, QMouseEvent
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
@@ -21,6 +21,7 @@ PREVIEW_CHARS = 360
 MORE_MARK = "\n..."
 COPY_TEXT = "Copy"
 COPIED_TEXT = "Copied"
+COPIED_RESET_MS = 1500
 LESS_TEXT = "Show less"
 OUTPUT_TITLE = "Output"
 
@@ -110,6 +111,10 @@ class CodeBlock(QFrame):
     def _copy_all(self) -> None:
         QGuiApplication.clipboard().setText(self._full)
         self._copy.setText(COPIED_TEXT)
+        QTimer.singleShot(COPIED_RESET_MS, self._reset_copy)
+
+    def _reset_copy(self) -> None:
+        self._copy.setText(COPY_TEXT)
 
 
 def output_block(text: str, parent: QWidget | None = None) -> CodeBlock:
