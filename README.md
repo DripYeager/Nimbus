@@ -105,6 +105,11 @@ The embedding model was picked the same way, query-aware hybrid, 100 docs, parap
 | bge-large-en-v1.5 | 1.2 GB | 0.76 | 0.83 | one drops to 0.96 | 6 files/s |
 | mxbai-embed-large-v1 | 0.64 GB | 0.81 | 0.87 | one drops to 0.92 | 6 files/s |
 
+Most remaining misses need world knowledge ("the dark chocolate chilli sauce" is *mole negro*).
+Having the local model rewrite each question before searching was tested too, and it lowered
+accuracy (0.78 to between 0.73 and 0.77, with small drops on direct questions) while adding a
+model call to every search, so it isn't used.
+
 **One SQLite file for search.** Chunk text, 768-dim embeddings ([sqlite-vec](https://github.com/asg017/sqlite-vec))
 and an FTS5 full-text index share one database with WAL mode, so searches run while indexing
 writes. Compared with the LanceDB store it replaced, at 20,000 chunks:

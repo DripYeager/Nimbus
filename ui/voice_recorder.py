@@ -74,10 +74,12 @@ class SilenceWatcher:
 
 
 class VoiceRecorder(QObject):
-    """Emits finished(samples) with 16 kHz mono audio, or failed(message)."""
+    """Emits level_changed(loudness) as audio arrives, then finished(samples) with 16 kHz mono
+    audio, or failed(message)."""
 
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
+    level_changed = pyqtSignal(float)
 
     def __init__(self) -> None:
         super().__init__()
@@ -120,7 +122,9 @@ class VoiceRecorder(QObject):
             return
         chunk = to_mono_float(bytes(self._stream.readAll()), self._format)
         self._chunks.append(chunk)
-        if self._watcher.add(level(chunk), chunk.size / max(self._format.sampleRate(), 1)):
+        loudness = level(chunk)
+        self.level_changed.emit(loudness)
+        if self._watcher.add(loudness, chunk.size / max(self._format.sampleRate(), 1)):
             self.stop()
 
 

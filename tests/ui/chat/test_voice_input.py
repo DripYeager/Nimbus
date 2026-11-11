@@ -16,6 +16,7 @@ from ui.chat.voice_input import FIRST_USE_HINT, TRANSCRIBING_HINT, VoiceInput
 class FakeRecorder(QObject):
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
+    level_changed = pyqtSignal(float)
 
     def __init__(self) -> None:
         super().__init__()
@@ -120,3 +121,21 @@ def test_a_failure_shows_its_reason(voice: VoiceInput, chat_input: ChatInput, re
     recorder.failed.emit("No microphone was found.")
 
     assert (chat_input._field.placeholderText(), chat_input._mic.toolTip()) == ("No microphone was found.", MIC_TIP)
+
+
+def test_the_meter_shows_while_recording_and_follows_the_level(
+    voice: VoiceInput, chat_input: ChatInput, recorder: FakeRecorder, pending: list[Any]
+) -> None:
+    voice.listen()
+
+    recorder.level_changed.emit(0.1)
+
+    assert (chat_input._meter.isHidden(), chat_input._meter.level() > 0.5) == (False, True)
+
+
+def test_the_meter_hides_once_recording_stops(voice: VoiceInput, chat_input: ChatInput, pending: list[Any]) -> None:
+    voice.listen()
+
+    voice.listen()
+
+    assert chat_input._meter.isHidden()

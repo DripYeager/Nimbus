@@ -35,6 +35,7 @@ class VoiceInput(QObject):
         self._input.voice_requested.connect(self.listen)
         self._recorder.finished.connect(self._recorded)
         self._recorder.failed.connect(self._failed)
+        self._recorder.level_changed.connect(self._input.show_input_level)
 
     def is_listening(self) -> bool:
         return self._recorder.is_recording()

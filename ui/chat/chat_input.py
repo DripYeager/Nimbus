@@ -15,6 +15,7 @@ from ui.theme.line_icons import line_icon, line_pixmap
 from ui.theme.motion import build_aura_animation, stop_animation
 from ui.theme.painting import AuraFrame
 from ui.theme.tokens import GI_ORANGE, PLACEHOLDER_TEXT, TEXT, TEXT_MUTED, TEXT_ON_ORANGE
+from ui.widgets.level_meter import LevelMeter
 
 MIN_LINES, MAX_LINES = 1, 5
 LINE_HEIGHT_PX = 21
@@ -76,6 +77,7 @@ class ChatInput(AuraFrame):
         self._mic.setIconSize(QSize(MIC_ICON_SIZE, MIC_ICON_SIZE))
         self._mic.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mic.clicked.connect(self.voice_requested)
+        self._meter = LevelMeter(self)
         self.set_listening(False)
         self._send = QPushButton(self)
         self._send.setObjectName("SendButton")
@@ -87,6 +89,7 @@ class ChatInput(AuraFrame):
         row.setSpacing(10)
         row.addWidget(spark, alignment=Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self._field, stretch=1)
+        row.addWidget(self._meter, alignment=Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self._mic, alignment=Qt.AlignmentFlag.AlignBottom)
         row.addWidget(self._send, alignment=Qt.AlignmentFlag.AlignBottom)
         self._show_button_mode()
@@ -106,6 +109,12 @@ class ChatInput(AuraFrame):
         """An orange microphone while it listens, a quiet one otherwise."""
         self._mic.setIcon(line_icon("mic", GI_ORANGE if listening else TEXT_MUTED, MIC_ICON_SIZE, hover_color=TEXT))
         self._mic.setToolTip(LISTENING_TIP if listening else MIC_TIP)
+        self._meter.reset()
+        self._meter.setVisible(listening)
+
+    def show_input_level(self, loudness: float) -> None:
+        """Moves the live meter beside the mic while it records."""
+        self._meter.set_level(loudness)
 
     def show_hint(self, text: str) -> None:
         """A short message in the empty field (why voice input failed, say) until typing starts."""
