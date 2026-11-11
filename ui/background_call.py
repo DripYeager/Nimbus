@@ -1,10 +1,13 @@
 """
-Runs a blocking call (an API request, a provider test) on Qt's thread pool and delivers the
-result, or the error message, back on the GUI thread. Owns thread hand-off only.
+Runs a blocking call (an API request, a provider test) off the GUI thread and delivers the
+result, or the error message, back on the GUI thread. Short calls use Qt's thread pool; long
+ones that mustn't hold up quitting (a model download) use a daemon thread instead, because Qt
+waits for its pool to drain before the app can exit. Owns thread hand-off only.
 """
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -47,10 +50,13 @@ _in_flight: set[_Signals] = set()
 
 
 def run_in_background(
-    function: Callable[[], Any], on_success: Callable[[Any], None], on_error: Callable[[str], None] | None = None
+    function: Callable[[], Any],
+    on_success: Callable[[Any], None],
+    on_error: Callable[[str], None] | None = None,
+    daemon: bool = False,
 ) -> None:
     """Runs function off the GUI thread, then calls on_success(result) or on_error(message)
-    back on the GUI thread."""
+    back on the GUI thread. daemon=True never delays quitting: the call is simply abandoned."""
     signals = _Signals()
     _in_flight.add(signals)
     signals.succeeded.connect(on_success)
@@ -58,4 +64,8 @@ def run_in_background(
         signals.failed.connect(on_error)
     signals.succeeded.connect(lambda _: _in_flight.discard(signals))
     signals.failed.connect(lambda _: _in_flight.discard(signals))
-    QThreadPool.globalInstance().start(_CallRunnable(function, signals))
+    runnable = _CallRunnable(function, signals)
+    if daemon:
+        threading.Thread(target=runnable.run, name="background-call", daemon=True).start()
+    else:
+        QThreadPool.globalInstance().start(runnable)

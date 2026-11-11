@@ -50,7 +50,8 @@ class VoiceInput(QObject):
         if not self._transcriber.is_ready():
             self._input.show_hint(FIRST_USE_HINT)
             # Loads (or downloads) the model while the user talks, so it's ready when they stop.
-            run_in_background(self._transcriber.load, lambda _: None, lambda _: None)
+            # A daemon thread, so quitting mid-download doesn't wait for 150 MB to arrive.
+            run_in_background(self._transcriber.load, lambda _: None, lambda _: None, daemon=True)
         self._input.set_listening(True)
         self._recorder.start()
 
@@ -58,7 +59,7 @@ class VoiceInput(QObject):
         self._input.set_listening(False)
         self._transcribing = True
         self._input.show_hint(TRANSCRIBING_HINT)
-        run_in_background(lambda: self._transcriber.transcribe(samples), self._heard, self._failed)
+        run_in_background(lambda: self._transcriber.transcribe(samples), self._heard, self._failed, daemon=True)
 
     def _heard(self, text: str) -> None:
         self._transcribing = False

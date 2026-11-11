@@ -4,7 +4,17 @@ import pytest
 from PyQt6.QtCore import QAbstractAnimation, Qt
 from PyQt6.QtTest import QTest
 
-from ui.chat.chat_input import FIELD_PADDING_PX, LINE_HEIGHT_PX, MAX_LINES, MIN_LINES, SEND_TIP, STOP_TIP, ChatInput
+from ui.chat.chat_input import (
+    ELSEWHERE_PLACEHOLDER,
+    FIELD_PADDING_PX,
+    LINE_HEIGHT_PX,
+    MAX_LINES,
+    MIN_LINES,
+    SEND_TIP,
+    STOP_TIP,
+    ChatInput,
+)
+from ui.theme.tokens import PLACEHOLDER_TEXT
 
 
 @pytest.fixture
@@ -156,6 +166,32 @@ def test_fit_height_grows_with_extra_lines(chat_input: ChatInput) -> None:
     chat_input.set_text("one\ntwo\nthree")
 
     assert chat_input._field.height() == 3 * LINE_HEIGHT_PX + FIELD_PADDING_PX
+
+
+def test_a_voice_hint_does_not_erase_the_elsewhere_placeholder(chat_input: ChatInput) -> None:
+    chat_input.set_answering_elsewhere(True)
+    chat_input.show_hint("Didn't catch anything.")
+
+    chat_input._hint_reset.timeout.emit()
+
+    assert chat_input._field.placeholderText() == ELSEWHERE_PLACEHOLDER
+
+
+def test_clearing_a_voice_hint_restores_the_placeholder_in_force(chat_input: ChatInput) -> None:
+    chat_input.set_answering_elsewhere(True)
+    chat_input.show_hint("Didn't catch anything.")
+
+    chat_input.clear_hint()
+
+    assert chat_input._field.placeholderText() == ELSEWHERE_PLACEHOLDER
+
+
+def test_leaving_the_elsewhere_state_restores_the_normal_placeholder(chat_input: ChatInput) -> None:
+    chat_input.set_answering_elsewhere(True)
+
+    chat_input.set_answering_elsewhere(False)
+
+    assert chat_input._field.placeholderText() == PLACEHOLDER_TEXT
 
 
 def test_fit_height_stops_growing_at_max_lines(chat_input: ChatInput) -> None:

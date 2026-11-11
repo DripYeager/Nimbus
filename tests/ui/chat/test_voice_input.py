@@ -43,7 +43,11 @@ def chat_input(qapp: object) -> ChatInput:
 def pending(mocker: MockerFixture) -> list[Any]:
     """Background calls are captured, so a test can finish them when it likes."""
     calls: list[Any] = []
-    mocker.patch("ui.chat.voice_input.run_in_background", side_effect=lambda fn, ok, err: calls.append((fn, ok, err)))
+
+    def capture(fn: Any, ok: Any, err: Any, daemon: bool = False) -> None:
+        calls.append((fn, ok, err))
+
+    mocker.patch("ui.chat.voice_input.run_in_background", side_effect=capture)
     return calls
 
 

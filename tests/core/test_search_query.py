@@ -54,3 +54,18 @@ def test_keyword_weight_counts_keywords_for_exact_questions(text: str) -> None:
 )
 def test_keyword_weight_leaves_natural_questions_to_meaning(text: str) -> None:
     assert keyword_weight(text) == KEYWORD_WEIGHT_NATURAL
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "what is due on Friday",
+        "invoices from March",
+        "hey Nimbus, what is my wifi password",
+        "Hello.  What is it",
+        "first line\nSecond line here",
+        "OK what is next",
+    ],
+)
+def test_keyword_weight_ignores_capitals_that_are_not_names(text: str) -> None:
+    assert keyword_weight(text) == KEYWORD_WEIGHT_NATURAL

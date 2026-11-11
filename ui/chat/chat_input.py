@@ -71,7 +71,8 @@ class ChatInput(AuraFrame):
         self._hint_reset = QTimer(self)
         self._hint_reset.setSingleShot(True)
         self._hint_reset.setInterval(HINT_MS)
-        self._hint_reset.timeout.connect(lambda: self._field.setPlaceholderText(PLACEHOLDER_TEXT))
+        self._resting_placeholder = PLACEHOLDER_TEXT
+        self._hint_reset.timeout.connect(self._restore_placeholder)
         self._mic = QToolButton(self)
         self._mic.setObjectName("MicButton")
         self._mic.setIconSize(QSize(MIC_ICON_SIZE, MIC_ICON_SIZE))
@@ -123,14 +124,21 @@ class ChatInput(AuraFrame):
 
     def clear_hint(self) -> None:
         self._hint_reset.stop()
-        self._field.setPlaceholderText(PLACEHOLDER_TEXT)
+        self._restore_placeholder()
+
+    def _restore_placeholder(self) -> None:
+        """The field's normal prompt, which a hint must not overwrite for good."""
+        self._field.setPlaceholderText(self._resting_placeholder)
 
     def set_text(self, text: str) -> None:
         self._field.setPlainText(text)
 
     def set_answering_elsewhere(self, elsewhere: bool) -> None:
         """Explains why sending is blocked while a reply runs in a chat that isn't on screen."""
-        self._field.setPlaceholderText(ELSEWHERE_PLACEHOLDER if elsewhere else PLACEHOLDER_TEXT)
+        self._resting_placeholder = ELSEWHERE_PLACEHOLDER if elsewhere else PLACEHOLDER_TEXT
+        # A voice hint is showing; it puts this back when it goes, so the two don't fight.
+        if not self._hint_reset.isActive():
+            self._restore_placeholder()
 
     def is_busy(self) -> bool:
         return self._busy

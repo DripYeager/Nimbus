@@ -24,6 +24,20 @@ def test_read_hardware_picks_the_card_with_the_most_memory(mocker: MockerFixture
     assert (hardware.ram_gb, hardware.gpu_name, hardware.vram_gb) == (32, "NVIDIA RTX 2000 Ada", 8.0)
 
 
+def test_vram_gb_reads_a_qword_and_raw_bytes() -> None:
+    from core.hardware import _vram_gb
+
+    assert _vram_gb(8 * BYTES_PER_GB) == 8
+    assert _vram_gb((2 * BYTES_PER_GB).to_bytes(8, "little")) == 2
+
+
+def test_vram_gb_ignores_a_value_that_is_not_a_size() -> None:
+    from core.hardware import _vram_gb
+
+    assert _vram_gb("not a number") is None
+    assert _vram_gb(0) is None
+
+
 def test_read_hardware_without_a_reported_card(mocker: MockerFixture, ram: None) -> None:
     mocker.patch("core.hardware._display_adapters", return_value=[])
 

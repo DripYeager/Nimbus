@@ -62,6 +62,19 @@ def _read_adapter(root: winreg.HKEYType, name: str) -> tuple[str, float] | None:
             memory = winreg.QueryValueEx(key, VRAM_VALUE)[0]
     except OSError:
         return None
-    # The value is a QWORD on current drivers, raw bytes on some older ones.
-    size = int.from_bytes(memory, "little") if isinstance(memory, bytes) else int(memory)
-    return description, size / BYTES_PER_GB
+    vram_gb = _vram_gb(memory)
+    if vram_gb is None:
+        return None
+    return description, vram_gb
+
+
+def _vram_gb(memory: object) -> float | None:
+    """Gigabytes from a registry memory value: a QWORD, or the raw bytes some older drivers write.
+    None when the value isn't a size, so one odd adapter can't sink the whole readout."""
+    try:
+        size = int.from_bytes(memory, "little") if isinstance(memory, bytes) else int(memory)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if size <= 0:
+        return None
+    return size / BYTES_PER_GB

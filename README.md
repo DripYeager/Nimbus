@@ -87,7 +87,7 @@ direct questions and paraphrases that avoid the document's own words. Top-1 accu
 |---|---|---|---|---|---|
 | Vector only | 0.96 | 1.00 | 0.82 | 0.80 | 20 |
 | Hybrid, equal weights | 1.00 | 0.88 | 1.00 | 0.45 | 21 |
-| **Hybrid, query-aware** | **1.00** | **1.00** | **1.00** | **0.78** | 21 |
+| **Hybrid, query-aware** | **1.00** | **1.00** | **1.00** | **0.79** | 21 |
 | Query-aware + cross-encoder rerank | 1.00 | 1.00 | 1.00 | 0.74 | 270 |
 
 The 100-document set is what exposed the problem: with equal weights, keyword noise dragged
@@ -101,7 +101,7 @@ The embedding model was picked the same way, query-aware hybrid, 100 docs, parap
 | Embedding model | Download | Top-1 | MRR | Other three sets | Indexing |
 |---|---|---|---|---|---|
 | bge-small-en-v1.5 (previous) | 0.07 GB | 0.73 | 0.80 | all 1.00 | 33 files/s |
-| **gte-base** | 0.44 GB | **0.78** | **0.84** | **all 1.00** | 19 files/s |
+| **gte-base** | 0.44 GB | **0.79** | **0.85** | **all 1.00** | 19 files/s |
 | bge-large-en-v1.5 | 1.2 GB | 0.76 | 0.83 | one drops to 0.96 | 6 files/s |
 | mxbai-embed-large-v1 | 0.64 GB | 0.81 | 0.87 | one drops to 0.92 | 6 files/s |
 

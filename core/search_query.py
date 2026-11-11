@@ -45,15 +45,60 @@ def build_fts_query(text: str) -> str | None:
 # pay for the desks") its OR-of-words ranking is noise: "pay" matches every invoice. On the
 # 100-document benchmark, fusing it at full weight for such questions cut top-1 accuracy on
 # paraphrases from 0.72 to 0.40.
-_CODE_LIKE = re.compile(r"\d|\b[A-Z]{2,}\b|\"")
-# A capitalized word that doesn't start the sentence: a name, a place, a product.
-_NAME_LIKE = re.compile(r"(?<!^)(?<![.?!] )\b[A-Z][a-z]+")
+_DIGIT_OR_QUOTE = re.compile(r"\d|\"")
+_ACRONYM = re.compile(r"\b[A-Z]{2,}\b")
+_CAPITALIZED = re.compile(r"[A-Z][a-z]+")
+_SENTENCE_BREAK = re.compile(r"[.?!\n]+")
+_WORD_EDGES = "\"'(),;:"
+# Capitalized for reasons other than being a name, so they say nothing about exactness.
+NOT_NAMES = frozenset(
+    [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+        "nimbus",
+        "hey",
+        "hi",
+        "hello",
+        "please",
+        "thanks",
+    ]
+)
+NOT_ACRONYMS = frozenset({"OK", "AM", "PM", "I'M", "TV"})
 KEYWORD_WEIGHT_EXACT = 1.0
 KEYWORD_WEIGHT_NATURAL = 0.0
 
 
 def keyword_weight(text: str) -> float:
     """How much keyword ranking should count when fused with meaning-based ranking."""
-    if _CODE_LIKE.search(text) or _NAME_LIKE.search(text.strip()):
+    has_acronym = any(match not in NOT_ACRONYMS for match in _ACRONYM.findall(text))
+    if _DIGIT_OR_QUOTE.search(text) or has_acronym or _has_name(text):
         return KEYWORD_WEIGHT_EXACT
     return KEYWORD_WEIGHT_NATURAL
+
+
+def _has_name(text: str) -> bool:
+    """A capitalized word that isn't the first of its sentence (or a weekday, month or greeting):
+    a person, place or product. Sentences break at . ? ! or a new line, however much space follows."""
+    for sentence in _SENTENCE_BREAK.split(text):
+        words = [word.strip(_WORD_EDGES) for word in sentence.split()]
+        for word in words[1:]:
+            if _CAPITALIZED.fullmatch(word) and word.lower() not in NOT_NAMES:
+                return True
+    return False
