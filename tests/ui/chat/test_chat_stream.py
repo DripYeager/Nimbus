@@ -10,6 +10,7 @@ import httpx
 import pytest
 from pytest_mock import MockerFixture
 
+from core.api_auth import auth_headers
 from ui.chat.chat_stream import CONNECT_TIMEOUT_SECONDS, UNREACHABLE_MESSAGE, ChatStream, _message_for
 
 BASE_URL = "http://127.0.0.1:8765"
@@ -78,7 +79,9 @@ def recorder(stream: ChatStream) -> Recorder:
 
 def _patch_stream(mocker: MockerFixture, response: FakeResponse | None = None, error: Exception | None = None) -> Mock:
     @contextmanager
-    def fake_stream(method: str, url: str, json: Any, timeout: httpx.Timeout) -> Iterator[FakeResponse]:
+    def fake_stream(
+        method: str, url: str, json: Any, timeout: httpx.Timeout, headers: dict[str, str]
+    ) -> Iterator[FakeResponse]:
         if error is not None:
             raise error
         yield response
@@ -149,7 +152,7 @@ def test_send_reports_a_slow_model(mocker: MockerFixture, stream: ChatStream, re
     stream.send("hello", None)
 
     assert recorder.failures == [_message_for(httpx.ReadTimeout("slow"))]
-    assert "took too long" in recorder.failures[0]
+    assert "stopped responding" in recorder.failures[0]
 
 
 def test_send_reports_an_http_error_status(mocker: MockerFixture, stream: ChatStream, recorder: Recorder) -> None:
@@ -212,7 +215,7 @@ def test_send_cancels_the_previous_request(mocker: MockerFixture, stream: ChatSt
 @pytest.mark.parametrize(
     ("error", "expected"),
     [
-        (httpx.ReadTimeout("slow"), "took too long"),
+        (httpx.ReadTimeout("slow"), "stopped responding"),
         (httpx.ConnectError("refused"), "Couldn't reach"),
         (OSError("pipe"), "Couldn't reach"),
     ],
@@ -243,3 +246,11 @@ def test_events_from_a_superseded_request_are_dropped(
     stream._relay_event.emit(stale_id, "token", {"text": "late"})
 
     assert recorder.events == []
+
+
+def test_send_carries_the_api_token(mocker: MockerFixture, stream: ChatStream) -> None:
+    http_stream = _patch_stream(mocker, FakeResponse([]))
+
+    stream.send("hello", None)
+
+    assert http_stream.call_args.kwargs["headers"] == auth_headers()

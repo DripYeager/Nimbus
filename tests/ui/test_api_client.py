@@ -8,6 +8,7 @@ import httpx
 import pytest
 from pytest_mock import MockerFixture
 
+from core.api_auth import auth_headers
 from core.exceptions import NimbusError
 from models.chat import ProviderConfig
 from ui.api_client import DEFAULT_TIMEOUT_SECONDS, PROVIDER_TIMEOUT_SECONDS, UNREACHABLE_MESSAGE, ApiClient
@@ -46,7 +47,9 @@ def test_index_status_parses_the_response(request_mock: Mock, client: ApiClient)
     status = client.index_status()
 
     assert (status.cataloged_files, status.is_paused) == (7, True)
-    request_mock.assert_called_once_with("GET", f"{BASE_URL}/index/status", json=None, timeout=DEFAULT_TIMEOUT_SECONDS)
+    request_mock.assert_called_once_with(
+        "GET", f"{BASE_URL}/index/status", json=None, timeout=DEFAULT_TIMEOUT_SECONDS, headers=auth_headers()
+    )
 
 
 def test_source_summaries_parses_each_item(request_mock: Mock, client: ApiClient) -> None:

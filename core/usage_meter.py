@@ -1,6 +1,6 @@
 """
 Counts model calls per calendar day, persisted to a small JSON file so the count survives a
-restart. Owns counting only — enforcing a cap is the caller's decision.
+restart. Owns counting only, enforcing a cap is the caller's decision.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ class UsageMeter:
             return self._read()[1]
 
     def _read(self) -> tuple[str, int]:
-        """(today's ISO date, count) — a count from an earlier day reads as 0."""
+        """(today's ISO date, count), a count from an earlier day reads as 0."""
         today = date.today().isoformat()
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))

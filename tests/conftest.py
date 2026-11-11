@@ -34,3 +34,24 @@ def _no_real_credential_store(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("keyring.get_password", lambda service, user: vault.get((service, user)))
     monkeypatch.setattr("keyring.set_password", lambda service, user, pw: vault.__setitem__((service, user), pw))
     monkeypatch.setattr("keyring.delete_password", lambda service, user: vault.pop((service, user), None))
+
+
+@pytest.fixture(autouse=True)
+def _no_reranker_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A test that starts the engine must never fetch the 150 MB reranker; reranker tests
+    patch the model class themselves."""
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("Tests don't download models.")
+
+    monkeypatch.setattr("fastembed.rerank.cross_encoder.TextCrossEncoder", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _no_whisper_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never fetch the speech model; transcriber tests patch the model class themselves."""
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("Tests don't download models.")
+
+    monkeypatch.setattr("core.transcriber.WhisperModel", refuse)

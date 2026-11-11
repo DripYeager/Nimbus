@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import QApplication
 from pytest_mock import MockerFixture
 
 import api.server as server_module
-from core.app_runtime import APP_USER_MODEL_ID, AppRuntime, _build_qt_app
+from core.app_runtime import APP_USER_MODEL_ID, STARTUP_FAILED_EXIT_CODE, AppRuntime, _build_qt_app
 
 
 class Engine(SimpleNamespace):
@@ -115,13 +115,17 @@ def test_start_server_binds_to_localhost_only(mocker: MockerFixture, engine: Eng
 def test_start_fails_when_the_api_never_comes_up(mocker: MockerFixture, engine: Engine) -> None:
     engine.server.started = False
     logger = mocker.patch("core.app_runtime.logger")
+    dialog = mocker.patch("core.app_runtime.QMessageBox.critical")
 
-    with pytest.raises(RuntimeError):
-        AppRuntime().start()
+    exit_code = AppRuntime().start()
 
-    logger.error.assert_called_once()
+    assert exit_code == STARTUP_FAILED_EXIT_CODE
+    # One log entry (with the traceback) for one failure.
+    logger.exception.assert_called_once()
+    logger.error.assert_not_called()
     engine.shell_cls.assert_not_called()
     engine.services.stop.assert_called_once()
+    assert "port 8765" in dialog.call_args.args[2]
 
 
 def test_shutdown_stops_ui_then_server_then_engine(engine: Engine) -> None:
@@ -160,12 +164,14 @@ def test_build_qt_app_configures_a_tray_style_app(mocker: MockerFixture) -> None
         app.setQuitOnLastWindowClosed(True)
 
 
-def test_start_tears_everything_down_when_the_ui_fails_to_start(engine: Engine) -> None:
+def test_start_tears_everything_down_when_the_ui_fails_to_start(mocker: MockerFixture, engine: Engine) -> None:
     engine.shell.start.side_effect = RuntimeError("no tray available")
+    dialog = mocker.patch("core.app_runtime.QMessageBox.critical")
 
-    with pytest.raises(RuntimeError):
-        AppRuntime().start()
+    assert AppRuntime().start() == STARTUP_FAILED_EXIT_CODE
 
+    assert "no tray available" in dialog.call_args.args[2]
+    assert "nimbus.log" in dialog.call_args.args[2]
     assert engine.server.should_exit is True
     engine.services.stop.assert_called_once()
     engine.qt_app.exec.assert_not_called()

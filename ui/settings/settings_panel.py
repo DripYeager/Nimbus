@@ -1,7 +1,7 @@
 """
-The Settings page shown inside the chat window: a navigation rail (Sources, Model, General),
-the chosen section in a scroll area, and a bottom bar with Discard and Save. Loads the saved
-settings on request and writes every section's changes in one background call. Owns the page
+The Settings page shown inside the chat window: a navigation rail (Sources, Model, General,
+Connections), the chosen section in a scroll area, and a bottom bar with Discard and Save. Loads
+the saved settings on request and writes every section's changes in one background call. Owns the page
 and the save flow; each section owns its own fields, and the host window owns the header.
 """
 
@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButt
 from models.api import SettingsView
 from ui.api_client import ApiClient
 from ui.background_call import run_in_background
+from ui.settings.connections_tab import ConnectionsTab
 from ui.settings.general_tab import GeneralTab
 from ui.settings.label_roles import set_state
 from ui.settings.model_editor import ModelEditor
@@ -35,6 +36,7 @@ SECTIONS: tuple[tuple[str, str, str, str, str], ...] = (
     ("sources", "Sources", "folder-open", "Sources", "The folders Nimbus learns, and what it skips."),
     ("model", "Model", "cpu", "Model", "Which brain writes the answers, and where your questions go."),
     ("general", "General", "settings", "General", "How you summon Nimbus, and what it may do on its own."),
+    ("connections", "Connections", "plug", "Connections", "Share Nimbus with other AI apps, and use their tools."),
 )
 SECTION_KEYS = tuple(section[0] for section in SECTIONS)
 RAIL_WIDTH = 170
@@ -57,6 +59,7 @@ class SettingsPanel(QWidget):
         self._sources = SourcesEditor(api, show_index_controls=True)
         self._model = ModelEditor(api)
         self._general = GeneralTab(api)
+        self._connections = ConnectionsTab(api)
         self._stack = QStackedWidget()
         self._nav = QButtonGroup(self)
         self._status = QLabel()
@@ -75,7 +78,7 @@ class SettingsPanel(QWidget):
 
     def _build_layout(self) -> None:
         """Rail on the left; the section stack over the bottom bar on the right."""
-        editors = (self._sources, self._model, self._general)
+        editors = (self._sources, self._model, self._general, self._connections)
         for (_, _, _, heading, description), editor in zip(SECTIONS, editors, strict=True):
             self._stack.addWidget(wrap_in_scroll_area(_section_page(heading, description, editor)))
         right = QVBoxLayout()
@@ -126,7 +129,7 @@ class SettingsPanel(QWidget):
         self._status_timer.timeout.connect(lambda: self._show_status("", "muted"))
 
     def show_section(self, name: str) -> None:
-        """Switches to "sources", "model" or "general"; unknown names leave the page where it is."""
+        """Switches to a section key (see SECTIONS); unknown names leave the page where it is."""
         if name in SECTION_KEYS:
             index = SECTION_KEYS.index(name)
             self._nav.button(index).setChecked(True)
@@ -143,13 +146,19 @@ class SettingsPanel(QWidget):
         self._sources.load(view.values)
         self._model.load(view)
         self._general.load(view.values)
+        self._connections.load(view.values)
         self._show_status("", "muted")
         self._save_button.setEnabled(True)
 
     def _save(self) -> None:
         """Writes all sections' changes and the new API key (if any) in one background call."""
         model_updates, api_key = self._model.collect()
-        updates: dict[str, Any] = {**self._sources.collect(), **model_updates, **self._general.collect()}
+        updates: dict[str, Any] = {
+            **self._sources.collect(),
+            **model_updates,
+            **self._general.collect(),
+            **self._connections.collect(),
+        }
         provider = self._model.provider()
         self._show_status("Saving…", "muted")
         self._save_button.setEnabled(False)
@@ -161,6 +170,7 @@ class SettingsPanel(QWidget):
         self._save_button.setEnabled(True)
         self._show_status(SAVED_TEXT, "success")
         self._status_timer.start()
+        self._connections.refresh_after_save()
         self.saved.emit()
 
     def _show_load_error(self, message: str) -> None:

@@ -1,7 +1,7 @@
 """
 Resolves where Nimbus keeps its per-user data on disk: the index, the file catalog, chats,
 notes, logs, the model cache, and the user's saved settings. Does not create anything or read
-any setting values — it only answers "where does this live?".
+any setting values, it only answers "where does this live?".
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ HOME_OVERRIDE_ENV = "NIMBUS_HOME"
 
 
 def app_data_dir() -> Path:
-    """The per-user data folder — %APPDATA%\\Nimbus on Windows, ~/.nimbus elsewhere. Always
+    """The per-user data folder, %APPDATA%\\Nimbus on Windows, ~/.nimbus elsewhere. Always
     user-writable, so nothing here ever needs admin rights."""
     override = os.environ.get(HOME_OVERRIDE_ENV)
     if override:
@@ -50,7 +50,7 @@ def is_frozen() -> bool:
 
 
 def asset_path(*parts: str) -> Path:
-    """A file under assets/ — next to the source tree when running from source, or inside the
+    """A file under assets/, next to the source tree when running from source, or inside the
     unpacked bundle when running as a packaged executable."""
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     return base.joinpath("assets", *parts)

@@ -7,7 +7,7 @@ from markitdown import UnsupportedFormatException
 from pytest_mock import MockerFixture
 
 import core.document_parser as parser_module
-from core.document_parser import _get_markitdown, extract_document_text, parse_document
+from core.document_parser import _get_markitdown, extract_document_pages, extract_document_text, parse_document
 from core.exceptions import ParsingError, UnsupportedFileTypeError
 from models.schema import ParsedDocument
 
@@ -93,7 +93,7 @@ def test_parse_document_raises_unsupported_file_type_error_when_no_converter_fit
 
 def test_get_markitdown_builds_the_converter_once(monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture) -> None:
     monkeypatch.setattr(parser_module, "_markitdown", None)
-    markitdown_cls = mocker.patch("core.document_parser.MarkItDown")
+    markitdown_cls = mocker.patch("markitdown.MarkItDown")
 
     first = _get_markitdown()
 
@@ -106,8 +106,8 @@ def test_extract_document_text_returns_the_parsed_text_directly() -> None:
 
 
 def test_extract_document_text_escalates_a_thin_pdf_to_ocr(mocker: MockerFixture) -> None:
-    mocker.patch("core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True))
-    ocr_spy = mocker.patch("core.document_parser.extract_text_with_ocr", return_value="recovered text")
+    mocker.patch("core.document_parser._read_pdf_pages", return_value=["", ""])
+    ocr_spy = mocker.patch("core.document_parser.extract_pages_with_ocr", return_value=["recovered text", ""])
 
     assert extract_document_text(Path("scan.PDF")) == "recovered text"
     ocr_spy.assert_called_once_with(Path("scan.PDF"))
@@ -115,7 +115,49 @@ def test_extract_document_text_escalates_a_thin_pdf_to_ocr(mocker: MockerFixture
 
 def test_extract_document_text_does_not_ocr_a_thin_non_pdf(mocker: MockerFixture) -> None:
     mocker.patch("core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True))
-    ocr_spy = mocker.patch("core.document_parser.extract_text_with_ocr")
+    ocr_spy = mocker.patch("core.document_parser.extract_pages_with_ocr")
 
     assert extract_document_text(Path("note.txt")) == ""
     ocr_spy.assert_not_called()
+
+
+def test_extract_document_pages_numbers_pdf_pages_and_skips_blank_ones(mocker: MockerFixture) -> None:
+    mocker.patch("core.document_parser._read_pdf_pages", return_value=["intro " * 20, "", "terms " * 20])
+
+    pages = extract_document_pages(Path("contract.pdf"))
+
+    assert [page.number for page in pages] == [1, 3]
+
+
+def test_extract_document_pages_keeps_ocr_page_numbers(mocker: MockerFixture) -> None:
+    mocker.patch("core.document_parser._read_pdf_pages", return_value=["", ""])
+    mocker.patch("core.document_parser.extract_pages_with_ocr", return_value=["", "scanned page two"])
+
+    pages = extract_document_pages(Path("scan.pdf"))
+
+    assert [(page.number, page.text) for page in pages] == [(2, "scanned page two")]
+
+
+def test_extract_document_pages_gives_other_formats_one_unnumbered_page(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="notes", needs_ocr=False)
+    )
+
+    assert [(p.number, p.text) for p in extract_document_pages(Path("a.docx"))] == [(None, "notes")]
+
+
+def test_extract_document_pages_is_empty_for_a_file_without_text(mocker: MockerFixture) -> None:
+    mocker.patch("core.document_parser.parse_document", return_value=ParsedDocument(markdown_text="", needs_ocr=True))
+
+    assert extract_document_pages(Path("empty.txt")) == []
+
+
+def test_parse_document_reads_images_with_ocr(tmp_path: Path, mocker: MockerFixture) -> None:
+    ocr = mocker.patch("core.document_parser.extract_text_from_image", return_value="whiteboard notes")
+    photo = tmp_path / "board.JPG"
+    photo.write_bytes(b"jpeg")
+
+    result = parse_document(photo)
+
+    ocr.assert_called_once_with(photo)
+    assert (result.markdown_text, result.needs_ocr) == ("whiteboard notes", False)

@@ -11,7 +11,6 @@ from __future__ import annotations
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QMouseEvent
 from PyQt6.QtWidgets import (
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QStackedWidget,
@@ -24,6 +23,7 @@ from models.schema import IndexStatus
 from ui.status_text import describe_status
 from ui.theme.energy import PowerLevelReadout
 from ui.theme.fonts import use_display_font
+from ui.theme.glow_label import GlowLabel
 from ui.theme.line_icons import line_icon
 from ui.theme.painting import CloudGlyph, SkyHeader
 from ui.theme.tokens import HEADER_HEIGHT
@@ -31,9 +31,13 @@ from ui.theme.tokens import HEADER_HEIGHT
 LOGO_SIZE = 44
 ICON_SIZE = 18
 WORDMARK_PX = 30
+# Per halo copy; the copies stack into a soft orange glow.
+WORDMARK_GLOW_ALPHA = 45
 BADGE_HEIGHT = 24
 PAGE_TITLE_PX = 26
 WHITE = "#FFFFFF"
+MINIMIZE_TIP = "Minimize (Esc) · Nimbus keeps working, and comes back right where you left it"
+CLOSE_TIP = "Close · Nimbus stays in the tray and opens on a fresh chat screen next time"
 
 
 class ChatHeader(SkyHeader):
@@ -42,6 +46,8 @@ class ChatHeader(SkyHeader):
     new_chat_clicked = pyqtSignal()
     history_clicked = pyqtSignal()
     settings_clicked = pyqtSignal()
+    capture_clicked = pyqtSignal()
+    minimize_clicked = pyqtSignal()
     close_clicked = pyqtSignal()
     back_clicked = pyqtSignal()
 
@@ -119,10 +125,12 @@ class ChatHeader(SkyHeader):
         row.addWidget(self._badge, alignment=Qt.AlignmentFlag.AlignVCenter)
         row.addSpacing(6)
         for icon, tip, signal in (
+            ("scan", "Ask about something on screen", self.capture_clicked),
             ("plus", "New chat (Ctrl+N)", self.new_chat_clicked),
             ("history", "Chat history", self.history_clicked),
             ("settings", "Settings", self.settings_clicked),
-            ("x", "Hide (Esc)", self.close_clicked),
+            ("minus", MINIMIZE_TIP, self.minimize_clicked),
+            ("x", CLOSE_TIP, self.close_clicked),
         ):
             row.addWidget(_header_button(icon, tip, signal, mode))
         return mode
@@ -136,19 +144,15 @@ class ChatHeader(SkyHeader):
         row.addWidget(_header_button("arrow-left", "Back to chat (Esc)", self.back_clicked, mode))
         row.addWidget(self._page_title)
         row.addStretch()
-        row.addWidget(_header_button("x", "Hide", self.close_clicked, mode))
+        row.addWidget(_header_button("minus", MINIMIZE_TIP, self.minimize_clicked, mode))
+        row.addWidget(_header_button("x", CLOSE_TIP, self.close_clicked, mode))
         return mode
 
     def _title_column(self, parent: QWidget) -> QVBoxLayout:
         """The comic-style NIMBUS wordmark with a soft orange glow, and the status under it."""
-        title = QLabel("NIMBUS", parent)
+        title = GlowLabel("NIMBUS", QColor(255, 120, 20, WORDMARK_GLOW_ALPHA), parent)
         title.setObjectName("HeaderWordmark")
         use_display_font(title, WORDMARK_PX)
-        glow = QGraphicsDropShadowEffect(title)
-        glow.setBlurRadius(14)
-        glow.setOffset(0, 2)
-        glow.setColor(QColor(255, 120, 20, 170))
-        title.setGraphicsEffect(glow)
         column = QVBoxLayout()
         column.setSpacing(0)
         column.addWidget(title)

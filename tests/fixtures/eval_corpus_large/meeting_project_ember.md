@@ -1,0 +1,1 @@
+Project Ember weekly meeting. Goal: build a customer loyalty points scheme. Owner: Grace Kim. Target date: end of September. Decisions: keep the scope fixed, review budget next week. Risks: vendor delays.

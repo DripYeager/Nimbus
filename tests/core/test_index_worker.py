@@ -13,7 +13,7 @@ from config.settings import Settings
 from core.exceptions import ParsingError, UnsupportedFileTypeError
 from core.file_catalog import FileCatalog, path_key
 from core.index_queue import IndexQueue
-from core.index_worker import IndexWorker
+from core.index_worker import OPTIMIZE_EVERY_N_FILES, IndexWorker
 from core.indexer import Indexer
 from models.schema import CatalogEntry, CatalogStatus
 
@@ -152,6 +152,18 @@ def test_worker_optimizes_the_store_once_the_queue_runs_dry(
     _add_file(tmp_path, catalog, queue, "a.txt")
 
     assert _wait_until(lambda: indexer.optimize_store.called)
+
+
+def test_bounded_merge_still_gets_a_full_optimize_when_the_queue_runs_dry(
+    queue: IndexQueue, catalog: FileCatalog, indexer: Mock
+) -> None:
+    worker = IndexWorker(queue, catalog, indexer)
+    worker._since_optimize = OPTIMIZE_EVERY_N_FILES
+
+    worker._optimize_if_dirty(force=False)
+    worker._optimize_if_dirty(force=True)
+
+    assert [call.kwargs["full"] for call in indexer.optimize_store.call_args_list] == [False, True]
 
 
 def test_worker_does_not_optimize_when_nothing_was_indexed(worker: IndexWorker, indexer: Mock) -> None:

@@ -8,14 +8,19 @@ import pytest
 from config.settings import get_settings
 from core.agent import (
     CONTEXT_MESSAGES,
+    EMPTY_ANSWER_MESSAGE,
     MAX_TOOL_RESULT_CHARS,
     STEP_LIMIT_MESSAGE,
+    TRIM_STEP,
+    SourceTracker,
     pending_tool_calls,
 )
+from core.attachment_format import with_attachment
 from core.exceptions import ProviderError, ToolsUnsupportedError
 from models.chat import (
     ChatMessage,
     ChatSources,
+    ConfirmationNeeded,
     ConfirmRequest,
     TextDelta,
     ToolActivity,
@@ -187,7 +192,8 @@ def test_run_trims_long_history_to_start_at_a_user_message(registry: ToolRegistr
 
     seen = provider.seen[0]
     assert seen[0].role == "user"
-    assert len(seen) <= CONTEXT_MESSAGES
+    # The cut moves in TRIM_STEP steps, so the window can run up to TRIM_STEP - 1 over.
+    assert len(seen) < CONTEXT_MESSAGES + TRIM_STEP
 
 
 def test_run_keeps_the_latest_user_message_when_a_tool_run_fills_the_window(registry: ToolRegistry) -> None:
@@ -201,7 +207,8 @@ def test_run_keeps_the_latest_user_message_when_a_tool_run_fills_the_window(regi
 
     list(make_agent(provider, registry).run(history))
 
-    assert provider.seen[0][0] == ChatMessage(role="user", content="dig deep")
+    first = provider.seen[0][0]
+    assert first.role == "user" and first.content.startswith("dig deep")
 
 
 def test_pending_tool_calls_returns_only_unanswered_calls() -> None:
@@ -225,3 +232,101 @@ def test_run_saves_the_step_limit_note_in_the_history(registry: ToolRegistry) ->
     list(make_agent(provider, registry).run(messages))
 
     assert messages[-1] == ChatMessage(role="assistant", content=STEP_LIMIT_MESSAGE.strip())
+
+
+def test_run_offers_only_file_creation_for_a_question_about_an_attachment(
+    registry: ToolRegistry, lookup: RecordingTool
+) -> None:
+    registry.register(Tool(simple_spec("create_spreadsheet"), lookup, lambda a: "Create", requires_confirmation=True))
+    provider = ScriptedProvider([[TextDelta(text="It says hello.")]])
+    question = with_attachment("Put this table in Excel", "Screenshot", "a,b")
+
+    list(make_agent(provider, registry).run([ChatMessage(role="user", content=question)]))
+
+    assert [[spec.name for spec in tools] for tools in provider.tools_seen] == [["create_spreadsheet"]]
+
+
+def test_run_offers_tools_again_for_a_follow_up_without_one(registry: ToolRegistry) -> None:
+    provider = ScriptedProvider([[TextDelta(text="Sure.")]])
+    messages = [
+        ChatMessage(role="user", content=with_attachment("What does this say?", "Screenshot", "hello")),
+        ChatMessage(role="assistant", content="It says hello."),
+        ChatMessage(role="user", content="Find my resume"),
+    ]
+
+    list(make_agent(provider, registry).run(messages))
+
+    assert provider.tools_seen[0] != []
+
+
+def test_run_says_so_when_the_model_returns_nothing(registry: ToolRegistry) -> None:
+    provider = ScriptedProvider([[]])
+    messages = user_turn()
+
+    events = list(make_agent(provider, registry).run(messages))
+
+    assert tokens_of(events) == EMPTY_ANSWER_MESSAGE
+    assert messages[-1].content == EMPTY_ANSWER_MESSAGE
+
+
+def test_source_tracker_prefers_files_that_were_read() -> None:
+    tracker = SourceTracker()
+    listed = SourceRef(file_name="setup.exe", file_path="C:/Downloads/setup.exe", score=1.0)
+    read = SourceRef(file_name="pilot.pdf", file_path="C:/Downloads/pilot.pdf", score=1.0)
+
+    tracker.add([listed], listing=True)
+    tracker.add([read])
+
+    assert tracker.final() == [read]
+
+
+def test_source_tracker_falls_back_to_listed_files() -> None:
+    tracker = SourceTracker()
+    listed = SourceRef(file_name="setup.exe", file_path="C:/Downloads/setup.exe", score=1.0)
+
+    tracker.add([listed], listing=True)
+
+    assert tracker.final() == [listed]
+
+
+def _careful_registry(lookup: RecordingTool) -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.register(
+        Tool(
+            simple_spec("run_command"),
+            lookup,
+            lambda a: f"Run {a.get('command')}",
+            confirm_when=lambda a, _text: a.get("command") != "ipconfig",
+            always_allowable=False,
+        )
+    )
+    return registry
+
+
+def test_run_skips_the_card_when_the_rule_says_this_call_is_safe(lookup: RecordingTool) -> None:
+    call = make_call("run_command", command="ipconfig")
+    provider = ScriptedProvider([[call], [TextDelta(text="Done.")]])
+
+    events = list(make_agent(provider, _careful_registry(lookup)).run(user_turn()))
+
+    assert not any(isinstance(e, ConfirmationNeeded) for e in events)
+
+
+def test_run_asks_for_a_risky_call_and_offers_no_always_allow(lookup: RecordingTool) -> None:
+    call = make_call("run_command", command="Remove-Item C:/x")
+    provider = ScriptedProvider([[call]])
+
+    events = list(make_agent(provider, _careful_registry(lookup)).run(user_turn()))
+
+    [card] = [e for e in events if isinstance(e, ConfirmationNeeded)]
+    assert card.can_always_allow is False
+
+
+def test_run_asks_even_when_settings_say_always_allow(lookup: RecordingTool, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "auto_approved_tools", ["run_command"])
+    call = make_call("run_command", command="Remove-Item C:/x")
+    provider = ScriptedProvider([[call]])
+
+    events = list(make_agent(provider, _careful_registry(lookup)).run(user_turn()))
+
+    assert any(isinstance(e, ConfirmationNeeded) for e in events)

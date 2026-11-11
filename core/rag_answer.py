@@ -1,5 +1,5 @@
 """
-Answers a question straight from retrieved excerpts with one model call — the fallback for
+Answers a question straight from retrieved excerpts with one model call, the fallback for
 models that can't call tools. Owns that single retrieve-then-answer step only.
 """
 

@@ -6,9 +6,9 @@ from unittest.mock import Mock
 import pytest
 from pytest_mock import MockerFixture
 
-from models.api import OllamaStatus
+from models.api import ModelRecommendation, OllamaStatus
 from ui.api_client import ApiClient
-from ui.settings.ollama_helper import DOWNLOAD_PAGE, OllamaHelper, describe_ollama
+from ui.settings.ollama_helper import DOWNLOAD_PAGE, OllamaHelper, describe_ollama, describe_recommendation
 
 MODEL = "qwen2.5:7b"
 
@@ -112,3 +112,50 @@ def test_check_failure_explains_the_problem(mocker: MockerFixture, api: Mock) ->
         "Couldn't check Ollama",
         "Couldn't reach Nimbus's engine.",
     )
+
+
+def _recommendation(**fields: Any) -> ModelRecommendation:
+    values = {
+        "model": "qwen3:8b",
+        "size_gb": 5.2,
+        "reason": "Strong answers and reliable tool use.",
+        "hardware": "32 GB RAM · NVIDIA RTX 2000 Ada (8 GB)",
+        **fields,
+    }
+    return ModelRecommendation(**values)
+
+
+def test_describe_recommendation_names_the_model_size_and_reason() -> None:
+    text = describe_recommendation(_recommendation())
+
+    assert "qwen3:8b (about 5.2 GB)" in text and "tool use" in text
+
+
+def test_describe_recommendation_says_when_it_is_already_downloaded() -> None:
+    assert "already downloaded" in describe_recommendation(_recommendation(installed=True))
+
+
+def test_suggestion_button_offers_the_recommended_model(helper: OllamaHelper, api: Mock) -> None:
+    api.ollama_status.return_value = _status()
+    helper.watch(MODEL)
+    helper._show_recommendation(_recommendation())
+
+    assert (helper._use_suggestion.isHidden(), helper._use_suggestion.text()) == (False, "Use qwen3:8b")
+
+
+def test_suggestion_button_hides_when_that_model_is_already_picked(helper: OllamaHelper, api: Mock) -> None:
+    api.ollama_status.return_value = _status()
+    helper.watch("qwen3:8b")
+    helper._show_recommendation(_recommendation())
+
+    assert helper._use_suggestion.isHidden()
+
+
+def test_taking_the_suggestion_emits_the_model(helper: OllamaHelper) -> None:
+    chosen: list[str] = []
+    helper.model_chosen.connect(chosen.append)
+    helper._show_recommendation(_recommendation())
+
+    helper._use_suggestion.click()
+
+    assert chosen == ["qwen3:8b"]

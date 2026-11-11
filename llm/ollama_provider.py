@@ -1,5 +1,5 @@
 """
-Talks to a local Ollama server — the default, fully local LLM backend: plain completions,
+Talks to a local Ollama server, the default, fully local LLM backend: plain completions,
 tool-calling chat turns, and model listing. Does not know about prompts, retrieval, or what tools
 do; message-format conversion lives in ollama_messages.py.
 """
@@ -20,26 +20,36 @@ from models.chat import ChatMessage, TextDelta, ToolCall, ToolSpec
 logger = get_logger(__name__)
 
 # Ollama wraps a bad response as ResponseError and "connection refused" as a bare
-# ConnectionError, but doesn't wrap everything else (timeouts, DNS failures) — those
+# ConnectionError, but doesn't wrap everything else (timeouts, DNS failures), those
 # still surface as raw httpx errors, so httpx.HTTPError is needed to catch the rest.
 OLLAMA_ERRORS = (ollama.RequestError, ollama.ResponseError, ConnectionError, httpx.HTTPError)
 
 # What Ollama says when a model's template has no tool support.
 TOOLS_UNSUPPORTED_MARKER = "does not support tools"
+DEFAULT_CONTEXT_TOKENS = 16384
 
 
 class OllamaProvider:
     """Implements LLMProvider against a local Ollama server."""
 
-    def __init__(self, host: str, model: str) -> None:
+    def __init__(
+        self, host: str, model: str, context_tokens: int = DEFAULT_CONTEXT_TOKENS, thinking: bool = False
+    ) -> None:
         self._host = host
         self._model = model
+        self._options = {"num_ctx": context_tokens}
+        # Thinking models (qwen3, deepseek-r1...) write a long hidden chain of reasoning before
+        # every answer, about 7x slower for the same reply on a laptop. Off unless asked for;
+        # Ollama ignores think=False for models that don't think.
+        self._think: dict[str, bool] = {} if thinking else {"think": False}
         self._client = ollama.Client(host=host)
 
     def complete(self, prompt: str) -> str:
         """Sends prompt to Ollama and returns the full response text."""
         try:
-            response = self._client.chat(model=self._model, messages=[{"role": "user", "content": prompt}])
+            response = self._client.chat(
+                model=self._model, messages=[{"role": "user", "content": prompt}], options=self._options, **self._think
+            )
         except OLLAMA_ERRORS as e:
             raise ProviderError(f"Ollama request failed ({self._model} @ {self._host}): {e}") from e
         return response.message.content or ""
@@ -47,7 +57,13 @@ class OllamaProvider:
     def stream(self, prompt: str) -> Iterator[str]:
         """Sends prompt to Ollama and yields response text as it streams in."""
         try:
-            chunks = self._client.chat(model=self._model, messages=[{"role": "user", "content": prompt}], stream=True)
+            chunks = self._client.chat(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                stream=True,
+                options=self._options,
+                **self._think,
+            )
             for chunk in chunks:
                 if chunk.message.content:
                     yield chunk.message.content
@@ -103,6 +119,8 @@ class OllamaProvider:
             "model": self._model,
             "messages": to_ollama_messages(system, messages),
             "stream": True,
+            "options": self._options,
+            **self._think,
         }
         if tools:
             request["tools"] = to_ollama_tools(tools)

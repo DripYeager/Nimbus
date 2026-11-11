@@ -1,7 +1,7 @@
 """
 Converts the neutral chat shapes in models/chat.py to and from OpenAI's chat-completions format,
 including reassembling tool calls that arrive in fragments while streaming.
-Does not call the API — openai_provider.py owns the client and the streaming loop.
+Does not call the API, openai_provider.py owns the client and the streaming loop.
 """
 
 from __future__ import annotations

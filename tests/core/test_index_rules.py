@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from config.settings import Settings
-from core.index_rules import BYTES_PER_MB, IndexRules
+from core.index_rules import BYTES_PER_MB, CATEGORY_EXTENSIONS, IndexRules
 from models.schema import FileCategory, IndexSource
 
 
@@ -87,7 +87,7 @@ def test_should_read_contents_is_false_in_a_names_only_source(root: Path) -> Non
 
 
 def test_should_read_contents_is_false_for_an_unsupported_extension(root: Path) -> None:
-    assert _rules(IndexSource(path=root)).should_read_contents(root / "photo.jpg", 10) is False
+    assert _rules(IndexSource(path=root)).should_read_contents(root / "song.mp3", 10) is False
 
 
 def test_should_read_contents_matches_the_extension_case_insensitively(root: Path) -> None:
@@ -132,3 +132,7 @@ def test_is_covered_is_false_for_an_excluded_file(root: Path) -> None:
 
 def test_is_covered_is_false_outside_every_source(root: Path, tmp_path: Path) -> None:
     assert _rules(IndexSource(path=root)).is_covered(tmp_path / "a.txt") is False
+
+
+def test_category_extensions_cover_screenshots_and_photos() -> None:
+    assert {".png", ".jpg", ".jpeg"} <= CATEGORY_EXTENSIONS[FileCategory.IMAGES]

@@ -1,6 +1,6 @@
 """
-The chat window's body: a rounded night-sky panel lit by two soft glows — gi orange rising from
-the bottom-left and wristband blue from the top-right — with a few faint stars. Pure painting;
+The chat window's body: a rounded night-sky panel lit by two soft glows, gi orange rising from
+the bottom-left and wristband blue from the top-right, with a few faint stars. Pure painting;
 it hosts whatever layout is put inside it.
 """
 

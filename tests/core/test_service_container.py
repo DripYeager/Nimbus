@@ -5,6 +5,9 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
+from config.settings import get_settings
+from config.settings_store import save_user_settings
+from core.api_auth import BRIDGE_TOKEN_FILE
 from core.exceptions import ProviderError
 from core.service_container import AppServices, _remove_legacy_index
 
@@ -62,3 +65,17 @@ def test_remove_legacy_index_leaves_an_unrelated_folder_alone(tmp_path: Path) ->
     _remove_legacy_index(folder)
 
     assert (folder / "my-notes.txt").exists()
+
+
+def test_apply_settings_writes_bridge_token_only_while_sharing(services: AppServices, mocker: MockerFixture) -> None:
+    services.mcp = mocker.Mock()
+    token_file = get_settings().data_dir / BRIDGE_TOKEN_FILE
+    save_user_settings({"share_with_mcp_apps": True})
+    services.apply_settings()
+    assert token_file.exists()
+
+    save_user_settings({"share_with_mcp_apps": False})
+    services.apply_settings()
+
+    assert not token_file.exists()
+    services.mcp.start.assert_called_with([])

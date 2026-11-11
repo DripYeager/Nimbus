@@ -1,6 +1,6 @@
 """
-The tools that do something on the user's machine — open apps, files, folders, websites and
-Windows settings, save notes — plus the read-only system status and note search. Every tool
+The tools that do something on the user's machine, open apps, files, folders, websites and
+Windows settings, save notes, plus the read-only system status and note search. Every tool
 that launches or writes is marked as needing the user's confirmation. Owns the tool
 definitions; the actual work happens in app_launcher, system_tools and note_tools.
 """

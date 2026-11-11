@@ -12,6 +12,7 @@ from core.conversation_store import ConversationStore
 from core.exceptions import ConversationNotFoundError, ProviderError
 from core.fast_path import FastAnswer, FastPath
 from models.chat import (
+    Attachment,
     ChatDone,
     ChatEvent,
     ChatFailed,
@@ -29,6 +30,12 @@ from models.schema import IndexStatus, SourceRef
 
 class FakeAgent:
     """Appends one assistant reply, optionally asks for confirmation or fails, and records each run."""
+
+    # Tools that must ask every time, so "always allow" is refused for them.
+    always_ask = frozenset({"run_command"})
+
+    def can_always_allow(self, tool_name: str) -> bool:
+        return tool_name not in self.always_ask
 
     def __init__(self) -> None:
         self.reply = "Here you go."
@@ -264,3 +271,44 @@ def test_confirm_ignores_always_allow_on_a_decline(
 def test_confirm_raises_for_an_unknown_conversation(service: ChatService) -> None:
     with pytest.raises(ConversationNotFoundError):
         list(service.confirm("missing", ConfirmRequest(call_id="c1", approved=True)))
+
+
+def test_send_gives_the_agent_the_attached_text_and_skips_the_fast_path(
+    service: ChatService, agent: FakeAgent, fast_path: FastPath
+) -> None:
+    request = ChatRequest(text="Translate this", attachment=Attachment(name="Copied text", text="Bonjour"))
+
+    list(service.send(request))
+
+    [(messages, _)] = agent.runs
+    assert "Bonjour" in messages[-1].content
+    fast_path.try_answer.assert_not_called()
+
+
+def test_confirm_with_always_allow_on_a_file_allows_every_file_type(
+    service: ChatService, store: ConversationStore, mocker: MockerFixture
+) -> None:
+    conversation_id = store.create("make a sheet")
+    call = ToolCall(id="c2", name="create_spreadsheet", arguments={"file_name": "a.xlsx", "csv": "a"})
+    store.append(
+        conversation_id, [ChatMessage(role="user", content="x"), ChatMessage(role="assistant", tool_calls=[call])]
+    )
+    save = mocker.patch("core.chat_service.save_user_settings")
+
+    list(service.confirm(conversation_id, ConfirmRequest(call_id="c2", approved=True, always_allow=True)))
+
+    save.assert_called_once_with({"auto_approved_tools": ["create_document", "create_spreadsheet"]})
+
+
+def test_confirm_never_saves_always_allow_for_a_tool_that_must_ask(
+    service: ChatService, store: ConversationStore, mocker: MockerFixture
+) -> None:
+    conversation_id = store.create("run something")
+    call = ToolCall(id="c3", name="run_command", arguments={"command": "Remove-Item x"})
+    messages = [ChatMessage(role="user", content="x"), ChatMessage(role="assistant", tool_calls=[call])]
+    store.append(conversation_id, messages)
+    save = mocker.patch("core.chat_service.save_user_settings")
+
+    list(service.confirm(conversation_id, ConfirmRequest(call_id="c3", approved=True, always_allow=True)))
+
+    save.assert_not_called()

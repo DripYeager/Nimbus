@@ -1,0 +1,1 @@
+Invoice INV-3514 from Tailspin Coffee. Bill to: Northwind Ltd. Item: 1 x espresso machine servicing at 380 USD each. Total due 380.00 USD by 15 April. Pay by bank transfer, quoting INV-3514.

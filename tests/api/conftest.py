@@ -9,6 +9,7 @@ from pytest_mock import MockerFixture
 
 from api.dependencies import get_services
 from api.server import app
+from core.api_auth import auth_headers
 from core.chat_service import ChatService
 from core.conversation_store import ConversationStore
 from core.index_service import IndexService
@@ -38,7 +39,7 @@ def client(services: AppServices) -> Iterator[TestClient]:
     """No `with` block, so the lifespan never runs; app.state.services is set anyway in case it does."""
     app.state.services = services
     app.dependency_overrides[get_services] = lambda: services
-    yield TestClient(app)
+    yield TestClient(app, base_url="http://127.0.0.1", headers=auth_headers())
     app.dependency_overrides.clear()
     del app.state.services
 

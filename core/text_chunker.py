@@ -1,6 +1,6 @@
 """
 Splits text into overlapping word-count windows for embedding.
-Pure function, no I/O — does not read files and does not know about the vector store.
+Pure function, no I/O, does not read files and does not know about the vector store.
 """
 
 from __future__ import annotations

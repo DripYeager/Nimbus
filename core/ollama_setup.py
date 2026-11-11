@@ -1,7 +1,7 @@
 """
 Helps someone get a local model running without touching a terminal: finds the Ollama install,
 starts it if it's installed but not running, and downloads ("pulls") a model in the background
-while tracking progress. Owns setup only — chatting with the model is llm/ollama_provider.py.
+while tracking progress. Owns setup only, chatting with the model is llm/ollama_provider.py.
 """
 
 from __future__ import annotations
@@ -107,6 +107,10 @@ class OllamaSetup:
         finally:
             with self._lock:
                 self._pulling, self._pull_percent = None, None
+
+    def installed_models(self) -> list[str]:
+        """Models already downloaded; empty when Ollama isn't running."""
+        return self._installed_models() or []
 
     def _installed_models(self) -> list[str] | None:
         """Names of downloaded models, or None when the server isn't reachable."""

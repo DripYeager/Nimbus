@@ -9,7 +9,8 @@ from pytest_mock import MockerFixture
 
 from core.embedder import Embedder
 from core.exceptions import QueryError
-from core.retriever import CANDIDATE_MULTIPLIER, RRF_K, Retriever, fuse_rankings
+from core.reranker import Reranker
+from core.retriever import CANDIDATE_MULTIPLIER, RERANK_POOL, RRF_K, Retriever, fuse_rankings
 from core.vector_store import VectorStore
 from models.schema import IndexedChunk, SearchResult
 
@@ -68,10 +69,10 @@ def test_fuse_rankings_returns_empty_for_empty_rankings() -> None:
 
 
 def test_retrieve_oversamples_both_searches(store: Mock, embedder: Mock) -> None:
-    Retriever(store, embedder).retrieve("invoice", top_k=2)
+    Retriever(store, embedder).retrieve("INV-2231", top_k=2)
 
     store.search.assert_called_once_with(QUERY_VECTOR, top_k=2 * CANDIDATE_MULTIPLIER, modified_after=None)
-    store.search_text.assert_called_once_with("invoice", top_k=2 * CANDIDATE_MULTIPLIER)
+    store.search_text.assert_called_once_with("INV-2231", top_k=2 * CANDIDATE_MULTIPLIER)
 
 
 def test_retrieve_returns_at_most_top_k_results(store: Mock, embedder: Mock) -> None:
@@ -90,7 +91,7 @@ def test_retrieve_puts_a_keyword_and_meaning_match_on_top(store: Mock, embedder:
 def test_retrieve_drops_keyword_hits_older_than_modified_after(store: Mock, embedder: Mock) -> None:
     store.search_text.return_value = [_result("old", datetime(2025, 1, 1)), _result("new", datetime(2026, 9, 1))]
 
-    results = Retriever(store, embedder).retrieve("invoice", modified_after=datetime(2026, 6, 1))
+    results = Retriever(store, embedder).retrieve("INV-2231", modified_after=datetime(2026, 6, 1))
 
     assert [r.chunk_id for r in results] == ["new"]
 
@@ -149,3 +150,48 @@ def test_retrieve_finds_an_exact_token_in_a_real_store(tmp_path: Path, embedder:
     results = Retriever(store, embedder).retrieve("INV-2231", top_k=1)
 
     assert [r.chunk_id for r in results] == ["target"]
+
+
+def test_retrieve_hands_a_wider_pool_to_a_ready_reranker(store: Mock, embedder: Mock, mocker: MockerFixture) -> None:
+    store.search.return_value = [_result(f"c{i}") for i in range(30)]
+    reranker = mocker.Mock(spec=Reranker)
+    reranker.is_ready.return_value = True
+    reranker.rerank.side_effect = lambda query, pool, top_k: pool[:top_k]
+
+    Retriever(store, embedder, reranker).retrieve("q", top_k=5)
+
+    query, pool, top_k = reranker.rerank.call_args.args
+    assert (query, len(pool), top_k) == ("q", RERANK_POOL, 5)
+
+
+def test_retrieve_skips_a_reranker_that_is_not_ready(store: Mock, embedder: Mock, mocker: MockerFixture) -> None:
+    reranker = mocker.Mock(spec=Reranker)
+    reranker.is_ready.return_value = False
+
+    Retriever(store, embedder, reranker).retrieve("q", top_k=5)
+
+    reranker.rerank.assert_not_called()
+
+
+def test_retrieve_skips_keyword_search_for_a_natural_question(store: Mock, embedder: Mock) -> None:
+    Retriever(store, embedder).retrieve("how much did we pay for the desks")
+
+    store.search_text.assert_not_called()
+
+
+def test_retrieve_uses_the_given_keyword_weighting(store: Mock, embedder: Mock) -> None:
+    Retriever(store, embedder, keyword_weighting=lambda _query: 1.0).retrieve("how much did we pay")
+
+    store.search_text.assert_called_once()
+
+
+def test_fuse_rankings_ignores_a_ranking_weighted_zero() -> None:
+    meaning, keyword = [_result("a"), _result("b")], [_result("b")]
+
+    assert [r.chunk_id for r in fuse_rankings([meaning, keyword], [1.0, 0.0])] == ["a", "b"]
+
+
+def test_fuse_rankings_lets_a_heavier_ranking_win() -> None:
+    meaning, keyword = [_result("a"), _result("b")], [_result("b"), _result("a")]
+
+    assert fuse_rankings([meaning, keyword], [1.0, 2.0])[0].chunk_id == "b"

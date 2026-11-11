@@ -7,18 +7,23 @@ python-dotenv==1.2.2
 fastapi==0.141.1
 uvicorn==0.52.1
 
-# Document parsing — MarkItDown for Office/Outlook formats only (no audio, YouTube or cloud
+# Document parsing, MarkItDown for Office/Outlook formats only (no audio, YouTube or cloud
 # extras), pdfium's text layer for PDFs
 markitdown[docx,pptx,xlsx,xls,outlook]==0.1.7
 pypdfium2==5.12.1
 
-# OCR for scanned PDFs uses the engine built into Windows — nothing to download or install
+# Writing new Word files on request (Excel uses openpyxl, which MarkItDown already brings)
+python-docx==1.1.2
+
+# OCR for scanned PDFs uses the engine built into Windows, nothing to download or install
 winrt-runtime==4.1.0
 winrt-Windows.Foundation==4!10.0.28000.2957
 winrt-Windows.Globalization==4!10.0.28000.2957
 winrt-Windows.Graphics.Imaging==4!10.0.28000.2957
 winrt-Windows.Media.Ocr==4!10.0.28000.2957
 winrt-Windows.Storage.Streams==4!10.0.28000.2957
+# Push-to-talk: a local Whisper model (CTranslate2), so audio never leaves the PC
+faster-whisper==1.2.1
 
 # Embeddings (ONNX, no torch); search index is SQLite with sqlite-vec + built-in FTS5
 fastembed==0.9.1
@@ -48,5 +53,17 @@ httpx==0.28.1
 # API keys live in the OS credential store (Windows Credential Manager)
 keyring==25.7.0
 
-# Windows integration (start-at-sign-in shortcut)
+# Reading a web page the user gives: HTML to clean Markdown text
+beautifulsoup4==4.15.0
+markdownify==1.2.3
+
+# Data work in approved Python runs: tables and charts (numpy and openpyxl come with the
+# parsers above)
+pandas==3.1.1
+matplotlib==3.10.8
+
+# MCP: other AI apps search through Nimbus, and Nimbus uses their tools
+mcp==2.3.0
+
+# Windows integration (start-at-sign-in shortcut, clipboard, windows, job limits for code runs)
 pywin32==312; sys_platform == "win32"

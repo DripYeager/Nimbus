@@ -12,7 +12,7 @@ from models.schema import IndexStatus
 from ui.api_client import ApiClient
 from ui.settings.settings_panel import SAVED_TEXT, SettingsPanel
 
-MODULES = ("settings_panel", "sources_editor", "model_editor", "general_tab", "index_panel")
+MODULES = ("settings_panel", "sources_editor", "model_editor", "general_tab", "index_panel", "connections_tab")
 VALUES: dict[str, Any] = {
     "sources": [{"path": "C:/Users/me/Documents", "include_contents": True}],
     "file_categories": ["pdfs"],
@@ -27,7 +27,10 @@ VALUES: dict[str, Any] = {
     "compatible_base_url": "",
     "hotkey": "<ctrl>+<space>",
     "daily_llm_call_cap": None,
+    "code_memory_limit_mb": 1536,
     "auto_approved_tools": [],
+    "share_with_mcp_apps": False,
+    "mcp_servers": [{"name": "memory", "command": "npx", "args": ["-y", "server-memory"], "env": {}, "enabled": True}],
 }
 
 
@@ -52,6 +55,7 @@ def api(mocker: MockerFixture) -> Mock:
     fake.source_summaries.return_value = []
     fake.index_status.return_value = IndexStatus()
     fake.usage.return_value = UsageView(calls_today=0, daily_cap=None)
+    fake.mcp_servers.return_value = []
     return fake
 
 

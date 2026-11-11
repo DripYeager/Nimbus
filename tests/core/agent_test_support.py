@@ -28,9 +28,11 @@ class ScriptedProvider:
     def __init__(self, turns: list[Turn]) -> None:
         self._turns = list(turns)
         self.seen: list[list[ChatMessage]] = []
+        self.tools_seen: list[list[ToolSpec]] = []
 
     def stream_chat(self, system: str, messages: list[ChatMessage], tools: list[ToolSpec]) -> Iterator[Any]:
         self.seen.append(list(messages))
+        self.tools_seen.append(list(tools))
         turn = self._turns.pop(0)
         if isinstance(turn, Exception):
             raise turn

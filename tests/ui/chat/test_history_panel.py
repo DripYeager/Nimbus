@@ -11,7 +11,7 @@ from pytest_mock import MockerFixture
 from core.exceptions import NimbusError
 from models.chat import ConversationSummary
 from ui.api_client import ApiClient
-from ui.chat.history_panel import ConversationRow, HistoryPanel
+from ui.chat.history_panel import CONFIRM_DELETE_TEXT, ConversationRow, HistoryPanel
 
 
 def _synchronous(fn: Any, ok: Any, err: Any = None) -> None:
@@ -56,6 +56,12 @@ def _delete_button(row: ConversationRow) -> QToolButton:
     return row.findChild(QToolButton)
 
 
+def _confirm_delete(row: ConversationRow) -> None:
+    """Deleting takes two clicks: "Delete?", then the click that deletes."""
+    _delete_button(row).click()
+    _delete_button(row).click()
+
+
 def test_conversation_row_shows_the_title_and_date() -> None:
     row = ConversationRow(_summary("c1", "Battery check"))
 
@@ -70,7 +76,7 @@ def test_conversation_row_delete_button_requests_its_own_deletion() -> None:
     requested: list[str] = []
     row.delete_requested.connect(requested.append)
 
-    _delete_button(row).click()
+    _confirm_delete(row)
 
     assert requested == ["c1"]
 
@@ -152,13 +158,13 @@ def test_refresh_keeps_the_current_search_applied(panel: HistoryPanel) -> None:
 
 
 def test_delete_removes_the_conversation(loaded: HistoryPanel, api: Mock) -> None:
-    _delete_button(loaded._rows[1]).click()
+    _confirm_delete(loaded._rows[1])
 
     api.delete_conversation.assert_called_once_with("c1")
 
 
 def test_delete_reloads_the_list(loaded: HistoryPanel, api: Mock) -> None:
-    _delete_button(loaded._rows[1]).click()
+    _confirm_delete(loaded._rows[1])
 
     assert api.conversations.call_count == 2
 
@@ -167,7 +173,7 @@ def test_delete_does_not_open_the_conversation(loaded: HistoryPanel) -> None:
     opened: list[str] = []
     loaded.opened.connect(opened.append)
 
-    _delete_button(loaded._rows[0]).click()
+    _confirm_delete(loaded._rows[0])
 
     assert opened == []
 
@@ -175,6 +181,19 @@ def test_delete_does_not_open_the_conversation(loaded: HistoryPanel) -> None:
 def test_delete_shows_a_delete_error(loaded: HistoryPanel, api: Mock) -> None:
     api.delete_conversation.side_effect = NimbusError("Chat not found")
 
-    _delete_button(loaded._rows[0]).click()
+    _confirm_delete(loaded._rows[0])
 
     assert (loaded._message.isHidden(), loaded._message.text()) == (False, "Chat not found")
+
+
+def test_conversation_row_first_click_only_asks() -> None:
+    row = ConversationRow(ConversationSummary(id="c1", title="Budget", updated_at=datetime(2026, 11, 1)))
+    requested = Mock()
+    row.delete_requested.connect(requested)
+
+    _delete_button(row).click()
+
+    requested.assert_not_called()
+    assert _delete_button(row).text() == CONFIRM_DELETE_TEXT
+    row._disarm.timeout.emit()
+    assert _delete_button(row).text() == ""

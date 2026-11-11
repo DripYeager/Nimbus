@@ -1,7 +1,7 @@
 """
 The system tray icon and its menu: open the chat, see indexing progress, pause/resume,
 rebuild, open Settings, quit. Built on Qt's own tray support so the whole UI runs on one
-toolkit and one thread. Owns tray UI only — it asks the API for status and emits signals for
+toolkit and one thread. Owns tray UI only; it asks the API for status and emits signals for
 everything else.
 """
 
@@ -22,7 +22,8 @@ from ui.theme.tokens import CLOUD_GOLD
 
 logger = get_logger(__name__)
 
-STATUS_REFRESH_MS = 3000
+# The tooltip refreshes this often; the menu also refreshes as it opens.
+STATUS_REFRESH_MS = 15000
 MENU_ICON_SIZE = 16
 NOTIFICATION_MS = 4000
 TOOLTIP_TITLE = "Nimbus"
@@ -33,6 +34,7 @@ class TrayIcon(QObject):
 
     summon_requested = pyqtSignal()
     settings_requested = pyqtSignal()
+    capture_requested = pyqtSignal()
     quit_requested = pyqtSignal()
 
     def __init__(self, api: ApiClient) -> None:
@@ -49,18 +51,21 @@ class TrayIcon(QObject):
         """Builds the icon and menu, shows it, and starts polling for status."""
         self._tray = QSystemTrayIcon(app_icon(), self)
         self._tray.setToolTip(TOOLTIP_TITLE)
-        self._tray.setContextMenu(self._build_menu())
+        menu = self._build_menu()
+        menu.aboutToShow.connect(self.refresh_status)
+        self._tray.setContextMenu(menu)
         self._tray.activated.connect(self._handle_activated)
+        self._tray.messageClicked.connect(self.summon_requested.emit)
         self._tray.show()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh_status)
         self._timer.start(STATUS_REFRESH_MS)
         self.refresh_status()
 
-    def notify(self, message: str) -> None:
-        """Shows a balloon notification."""
+    def notify(self, message: str, title: str = TOOLTIP_TITLE) -> None:
+        """Shows a Windows notification; clicking it opens Nimbus."""
         if self._tray is not None:
-            self._tray.showMessage(TOOLTIP_TITLE, message, app_icon(), NOTIFICATION_MS)
+            self._tray.showMessage(title, message, app_icon(), NOTIFICATION_MS)
 
     def hide(self) -> None:
         if self._timer is not None:
@@ -75,6 +80,7 @@ class TrayIcon(QObject):
         """Open, status line, pause/resume, rebuild, settings, quit."""
         menu = QMenu()
         menu.addAction(_menu_icon("cloud"), "Open Nimbus", self.summon_requested.emit)
+        menu.addAction(_menu_icon("scan"), "Ask about something on screen", self.capture_requested.emit)
         menu.addSeparator()
         self._status_action = menu.addAction(_menu_icon("zap"), "Checking index…")
         self._status_action.setEnabled(False)
@@ -89,7 +95,7 @@ class TrayIcon(QObject):
     def _show_status(self, status: IndexStatus) -> None:
         """Updates the tooltip, the menu's status line and the pause item's label."""
         text = describe_status(status)
-        self._tray.setToolTip(f"{TOOLTIP_TITLE} — {text}")
+        self._tray.setToolTip(f"{TOOLTIP_TITLE}: {text}")
         self._status_action.setText(text)
         self._is_paused = status.is_paused
         self._pause_action.setText("Resume indexing" if status.is_paused else "Pause indexing")

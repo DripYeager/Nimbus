@@ -1,0 +1,1 @@
+Project Lumen weekly meeting. Goal: switch the offices to LED lighting. Owner: Chris Moore. Target date: end of January. Decisions: keep the scope fixed, review budget next week. Risks: vendor delays.

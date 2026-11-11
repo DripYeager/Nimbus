@@ -1,6 +1,6 @@
 """
 Defines the provider-neutral chat, tool-calling and streamed-event shapes shared by the LLM
-providers, the agent loop, the API and the chat window. Validation only, no behaviour.
+providers, the agent loop, the API and the chat window. Validation only; no behaviour.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ ProviderName = Literal["ollama", "openai", "anthropic", "openai_compatible"]
 
 
 class ProviderConfig(BaseModel):
-    """Everything needed to build one provider — from saved settings, or from unsaved values
+    """Everything needed to build one provider, from saved settings, or from unsaved values
     the user is trying out with "Test connection"."""
 
     name: ProviderName
@@ -48,6 +48,8 @@ class ChatMessage(BaseModel):
     tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_call_id: str | None = None
     tool_name: str | None = None
+    # For a tool turn: whether the tool failed, so a reopened chat shows the step as it was.
+    is_error: bool = False
 
 
 class TextDelta(BaseModel):
@@ -62,6 +64,9 @@ class ToolResult(BaseModel):
     content: str
     sources: list[SourceRef] = Field(default_factory=list)
     is_error: bool = False
+    # True when the files were only listed or matched by name, not read. They're shown as
+    # sources only if nothing in the turn was actually read or searched.
+    listing: bool = False
 
 
 class ConversationSummary(BaseModel):
@@ -70,9 +75,19 @@ class ConversationSummary(BaseModel):
     updated_at: datetime
 
 
+class Attachment(BaseModel):
+    """Something the user handed Nimbus with a question: a file (by path, any folder, since the
+    user picked it themselves) or a piece of text, such as what they copied."""
+
+    name: str
+    path: str | None = None
+    text: str | None = None
+
+
 class ChatRequest(BaseModel):
     text: str
     conversation_id: str | None = None
+    attachment: Attachment | None = None
 
 
 class ConfirmRequest(BaseModel):
@@ -94,6 +109,13 @@ class ChatToken(BaseModel):
     text: str
 
 
+class ShownCode(BaseModel):
+    """Code or a command a step runs, as the chat shows it: a short preview the user can open."""
+
+    title: str
+    text: str
+
+
 class ToolActivity(BaseModel):
     """A tool step shown as a small chip in the chat ("Searched your files")."""
 
@@ -101,6 +123,10 @@ class ToolActivity(BaseModel):
     tool: str
     label: str
     status: Literal["running", "done", "failed", "denied"]
+    # For code and commands: what runs (shown as a block under the step), and, once it has
+    # finished, the start of what it printed.
+    code: ShownCode | None = None
+    output: str | None = None
 
 
 class ChatSources(BaseModel):
@@ -113,6 +139,35 @@ class ConfirmationNeeded(BaseModel):
     call_id: str
     tool: str
     description: str
+    # False for tools that ask every time; the card then offers no "Always allow".
+    can_always_allow: bool = True
+    code: ShownCode | None = None
+
+
+class HistoryStep(BaseModel):
+    """A tool step of a saved conversation, as the chat shows it again."""
+
+    call_id: str
+    label: str
+    status: Literal["done", "failed", "denied"]
+    code: ShownCode | None = None
+    output: str | None = None
+
+
+class HistoryTurn(BaseModel):
+    """One message in a reopened chat: the user's text, or one reply with its steps (several
+    assistant messages of the same turn are merged, as they looked live)."""
+
+    role: Literal["user", "assistant"]
+    text: str = ""
+    steps: list[HistoryStep] = Field(default_factory=list)
+
+
+class ConversationView(BaseModel):
+    """A saved conversation ready to show, plus the action still waiting for an answer, if any."""
+
+    turns: list[HistoryTurn]
+    pending: ConfirmationNeeded | None = None
 
 
 class ChatDone(BaseModel):

@@ -1,5 +1,5 @@
 """
-Renders the Nimbus icon — the golden cloud — at any size, for the window, the tray and the
+Renders the Nimbus icon, the golden cloud, at any size, for the window, the tray and the
 packaged executable. Owns icon rendering and export only; the cloud's shape lives in painting.py.
 """
 
@@ -28,7 +28,7 @@ def render_icon(size: int, with_tail: bool = True) -> QPixmap:
 
 
 def app_icon() -> QIcon:
-    """A multi-resolution icon — Windows picks the right size for the tray, taskbar and title bar."""
+    """A multi-resolution icon, Windows picks the right size for the tray, taskbar and title bar."""
     icon = QIcon()
     for size in ICON_SIZES:
         # The tail turns to mush below 32px, so small sizes use the plain cloud.

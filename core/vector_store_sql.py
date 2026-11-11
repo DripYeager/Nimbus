@@ -1,5 +1,5 @@
 """
-The SQL behind the search index: the table layout and the search queries. Statements only —
+The SQL behind the search index: the table layout and the search queries. Statements only,
 core/vector_store.py runs them.
 """
 
@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     content_hash TEXT NOT NULL,
     chunk_index INTEGER NOT NULL,
     chunk_text TEXT NOT NULL,
+    page INTEGER,
     created_at REAL NOT NULL,
     modified_at REAL NOT NULL,
     indexed_at REAL NOT NULL
@@ -24,11 +25,15 @@ CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path_key);
 CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(chunk_text, tokenize='porter unicode61');
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
+# Columns the code relies on; an existing table missing any of them gets rebuilt.
+CHUNK_TABLE_COLUMNS = frozenset(
+    {"id", "file_path", "path_key", "file_name", "file_type", "content_hash", "chunk_index", "chunk_text", "page"}
+)
 # The embedding size is only known once the first chunk arrives, so this table is created then.
 VECTOR_TABLE = (
     "CREATE VIRTUAL TABLE chunk_vectors USING vec0(embedding float[{dim}] distance_metric=cosine, modified_at float)"
 )
-CHUNK_COLUMNS = "c.id, c.file_path, c.file_name, c.file_type, c.chunk_index, c.chunk_text, c.modified_at"
+CHUNK_COLUMNS = "c.id, c.file_path, c.file_name, c.file_type, c.chunk_index, c.chunk_text, c.modified_at, c.page"
 SEARCH_SQL = (
     "WITH knn AS (SELECT rowid, distance FROM chunk_vectors WHERE embedding MATCH ? AND k = ?{recency}) "
     f"SELECT {CHUNK_COLUMNS}, knn.distance FROM knn JOIN chunks c ON c.rowid = knn.rowid ORDER BY knn.distance"

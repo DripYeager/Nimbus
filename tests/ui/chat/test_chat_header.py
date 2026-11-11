@@ -67,11 +67,13 @@ def test_back_button_emits_back_clicked(header: ChatHeader) -> None:
     assert received == [None]
 
 
-def test_page_mode_hide_button_emits_close_clicked(header: ChatHeader) -> None:
+@pytest.mark.parametrize(("tooltip", "signal_name"), [("Minimize", "minimize_clicked"), ("Close", "close_clicked")])
+def test_page_mode_window_buttons_emit_their_signal(header: ChatHeader, tooltip: str, signal_name: str) -> None:
     received: list[None] = []
-    header.close_clicked.connect(lambda: received.append(None))
+    getattr(header, signal_name).connect(lambda: received.append(None))
+    header.show_page("Settings")
 
-    next(b for b in header.findChildren(QToolButton) if b.toolTip() == "Hide").click()
+    [b for b in header.findChildren(QToolButton) if b.toolTip().startswith(tooltip)][-1].click()
 
     assert received == [None]
 
@@ -116,7 +118,8 @@ def test_set_status_hides_the_power_readout_while_paused(header: ChatHeader) -> 
         ("New chat", "new_chat_clicked"),
         ("Chat history", "history_clicked"),
         ("Settings", "settings_clicked"),
-        ("Hide (Esc)", "close_clicked"),
+        ("Minimize", "minimize_clicked"),
+        ("Close", "close_clicked"),
     ],
 )
 def test_chat_mode_buttons_emit_their_signal(header: ChatHeader, tooltip: str, signal_name: str) -> None:

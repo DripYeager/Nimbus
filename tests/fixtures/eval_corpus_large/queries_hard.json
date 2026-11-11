@@ -1,0 +1,402 @@
+[
+  {
+    "query": "how much did we pay for height-adjustable tables",
+    "expected": "invoice_INV-3121.txt"
+  },
+  {
+    "query": "how much did we pay for little cards with our contact details",
+    "expected": "invoice_INV-3327.txt"
+  },
+  {
+    "query": "how much did we pay for repair of the coffee maker",
+    "expected": "invoice_INV-3514.txt"
+  },
+  {
+    "query": "how much did we pay for hiring outside hackers to probe our systems",
+    "expected": "invoice_INV-3974.txt"
+  },
+  {
+    "query": "how much did we pay for the people who tidy the workplace",
+    "expected": "invoice_INV-3524.txt"
+  },
+  {
+    "query": "how much did we pay for key cards for getting into the building",
+    "expected": "invoice_INV-3662.txt"
+  },
+  {
+    "query": "how much did we pay for space for keeping files on remote servers",
+    "expected": "invoice_INV-3880.txt"
+  },
+  {
+    "query": "how much did we pay for food brought in for the staff meal",
+    "expected": "invoice_INV-3975.txt"
+  },
+  {
+    "query": "how much did we pay for registering our brand name officially",
+    "expected": "invoice_INV-3105.txt"
+  },
+  {
+    "query": "how much did we pay for soft giveaway animals for a trade fair",
+    "expected": "invoice_INV-3905.txt"
+  },
+  {
+    "query": "how much did we pay for bottles sent to customers as thank-you presents",
+    "expected": "invoice_INV-3228.txt"
+  },
+  {
+    "query": "how much did we pay for plane tickets for the summit trip",
+    "expected": "invoice_INV-3916.txt"
+  },
+  {
+    "query": "how much did we pay for protection if we get hacked",
+    "expected": "invoice_INV-3615.txt"
+  },
+  {
+    "query": "how much did we pay for extra charges for heavy suitcases",
+    "expected": "invoice_INV-3636.txt"
+  },
+  {
+    "query": "how much did we pay for mountain cabin rental for the away days",
+    "expected": "invoice_INV-3569.txt"
+  },
+  {
+    "query": "how much did we pay for paying people to answer our questionnaire",
+    "expected": "invoice_INV-3430.txt"
+  },
+  {
+    "query": "how much did we pay for a new look for our brand symbol",
+    "expected": "invoice_INV-3802.txt"
+  },
+  {
+    "query": "how much did we pay for an art class for colleagues",
+    "expected": "invoice_INV-3586.txt"
+  },
+  {
+    "query": "how much did we pay for the energy bill for the workplace",
+    "expected": "invoice_INV-3560.txt"
+  },
+  {
+    "query": "how much did we pay for renting greenery for the desks",
+    "expected": "invoice_INV-3862.txt"
+  },
+  {
+    "query": "who is in charge of shifting staff records off our own servers",
+    "expected": "meeting_project_atlas.md"
+  },
+  {
+    "query": "who is in charge of releasing the phone app to Canadian users",
+    "expected": "meeting_project_borealis.md"
+  },
+  {
+    "query": "who is in charge of new handheld readers in the depot",
+    "expected": "meeting_project_cascade.md"
+  },
+  {
+    "query": "who is in charge of trimming the hosting bill by a fifth",
+    "expected": "meeting_project_delta.md"
+  },
+  {
+    "query": "who is in charge of rewarding repeat shoppers",
+    "expected": "meeting_project_ember.md"
+  },
+  {
+    "query": "who is in charge of a new branch in the Norwegian capital",
+    "expected": "meeting_project_fjord.md"
+  },
+  {
+    "query": "who is in charge of rebuilding billing in a new language",
+    "expected": "meeting_project_granite.md"
+  },
+  {
+    "query": "who is in charge of merging the help desk mailboxes",
+    "expected": "meeting_project_harbor.md"
+  },
+  {
+    "query": "who is in charge of one login across company tools",
+    "expected": "meeting_project_iris.md"
+  },
+  {
+    "query": "who is in charge of the welcome messages new users receive",
+    "expected": "meeting_project_juniper.md"
+  },
+  {
+    "query": "who is in charge of flying parcels to the countryside",
+    "expected": "meeting_project_kestrel.md"
+  },
+  {
+    "query": "who is in charge of more efficient bulbs throughout the buildings",
+    "expected": "meeting_project_lumen.md"
+  },
+  {
+    "query": "who is in charge of a backup location if the main one fails",
+    "expected": "meeting_project_monsoon.md"
+  },
+  {
+    "query": "who is in charge of testing on-device chat helpers",
+    "expected": "meeting_project_nimbus_labs.md"
+  },
+  {
+    "query": "who is in charge of boxes of fresh ingredients delivered weekly",
+    "expected": "meeting_project_orchard.md"
+  },
+  {
+    "query": "where did we eat green tea frozen dessert",
+    "expected": "trip_kyoto.md"
+  },
+  {
+    "query": "where did we eat the rotten fish delicacy",
+    "expected": "trip_reykjavik.md"
+  },
+  {
+    "query": "where did we eat slow-cooked meat in a clay pot",
+    "expected": "trip_marrakesh.md"
+  },
+  {
+    "query": "where did we eat the classic tomato and mozzarella pie",
+    "expected": "trip_naples.md"
+  },
+  {
+    "query": "where did we eat the noodle soup with herbs",
+    "expected": "trip_hanoi.md"
+  },
+  {
+    "query": "where did we eat the sheep offal dish",
+    "expected": "trip_edinburgh.md"
+  },
+  {
+    "query": "where did we eat the dark chocolate chilli sauce",
+    "expected": "trip_oaxaca.md"
+  },
+  {
+    "query": "where did we eat cheese-filled bread boat",
+    "expected": "trip_tbilisi.md"
+  },
+  {
+    "query": "where did we eat spiced mince baked with egg custard",
+    "expected": "trip_cape_town.md"
+  },
+  {
+    "query": "where did we eat the honey and nut pastry",
+    "expected": "trip_istanbul.md"
+  },
+  {
+    "query": "where did we eat raw fish cured in lime",
+    "expected": "trip_lima.md"
+  },
+  {
+    "query": "where did we eat the mixed rice bowl",
+    "expected": "trip_seoul.md"
+  },
+  {
+    "query": "how do I make the loaf made from brown fruit",
+    "expected": "recipe_banana_bread.md"
+  },
+  {
+    "query": "how do I make eggs poached in spiced tomato sauce",
+    "expected": "recipe_shakshuka.md"
+  },
+  {
+    "query": "how do I make the creamy orange curry",
+    "expected": "recipe_chicken_tikka_masala.md"
+  },
+  {
+    "query": "how do I make the baked summer vegetable stew",
+    "expected": "recipe_ratatouille.md"
+  },
+  {
+    "query": "how do I make the sweet and sour noodle dish",
+    "expected": "recipe_pad_thai.md"
+  },
+  {
+    "query": "how do I make the citrus sponge with a sugary glaze",
+    "expected": "recipe_lemon_drizzle_cake.md"
+  },
+  {
+    "query": "how do I make the creamy Italian rice with fungi",
+    "expected": "recipe_mushroom_risotto.md"
+  },
+  {
+    "query": "how do I make the spicy meat and bean stew",
+    "expected": "recipe_beef_chili.md"
+  },
+  {
+    "query": "how do I make the fried chickpea balls",
+    "expected": "recipe_falafel.md"
+  },
+  {
+    "query": "how do I make the fruit pudding with a buttery topping",
+    "expected": "recipe_apple_crumble.md"
+  },
+  {
+    "query": "how do I make the Japanese fermented bean broth",
+    "expected": "recipe_miso_soup.md"
+  },
+  {
+    "query": "how do I make the dimpled flat bread",
+    "expected": "recipe_focaccia.md"
+  },
+  {
+    "query": "how much notice to get out of the workout club",
+    "expected": "gym_membership_powerhouse_fitness.txt"
+  },
+  {
+    "query": "how much notice to get out of my cell plan",
+    "expected": "mobile_phone_contract_skyline_mobile.txt"
+  },
+  {
+    "query": "how much notice to get out of cover for my belongings at home",
+    "expected": "home_contents_insurance_shield_mutual.txt"
+  },
+  {
+    "query": "how much notice to get out of the home internet deal",
+    "expected": "broadband_contract_fibrenet.txt"
+  },
+  {
+    "query": "how much notice to get out of cover for vet bills",
+    "expected": "pet_insurance_pawsure.txt"
+  },
+  {
+    "query": "how much notice to get out of renting the vehicle long term",
+    "expected": "car_lease_driveeasy.txt"
+  },
+  {
+    "query": "how much notice to get out of the film and TV service",
+    "expected": "streaming_subscription_cinestream.txt"
+  },
+  {
+    "query": "how much notice to get out of the person who cleans the house",
+    "expected": "cleaning_service_sparkle_home.txt"
+  },
+  {
+    "query": "how much notice to get out of the right to leave my car on the street",
+    "expected": "parking_permit_city_council.txt"
+  },
+  {
+    "query": "how much notice to get out of the illustration program",
+    "expected": "software_licence_designpro.txt"
+  },
+  {
+    "query": "how much notice to get out of the locker where old furniture sits",
+    "expected": "storage_unit_rental_boxit_storage.txt"
+  },
+  {
+    "query": "how much notice to get out of the piano classes",
+    "expected": "music_lessons_harmony_academy.txt"
+  },
+  {
+    "query": "when is my eye test",
+    "expected": "appointment_optician.txt"
+  },
+  {
+    "query": "when is the mole check",
+    "expected": "appointment_dermatologist.txt"
+  },
+  {
+    "query": "when is treatment for my bad knee",
+    "expected": "appointment_physiotherapist.txt"
+  },
+  {
+    "query": "when is the heart specialist visit",
+    "expected": "appointment_cardiologist.txt"
+  },
+  {
+    "query": "when is my next haircut",
+    "expected": "appointment_barber.txt"
+  },
+  {
+    "query": "when is the dog's vaccinations",
+    "expected": "appointment_vet.txt"
+  },
+  {
+    "query": "when is going over my tax paperwork",
+    "expected": "appointment_accountant.txt"
+  },
+  {
+    "query": "when is my daughter's braces check",
+    "expected": "appointment_orthodontist.txt"
+  },
+  {
+    "query": "when is the car service",
+    "expected": "appointment_mechanic.txt"
+  },
+  {
+    "query": "when is the hay fever tests",
+    "expected": "appointment_allergist.txt"
+  },
+  {
+    "query": "how do I get my pages to come out of the machine on the fourth floor",
+    "expected": "note_printer_setup.md"
+  },
+  {
+    "query": "how much can I spend on food when I'm away for work",
+    "expected": "note_expense_policy.md"
+  },
+  {
+    "query": "how long can I stay home after the baby arrives",
+    "expected": "note_parental_leave.md"
+  },
+  {
+    "query": "how long must my login secret be",
+    "expected": "note_password_rules.md"
+  },
+  {
+    "query": "where do we gather when the alarm goes off",
+    "expected": "note_fire_drill.md"
+  },
+  {
+    "query": "how many days off do I get a year",
+    "expected": "note_holiday_allowance.md"
+  },
+  {
+    "query": "what happens to my computer when I quit",
+    "expected": "note_laptop_return.md"
+  },
+  {
+    "query": "when does the sprinkler come on",
+    "expected": "note_garden_watering.md"
+  },
+  {
+    "query": "how often should the stopping pads on my bicycle be changed",
+    "expected": "note_bike_maintenance.md"
+  },
+  {
+    "query": "which container do empty jam jars go in",
+    "expected": "note_recycling_rules.md"
+  },
+  {
+    "query": "the heating stopped and shows an error code, what do I do",
+    "expected": "note_boiler_reset.md"
+  },
+  {
+    "query": "where is the party after the vows",
+    "expected": "note_wedding_plan.md"
+  },
+  {
+    "query": "things to sort out before I change house",
+    "expected": "note_moving_checklist.md"
+  },
+  {
+    "query": "which novel are we discussing this month",
+    "expected": "note_book_club.md"
+  },
+  {
+    "query": "when do I need new trainers for jogging",
+    "expected": "note_running_shoes.md"
+  },
+  {
+    "query": "when does my computer copy its files to the spare disk",
+    "expected": "note_home_network.md"
+  },
+  {
+    "query": "when is my next jab for rusty-nail infections due",
+    "expected": "note_vaccination_record.md"
+  },
+  {
+    "query": "what are we playing at the games evening",
+    "expected": "note_board_game_night.md"
+  },
+  {
+    "query": "where are the cold-weather wheels kept",
+    "expected": "note_car_tyres.md"
+  }
+]

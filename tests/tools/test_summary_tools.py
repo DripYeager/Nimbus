@@ -9,8 +9,10 @@ from pytest_mock import MockerFixture
 from core.exceptions import ParsingError, ProviderError
 from llm.provider import LLMProvider
 from tools.summary_tools import (
+    MAX_SUMMARY_PARTS,
     NOTHING_TO_SUMMARIZE_MESSAGE,
     SAFE_PROMPT_WORD_LIMIT,
+    _evenly_spaced,
     read_document_excerpt,
     summarize_document,
     summarize_text,
@@ -88,3 +90,22 @@ def test_read_document_excerpt_propagates_parsing_errors(mocker: MockerFixture) 
 
     with pytest.raises(ParsingError):
         read_document_excerpt(Path("x.pdf"), max_words=10)
+
+
+def test_summarize_text_caps_model_calls_on_a_very_long_document(mocker: MockerFixture) -> None:
+    provider = mocker.Mock()
+    provider.complete.return_value = "short summary"
+    words = SAFE_PROMPT_WORD_LIMIT * (MAX_SUMMARY_PARTS * 5)
+    text = " ".join(f"w{i}" for i in range(words))
+
+    result = summarize_text(text, provider)
+
+    # MAX_SUMMARY_PARTS part summaries, then one summary of those.
+    assert provider.complete.call_count == MAX_SUMMARY_PARTS + 1
+    assert "evenly spaced sections" in result
+
+
+def test_evenly_spaced_keeps_the_first_and_last_parts() -> None:
+    parts = [str(i) for i in range(10)]
+
+    assert _evenly_spaced(parts, 4) == ["0", "3", "6", "9"]

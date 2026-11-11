@@ -1,12 +1,13 @@
 """
 Loads and validates all application configuration. Values come from, in priority order: the
-Settings window's saved JSON file, environment variables, then .env — so a choice made in the
+Settings window's saved JSON file, environment variables, then .env, so a choice made in the
 UI always wins over a developer's .env. Does not contain business logic or write anything;
 saving lives in settings_store.py.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ from pydantic_settings import (
 from config.legacy_settings import migrate_legacy_values
 from config.paths import app_data_dir, user_settings_path
 from models.chat import ProviderName
-from models.schema import FileCategory, IndexSource
+from models.schema import FileCategory, IndexSource, McpServerConfig
 
 DEFAULT_SOURCE_DIRS = ["~/Downloads", "~/Desktop", "~/Documents"]
 CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "anthropic", "openai_compatible"})
@@ -32,8 +33,20 @@ def _expanded(path: str | Path) -> Path:
     return Path(path).expanduser()
 
 
+MIN_EMBEDDING_THREADS = 2
+MAX_EMBEDDING_THREADS = 6
+# Below this, pandas and matplotlib can't even load.
+MIN_CODE_MEMORY_MB = 256
+
+
+def _default_embedding_threads() -> int:
+    """Half the CPU cores, between 2 and 6: about three times faster indexing than 2 on a big
+    CPU, while leaving most of it free for whatever the user is doing."""
+    return max(MIN_EMBEDDING_THREADS, min(MAX_EMBEDDING_THREADS, (os.cpu_count() or MIN_EMBEDDING_THREADS) // 2))
+
+
 def _default_sources() -> list[IndexSource]:
-    """Downloads, Desktop and Documents, contents included — what most people mean by 'my files'."""
+    """Downloads, Desktop and Documents, contents included, what most people mean by 'my files'."""
     return [IndexSource(path=_expanded(p)) for p in DEFAULT_SOURCE_DIRS]
 
 
@@ -46,6 +59,12 @@ class Settings(BaseSettings):
     llm_provider: ProviderName = "ollama"
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
+    # Ollama's own default window is only a few thousand tokens: the system prompt, the tool
+    # list and one read document overflow it, Ollama silently drops the start, and the model
+    # answers with nothing. 16K fits a long document comfortably on an 8B model.
+    ollama_context_tokens: int = 16384
+    # Lets thinking models reason before answering: sometimes better, much slower on a laptop.
+    ollama_thinking: bool = False
     openai_model: str = "gpt-5-mini"
     anthropic_model: str = "claude-haiku-5-5"
     compatible_base_url: str = ""
@@ -56,14 +75,23 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     compatible_api_key: str | None = None
 
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
-    embedding_threads: int = 2
+    # gte-base beat bge-small (0.73 to 0.78 top-1 on paraphrased questions over 100 look-alike
+    # documents) with no losses elsewhere; changing it rebuilds the index once.
+    embedding_model: str = "thenlper/gte-base"
+    embedding_threads: int = Field(default_factory=_default_embedding_threads)
+    # A cross-encoder that re-scores the top search candidates (downloads 150 MB once). Off by
+    # default: with query-aware hybrid search it added no accuracy on the benchmark and cost
+    # about 250 ms per question (see the README's retrieval notes).
+    rerank_enabled: bool = False
+    rerank_model: str = "jinaai/jina-reranker-v1-turbo-en"
+    # Local speech-to-text for the microphone button; downloads once (about 150 MB).
+    whisper_model: str = "base.en"
 
     sources: list[IndexSource] = Field(default_factory=_default_sources)
     file_categories: list[FileCategory] = Field(default_factory=lambda: list(FileCategory))
     max_file_size_mb: int = 50
     exclude_patterns: list[str] = Field(default_factory=list)
-    # bge-small reads at most 512 tokens, so a chunk has to stay well under that many words
+    # the embedding model reads at most 512 tokens, so a chunk has to stay well under that many words
     max_chunk_size: int = 250
     chunk_overlap: int = 40
     # a short pause between files keeps a first-run index from pinning the CPU
@@ -71,13 +99,19 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default_factory=app_data_dir)
 
     hotkey: str = "<ctrl>+<space>"
-    # a hard safety backstop, reset by every streamed event — not a typical wait time
+    # how long the chat waits on a silent engine; the engine sends a heartbeat every few seconds
+    # while a model thinks, so slow local models never hit this
     thinking_timeout_seconds: int = 120
     api_port: int = 8765
 
     daily_llm_call_cap: int | None = None
     auto_approved_tools: list[str] = Field(default_factory=list)
     max_agent_steps: int = 6
+    # The most memory one approved Python run may use before Windows stops it.
+    code_memory_limit_mb: int = Field(default=2048, ge=MIN_CODE_MEMORY_MB)
+    # MCP: let other AI apps search through Nimbus, and use tools from other apps' MCP servers.
+    share_with_mcp_apps: bool = False
+    mcp_servers: list[McpServerConfig] = Field(default_factory=list)
     onboarding_complete: bool = False
 
     @classmethod
@@ -95,7 +129,7 @@ class Settings(BaseSettings):
 
     @property
     def api_base_url(self) -> str:
-        """The loopback-only base URL every API client should call — never a raw host string."""
+        """The loopback-only base URL every API client should call, never a raw host string."""
         return f"http://127.0.0.1:{self.api_port}"
 
     @property
@@ -112,7 +146,7 @@ class Settings(BaseSettings):
 
     @property
     def is_cloud_provider(self) -> bool:
-        """True when answers are generated off this machine — drives the privacy badge."""
+        """True when answers are generated off this machine, drives the privacy badge."""
         return self.llm_provider in CLOUD_PROVIDERS
 
     @model_validator(mode="before")
@@ -140,7 +174,7 @@ def get_settings() -> Settings:
 
 
 def reload_settings() -> Settings:
-    """Drops the cached Settings and re-reads every source — called after the UI saves a change."""
+    """Drops the cached Settings and re-reads every source, called after the UI saves a change."""
     global _settings
     _settings = None
     return get_settings()

@@ -1,0 +1,46 @@
+"""
+Turns an attachment into text the model can read: a file's contents (images and scanned PDFs
+through OCR, like the indexer), or the text itself, cut to a size that fits comfortably in a
+prompt. Reads only what the user explicitly attached; it never writes anything.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from core.attachment_format import with_attachment
+from core.document_parser import IMAGE_EXTENSIONS, extract_document_text
+from core.exceptions import ParsingError
+from core.ocr_fallback import extract_text_from_image
+from models.chat import Attachment
+
+MAX_ATTACHMENT_CHARS = 12_000
+TRUNCATED_NOTE = "\n[The rest was cut to keep the question short.]"
+NO_TEXT_NOTE = "[No readable text was found in this.]"
+
+
+def attach(text: str, attachment: Attachment) -> str:
+    """The user's message with the attachment's text appended."""
+    return with_attachment(text, attachment.name, _body(attachment), attachment.path)
+
+
+def _body(attachment: Attachment) -> str:
+    """The attachment's text, trimmed to MAX_ATTACHMENT_CHARS."""
+    if attachment.path:
+        path = Path(attachment.path)
+        if not path.is_file():
+            raise ParsingError(f"Couldn't find {path}. It may have been moved or deleted.")
+        # Attached images skip the indexer's icon filter: a tiny crop is still what the user meant.
+        content = extract_text_from_image(path, skip_icons=False) if _is_image(path) else extract_document_text(path)
+    else:
+        content = attachment.text or ""
+    content = content.strip()
+    if not content:
+        return NO_TEXT_NOTE
+    if len(content) > MAX_ATTACHMENT_CHARS:
+        return content[:MAX_ATTACHMENT_CHARS] + TRUNCATED_NOTE
+    return content
+
+
+def _is_image(path: Path) -> bool:
+    return path.suffix.lower() in IMAGE_EXTENSIONS

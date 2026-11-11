@@ -1,0 +1,1 @@
+Invoice INV-3121 from Contoso Furniture. Bill to: Northwind Ltd. Item: 12 x standing desks at 540 USD each. Total due 6,480.00 USD by 24 August. Pay by bank transfer, quoting INV-3121.

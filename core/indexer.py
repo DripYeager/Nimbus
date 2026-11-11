@@ -1,6 +1,6 @@
 """
 Indexes one file's contents: hash -> parse (OCR if needed) -> chunk -> embed -> store.
-Does not decide which files to index or when — the index service owns that — and does not
+Does not decide which files to index or when, the index service owns that, and does not
 parse, chunk, or embed itself; it only calls the modules that do, in order.
 """
 
@@ -12,13 +12,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from config.settings import get_settings
-from core.document_parser import extract_document_text
+from core.document_parser import extract_document_pages
 from core.embedder import Embedder
 from core.exceptions import IndexingError
 from core.logger import get_logger
 from core.text_chunker import chunk_text
 from core.vector_store import VectorStore
-from models.schema import IndexedChunk
+from models.schema import DocumentPage, IndexedChunk
 
 logger = get_logger(__name__)
 
@@ -33,7 +33,7 @@ class Indexer:
         self._embedder = embedder
 
     def index_file(self, path: Path) -> int:
-        """(Re)indexes path, replacing any rows it had before. Returns the chunks written —
+        """(Re)indexes path, replacing any rows it had before. Returns the chunks written,
         0 when the contents are unchanged or no text could be extracted."""
         settings = get_settings()
         content_hash = hash_file(path)
@@ -41,20 +41,20 @@ class Indexer:
             # Saving without changes, or a sync client touching mtime, shouldn't cost a re-embed.
             logger.info("Contents unchanged, skipping", extra={"path": str(path)})
             return 0
-        text = extract_document_text(path)
-        chunks = chunk_text(text, chunk_size=settings.max_chunk_size, overlap=settings.chunk_overlap)
+        pages = extract_document_pages(path)
+        chunks = _chunk_pages(pages, settings.max_chunk_size, settings.chunk_overlap)
         if not chunks:
             self._store.delete_by_path(str(path))
             logger.info("No text extracted, nothing to index", extra={"path": str(path)})
             return 0
-        vectors = self._embedder.embed(chunks)
+        vectors = self._embedder.embed([text for _, text in chunks])
         self._store.upsert_chunks(_build_indexed_chunks(path, content_hash, chunks, vectors))
         logger.info("Indexed file", extra={"path": str(path), "chunks": len(chunks)})
         return len(chunks)
 
-    def optimize_store(self) -> None:
+    def optimize_store(self, full: bool = True) -> None:
         """Lets the store fold freshly written rows into its search indexes."""
-        self._store.optimize()
+        self._store.optimize(full)
 
 
 def hash_file(path: Path) -> str:
@@ -69,8 +69,18 @@ def hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _chunk_pages(pages: list[DocumentPage], chunk_size: int, overlap: int) -> list[tuple[int | None, str]]:
+    """(page number, chunk text) pairs. Each page is chunked on its own, so a chunk never spans
+    two pages and every answer can cite exactly one."""
+    return [
+        (page.number, chunk)
+        for page in pages
+        for chunk in chunk_text(page.text, chunk_size=chunk_size, overlap=overlap)
+    ]
+
+
 def _build_indexed_chunks(
-    path: Path, content_hash: str, chunks: list[str], vectors: list[list[float]]
+    path: Path, content_hash: str, chunks: list[tuple[int | None, str]], vectors: list[list[float]]
 ) -> list[IndexedChunk]:
     """Pairs each chunk with its vector and the file metadata they all share."""
     now = datetime.now()
@@ -84,10 +94,11 @@ def _build_indexed_chunks(
             content_hash=content_hash,
             chunk_index=i,
             chunk_text=chunk,
+            page=page,
             vector=vector,
             created_at=datetime.fromtimestamp(stat.st_ctime),
             modified_at=datetime.fromtimestamp(stat.st_mtime),
             indexed_at=now,
         )
-        for i, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True))
+        for i, ((page, chunk), vector) in enumerate(zip(chunks, vectors, strict=True))
     ]

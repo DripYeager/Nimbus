@@ -46,7 +46,7 @@ MODEL_SETTING_KEYS: dict[ProviderName, str] = {
 }
 LOCAL_PRIVACY_NOTE = "Answers are generated on this PC. Nothing leaves your machine."
 CLOUD_PRIVACY_NOTE = "Questions and the file excerpts needed to answer them are sent to {provider}."
-SAVED_KEY_PLACEHOLDER = "Saved — leave blank to keep it"
+SAVED_KEY_PLACEHOLDER = "Saved. Leave blank to keep it"
 NEW_KEY_PLACEHOLDER = "Paste your API key"
 MODEL_PLACEHOLDER = "Type a model name, or test the connection to list them"
 CLOUD_WARNING_TITLE = "Use a cloud model?"
@@ -88,6 +88,9 @@ class ModelEditor(QWidget):
         self._build_layout()
         # Re-check the local setup when a different model is picked or typed.
         self._model_box.currentTextChanged.connect(self._watch_local_model)
+        # Taking the suggested model fills the box; Save makes it stick, and the card's own
+        # Download button fetches it if needed.
+        self._ollama_helper.model_chosen.connect(self._model_box.setEditText)
         self._picker.picked.connect(self._on_provider_picked)
         self._test_button.clicked.connect(self._test_connection)
 
@@ -155,7 +158,7 @@ class ModelEditor(QWidget):
         The edited model settings, plus the API key the user typed.
 
         Returns:
-            (updates, api_key) — api_key is None when the field was left blank, so a key
+            (updates, api_key), api_key is None when the field was left blank, so a key
             that's already saved is kept rather than wiped.
         """
         self._remember_model()
@@ -225,7 +228,7 @@ class ModelEditor(QWidget):
         run_in_background(lambda: self._api.test_provider(config), self._show_test_result, self._show_test_error)
 
     def _unsaved_config(self) -> ProviderConfig:
-        """What's typed right now — the user hasn't necessarily saved any of it yet."""
+        """What's typed right now, the user hasn't necessarily saved any of it yet."""
         provider = self.provider()
         base_url = {"ollama": self._host_edit.text(), "openai_compatible": self._base_url_edit.text()}.get(provider)
         return ProviderConfig(

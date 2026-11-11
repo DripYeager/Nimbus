@@ -1,6 +1,6 @@
 """
 HTTP routes for chatting: send a message, answer a confirmation card, and browse or delete
-saved conversations. Routes only delegate — the chat service does the work.
+saved conversations. Routes only delegate, the chat service does the work.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from api.dependencies import get_services
 from api.sse_stream import stream_sse
 from core.service_container import AppServices
-from models.chat import ChatMessage, ChatRequest, ConfirmRequest, ConversationSummary
+from models.chat import ChatMessage, ChatRequest, ConfirmRequest, ConversationSummary, ConversationView
 
 router = APIRouter()
 
@@ -39,9 +39,15 @@ def list_conversations(services: AppServices = Depends(get_services)) -> list[Co
 
 @router.get("/conversations/{conversation_id}")
 def get_conversation(conversation_id: str, services: AppServices = Depends(get_services)) -> list[ChatMessage]:
-    """The visible messages of a chat — user turns and the assistant's written answers."""
+    """The visible messages of a chat, user turns and the assistant's written answers."""
     messages = services.conversations.load(conversation_id)
     return [m for m in messages if m.role == "user" or (m.role == "assistant" and m.content.strip())]
+
+
+@router.get("/conversations/{conversation_id}/view")
+def get_conversation_view(conversation_id: str, services: AppServices = Depends(get_services)) -> ConversationView:
+    """A chat ready to show again: replies with their steps, and any card still waiting."""
+    return services.chat.view(conversation_id)
 
 
 @router.delete("/conversations/{conversation_id}")

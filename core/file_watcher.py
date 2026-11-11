@@ -1,6 +1,6 @@
 """
 Watches the user's source folders for changes and forwards debounced paths to the index
-service — a burst of rapid saves collapses into one reindex. Does not decide what a change
+service, a burst of rapid saves collapses into one reindex. Does not decide what a change
 means for the index; it only reports which paths changed or disappeared, and when.
 """
 
@@ -25,7 +25,7 @@ STOP_JOIN_TIMEOUT_SECONDS = 5.0
 
 
 class ChangeSink(Protocol):
-    """Whatever wants to hear about changes — the index service, in the real app."""
+    """Whatever wants to hear about changes, the index service, in the real app."""
 
     def path_changed(self, path: Path) -> None: ...
 
@@ -37,7 +37,7 @@ class FileWatcher:
 
     One debounce thread serves every path. A per-path timer thread would be simpler, but an
     `npm install` or an unzipped archive inside a source creates tens of thousands of files in
-    seconds — one thread each would exhaust the process."""
+    seconds, one thread each would exhaust the process."""
 
     def __init__(self, sink: ChangeSink, debounce_seconds: float = DEBOUNCE_SECONDS) -> None:
         self._sink = sink
@@ -82,7 +82,7 @@ class FileWatcher:
         self.start(sources)
 
     def handle_changed(self, path: Path) -> None:
-        """(Re)starts path's debounce window — a rapid burst of saves collapses into one event."""
+        """(Re)starts path's debounce window, a rapid burst of saves collapses into one event."""
         with self._condition:
             if self._stopping:
                 return
@@ -91,7 +91,7 @@ class FileWatcher:
             self._condition.notify()
 
     def handle_removed(self, path: Path) -> None:
-        """Forwards a delete immediately — there's nothing to collapse, and a pending change
+        """Forwards a delete immediately, there's nothing to collapse, and a pending change
         for the same path would only try to index a file that's gone."""
         with self._condition:
             self._pending.pop(str(path), None)
@@ -126,7 +126,7 @@ class FileWatcher:
         return due, None if next_deadline is None else max(0.0, next_deadline - now)
 
     def _forward(self, callback: Callable[[Path], None], path: Path) -> None:
-        """Calls the sink, logging failures — a watcher thread that dies stops all future updates."""
+        """Calls the sink, logging failures, a watcher thread that dies stops all future updates."""
         try:
             callback(path)
         except Exception:

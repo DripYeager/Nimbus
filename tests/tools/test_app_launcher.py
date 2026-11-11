@@ -28,7 +28,7 @@ def test_launch_app_activates_store_app_through_apps_folder(mocker: MockerFixtur
 
 def test_launch_app_raises_when_shortcut_is_gone(mocker: MockerFixture) -> None:
     mocker.patch("tools.app_launcher.os.startfile", create=True, side_effect=FileNotFoundError("missing"))
-    with pytest.raises(AppLaunchError, match="refresh the app catalog"):
+    with pytest.raises(AppLaunchError, match="Refresh the app catalog"):
         launch_app(AppEntry(name="Word", launch_target="C:/Start/Word.lnk", source="start_menu"))
 
 

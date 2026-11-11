@@ -1,5 +1,5 @@
 """
-The file catalog: a small SQLite table of every file in the user's sources — name, size,
+The file catalog: a small SQLite table of every file in the user's sources, name, size,
 modified time, and where it is in the content-indexing pipeline. Makes every file findable by
 name within seconds of first launch, and lets a rescan skip unchanged files without reading
 them. The only module that touches catalog.db; does not walk folders or index contents.
@@ -47,7 +47,7 @@ def folder_prefix(root: Path | str) -> str:
 
 
 class FileCatalog:
-    """Thread-safe access to catalog.db — the watcher, the index worker and API requests all
+    """Thread-safe access to catalog.db, the watcher, the index worker and API requests all
     read and write it from different threads."""
 
     def __init__(self, db_path: Path) -> None:
@@ -56,7 +56,7 @@ class FileCatalog:
         self._lock = threading.Lock()
         # Name search runs on every "find"/"open" message; re-reading 100k+ rows each time
         # would undo the point of an instant fast path. Only writes that change names, sizes or
-        # dates bump the generation — status updates during indexing don't.
+        # dates bump the generation, status updates during indexing don't.
         self._name_cache: list[tuple] | None = None
         self._names: list[str] = []
         self._generation = 0
@@ -76,7 +76,7 @@ class FileCatalog:
             self._conn = None
 
     def snapshot(self) -> dict[str, CatalogEntry]:
-        """Every cataloged file keyed by path_key — loaded once per scan to diff against disk."""
+        """Every cataloged file keyed by path_key, loaded once per scan to diff against disk."""
         rows = self._query("SELECT path, size_bytes, modified_ts, status FROM files")
         return {path_key(r[0]): CatalogEntry(Path(r[0]), r[1], r[2], CatalogStatus(r[3])) for r in rows}
 
@@ -110,13 +110,13 @@ class FileCatalog:
         self._invalidate_names()
 
     def remove_under(self, root: Path) -> None:
-        """Drops every file below root — used when the user removes a source folder."""
+        """Drops every file below root, used when the user removes a source folder."""
         prefix = folder_prefix(root)
         self._execute_many("DELETE FROM files WHERE substr(path_key, 1, ?) = ?", [(len(prefix), prefix)])
         self._invalidate_names()
 
     def requeue_all(self) -> None:
-        """Marks every content file pending again — for a full rebuild or an embedding-model change."""
+        """Marks every content file pending again, for a full rebuild or an embedding-model change."""
         self._execute_many(
             "UPDATE files SET status = ?, error = NULL WHERE status IN (?, ?)",
             [(CatalogStatus.PENDING, CatalogStatus.INDEXED, CatalogStatus.FAILED)],
@@ -208,7 +208,7 @@ class FileCatalog:
     def _require_conn(self) -> sqlite3.Connection:
         """Fails loudly if a caller forgot connect()."""
         if self._conn is None:
-            raise IndexingError("The file catalog isn't open yet — call connect() first.")
+            raise IndexingError("The file catalog isn't open yet. Call connect() first.")
         return self._conn
 
 

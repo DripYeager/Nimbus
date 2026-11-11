@@ -1,7 +1,7 @@
 """
 Streams one chat request (a new message, or the answer to a confirmation card) from the local
 API and re-emits each SSE event as a Qt signal on the GUI thread. Owns HTTP/SSE plumbing and
-cancellation only — it has no opinion on how events are displayed.
+cancellation only; it has no opinion on how events are displayed.
 """
 
 from __future__ import annotations
@@ -14,18 +14,23 @@ import httpx
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from config.settings import get_settings
+from core.api_auth import auth_headers
 from core.logger import get_logger
 from core.sse import parse_sse_events
+from models.chat import Attachment
 
 logger = get_logger(__name__)
 
 CONNECT_TIMEOUT_SECONDS = 5.0
 UNREACHABLE_MESSAGE = "Couldn't reach Nimbus's engine. Try restarting Nimbus from the tray."
+# The engine sends a heartbeat every few seconds while a model thinks, so a read timeout means
+# the engine itself went quiet, not that the model is merely slow.
+STALLED_MESSAGE = "Nimbus's engine stopped responding. Try again, or restart Nimbus from the tray."
 
 
 class ChatStream(QObject):
     """One request at a time; starting a new one cancels the previous. Each request carries an
-    id, and anything a cancelled request had already queued for the GUI thread is dropped —
+    id, and anything a cancelled request had already queued for the GUI thread is dropped,
     otherwise a stale token could land in the next reply."""
 
     event_received = pyqtSignal(str, dict)
@@ -43,9 +48,12 @@ class ChatStream(QObject):
         self._relay_failed.connect(self._deliver_failed)
         self._relay_finished.connect(self._deliver_finished)
 
-    def send(self, text: str, conversation_id: str | None) -> None:
-        """Streams the reply to a new message."""
-        self._start("/chat", {"text": text, "conversation_id": conversation_id})
+    def send(self, text: str, conversation_id: str | None, attachment: Attachment | None = None) -> None:
+        """Streams the reply to a new message, with whatever was attached to it."""
+        body: dict[str, Any] = {"text": text, "conversation_id": conversation_id}
+        if attachment is not None:
+            body["attachment"] = attachment.model_dump()
+        self._start("/chat", body)
 
     def answer_confirmation(self, conversation_id: str, decision: dict[str, Any]) -> None:
         """Streams the rest of a turn after the user approved or declined an action."""
@@ -110,7 +118,7 @@ class _StreamRequest:
     def _stream(self) -> None:
         """Opens the SSE connection and relays each event until done or cancelled."""
         timeout = httpx.Timeout(get_settings().thinking_timeout_seconds, connect=CONNECT_TIMEOUT_SECONDS)
-        with httpx.stream("POST", self._url, json=self._body, timeout=timeout) as response:
+        with httpx.stream("POST", self._url, json=self._body, timeout=timeout, headers=auth_headers()) as response:
             self._response = response
             if response.is_error:
                 response.read()
@@ -139,7 +147,7 @@ def _api_error_text(response: httpx.Response) -> str:
 def _message_for(error: Exception) -> str:
     """A friendly line for the most common failures."""
     if isinstance(error, httpx.ReadTimeout):
-        return "The model took too long to answer. A smaller model or a cloud provider may be faster."
+        return STALLED_MESSAGE
     if isinstance(error, _EngineError):
         return str(error)
     if isinstance(error, ValueError):

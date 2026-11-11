@@ -1,0 +1,1 @@
+Holiday notes, Marrakesh, Morocco. Day one we saw Jemaa el-Fnaa square and the Majorelle garden. In the evening we ate lamb tagine at a small place near the hotel. Day three was for shopping and packing.

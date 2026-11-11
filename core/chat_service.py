@@ -13,9 +13,11 @@ from collections.abc import Callable, Iterator
 from config.settings import get_settings
 from config.settings_store import save_user_settings
 from core.agent import Agent, pending_tool_calls
+from core.attachments import attach
 from core.conversation_store import ConversationStore
 from core.exceptions import NimbusError
 from core.fast_path import FastPath
+from core.history_view import history_turns
 from core.logger import get_logger
 from models.chat import (
     ChatDone,
@@ -28,8 +30,10 @@ from models.chat import (
     ChatToken,
     ConfirmationNeeded,
     ConfirmRequest,
+    ConversationView,
 )
 from models.schema import IndexStatus
+from tools.registry import approval_group
 
 logger = get_logger(__name__)
 
@@ -58,8 +62,10 @@ class ChatService:
         self._store.require(conversation_id)
         yield self._started(conversation_id)
         self._skip_unanswered_actions(conversation_id)
-        user_message = ChatMessage(role="user", content=request.text)
-        fast = self._fast_path.try_answer(request.text)
+        content = attach(request.text, request.attachment) if request.attachment else request.text
+        user_message = ChatMessage(role="user", content=content)
+        # A question about an attachment always needs the model, never a canned shortcut.
+        fast = None if request.attachment else self._fast_path.try_answer(request.text)
         if fast is not None:
             self._store.append(conversation_id, [user_message, ChatMessage(role="assistant", content=fast.text)])
             yield ChatToken(text=fast.text)
@@ -69,6 +75,15 @@ class ChatService:
             return
         history = [*self._store.load(conversation_id), user_message]
         yield from self._run_agent(conversation_id, history, None, start)
+
+    def view(self, conversation_id: str) -> ConversationView:
+        """A saved chat as it looked live: replies with their steps, and the card still waiting
+        for an answer, if any."""
+        messages = self._store.load(conversation_id)
+        return ConversationView(
+            turns=history_turns(messages, self._agent.describe_step),
+            pending=self._agent.pending_confirmation(messages),
+        )
 
     def confirm(self, conversation_id: str, decision: ConfirmRequest) -> Iterator[ChatEvent]:
         """Resumes a paused turn with the user's answer to a confirmation card."""
@@ -101,7 +116,7 @@ class ChatService:
 
     def _skip_unanswered_actions(self, conversation_id: str) -> None:
         """A new message while an approval card is still open means the user moved on. The
-        waiting calls get a "skipped" result — otherwise they'd run on the next turn, and model
+        waiting calls get a "skipped" result, otherwise they'd run on the next turn, and model
         APIs reject a history with tool calls that never got an answer."""
         pending = pending_tool_calls(self._store.load(conversation_id))
         if pending:
@@ -119,11 +134,16 @@ class ChatService:
         )
 
     def _always_allow(self, history: list[ChatMessage], call_id: str) -> None:
-        """Remembers "always allow" for the tool behind call_id."""
+        """Remembers "always allow" for the tool behind call_id, and for any tool that shares its
+        setting (allowing Word files allows spreadsheets too: Settings shows one switch)."""
         tool = next(c.name for c in pending_tool_calls(history) if c.id == call_id)
+        if not self._agent.can_always_allow(tool):
+            # The card hides the button for these; a hand-made request still mustn't stick.
+            return
         allowed = get_settings().auto_approved_tools
-        if tool not in allowed:
-            save_user_settings({"auto_approved_tools": [*allowed, tool]})
+        missing = [name for name in approval_group(tool) if name not in allowed]
+        if missing:
+            save_user_settings({"auto_approved_tools": [*allowed, *missing]})
 
 
 def _elapsed_ms(start: float) -> int:

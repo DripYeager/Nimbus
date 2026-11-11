@@ -1,4 +1,4 @@
-"""Provider-agnostic LLM access — Ollama, Anthropic, OpenAI, or any OpenAI-compatible server behind one interface."""
+"""Provider-agnostic LLM access, Ollama, Anthropic, OpenAI, or any OpenAI-compatible server behind one interface."""
 
 from __future__ import annotations
 

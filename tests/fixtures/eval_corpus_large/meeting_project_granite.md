@@ -1,0 +1,1 @@
+Project Granite weekly meeting. Goal: rewrite the invoicing engine in Go. Owner: Priya Shah. Target date: end of November. Decisions: keep the scope fixed, review budget next week. Risks: vendor delays.

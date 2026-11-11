@@ -1,7 +1,7 @@
 """
 The welcome screen of a new chat: the golden cloud cruising across a patch of sky with speed
 lines trailing behind it, a comic-style "WHERE TO?" headline, and a grid of suggestion cards.
-Display only — a clicked suggestion is reported through suggestion_clicked.
+Display only, a clicked suggestion is reported through suggestion_clicked.
 """
 
 from __future__ import annotations
@@ -10,15 +10,18 @@ import math
 
 from PyQt6.QtCore import QPointF, QRectF, QSize, Qt, QVariantAnimation, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPaintEvent, QPen, QRadialGradient
-from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ui.theme.fonts import use_display_font
+from ui.theme.glow_label import GlowLabel
 from ui.theme.line_icons import line_icon
 from ui.theme.painting import paint_cloud
 from ui.theme.tokens import GI_ORANGE, SKY_BOTTOM
 
 HERO_SIZE = QSize(260, 150)
 HEADLINE_PX = 52
+# Per halo copy; the copies stack into a soft orange glow.
+HEADLINE_GLOW_ALPHA = 55
 CRUISE_MS = 2600
 SUGGESTION_ICON_SIZE = 18
 # (icon, text) pairs; the text is what gets sent when a card is clicked.
@@ -118,12 +121,7 @@ class EmptyState(QWidget):
 
 def _headline(parent: QWidget) -> QLabel:
     """WHERE TO? in the comic face, gold with an orange glow."""
-    title = QLabel("WHERE TO?", parent)
+    title = GlowLabel("WHERE TO?", QColor(255, 122, 26, HEADLINE_GLOW_ALPHA), parent)
     title.setObjectName("EmptyTitle")
     use_display_font(title, HEADLINE_PX)
-    glow = QGraphicsDropShadowEffect(title)
-    glow.setBlurRadius(24)
-    glow.setOffset(0, 3)
-    glow.setColor(QColor(255, 122, 26, 200))
-    title.setGraphicsEffect(glow)
     return title

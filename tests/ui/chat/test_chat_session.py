@@ -9,15 +9,17 @@ from PyQt6.QtWidgets import QLabel
 from pytest_mock import MockerFixture
 
 from core.exceptions import NimbusError
-from models.chat import ChatMessage
+from models.chat import Attachment, ConfirmationNeeded, ConversationView, HistoryTurn
 from models.schema import IndexStatus
 from ui.api_client import ApiClient
-from ui.chat.chat_input import ChatInput
-from ui.chat.chat_session import STILL_LEARNING_ID, ChatSession
+from ui.chat.chat_input import ELSEWHERE_PLACEHOLDER, ChatInput
+from ui.chat.chat_session import BUSY_HERE_MESSAGE, STILL_LEARNING_ID, ChatSession
 from ui.chat.chat_stream import ChatStream
 from ui.chat.chat_view import ChatView
 from ui.chat.message_cards import ConfirmCard, SourceCard
-from ui.chat.message_widgets import AssistantMessage
+from ui.chat.message_widgets import STOPPED_TEXT, AssistantMessage
+from ui.chat.user_bubble import UserBubble
+from ui.theme.tokens import PLACEHOLDER_TEXT
 
 
 def _synchronous(fn: Any, ok: Any, err: Any = None) -> None:
@@ -61,7 +63,7 @@ def session(mocker: MockerFixture, view: ChatView, chat_input: ChatInput, api: M
 
 
 def _is_busy(chat_input: ChatInput) -> bool:
-    return not chat_input._send.isEnabled()
+    return chat_input.is_busy()
 
 
 def _errors(view: ChatView) -> list[str]:
@@ -73,7 +75,7 @@ def test_send_shows_the_message_and_streams_the_reply(
 ) -> None:
     session.send("Find my resume")
 
-    stream.send.assert_called_once_with("Find my resume", None)
+    stream.send.assert_called_once_with("Find my resume", None, None)
     assert (view.currentIndex(), _is_busy(chat_input)) == (1, True)
 
 
@@ -84,11 +86,13 @@ def test_send_shows_the_reply_thinking_straight_away(session: ChatSession, view:
 
 
 def test_send_continues_the_started_conversation(session: ChatSession, stream: Mock) -> None:
+    session.send("q")
     session._handle_event("started", _started("c42"))
+    session._finish()
 
     session.send("And another thing")
 
-    stream.send.assert_called_once_with("And another thing", "c42")
+    stream.send.assert_called_with("And another thing", "c42", None)
 
 
 def test_connect_signals_sends_on_input_submit(session: ChatSession, chat_input: ChatInput, stream: Mock) -> None:
@@ -96,7 +100,7 @@ def test_connect_signals_sends_on_input_submit(session: ChatSession, chat_input:
 
     chat_input.submitted.emit("hello")
 
-    stream.send.assert_called_once_with("hello", None)
+    stream.send.assert_called_once_with("hello", None, None)
 
 
 def test_connect_signals_sends_on_suggestion_click(session: ChatSession, view: ChatView, stream: Mock) -> None:
@@ -104,12 +108,13 @@ def test_connect_signals_sends_on_suggestion_click(session: ChatSession, view: C
 
     view.suggestion_clicked.emit("Open Notepad")
 
-    stream.send.assert_called_once_with("Open Notepad", None)
+    stream.send.assert_called_once_with("Open Notepad", None, None)
 
 
 def test_handle_event_started_reports_status_for_the_header(session: ChatSession) -> None:
     received: list[tuple[IndexStatus, bool]] = []
     session.status_received.connect(lambda status, is_cloud: received.append((status, is_cloud)))
+    session.send("q")
 
     session._handle_event("started", _started(is_cloud=True, cataloged_files=9))
 
@@ -118,6 +123,7 @@ def test_handle_event_started_reports_status_for_the_header(session: ChatSession
 
 
 def test_handle_event_started_flags_an_unfinished_index(session: ChatSession, view: ChatView) -> None:
+    session.send("q")
     session._handle_event("started", _started(content_files=4, indexed_files=1, pending_files=3))
 
     step = view.current_reply._steps[STILL_LEARNING_ID]
@@ -125,12 +131,14 @@ def test_handle_event_started_flags_an_unfinished_index(session: ChatSession, vi
 
 
 def test_handle_event_started_adds_no_step_when_indexing_is_done(session: ChatSession, view: ChatView) -> None:
+    session.send("q")
     session._handle_event("started", _started(content_files=4, indexed_files=4))
 
-    assert view._current is None
+    assert STILL_LEARNING_ID not in view.current_reply._steps
 
 
 def test_handle_event_token_streams_into_the_reply(session: ChatSession, view: ChatView) -> None:
+    session.send("q")
     session._handle_event("token", {"text": "Hello "})
     session._handle_event("token", {"text": "there"})
 
@@ -138,6 +146,7 @@ def test_handle_event_token_streams_into_the_reply(session: ChatSession, view: C
 
 
 def test_handle_event_tool_shows_and_updates_one_step(session: ChatSession, view: ChatView) -> None:
+    session.send("q")
     session._handle_event("tool", {"call_id": "t1", "label": "Searching files", "status": "running"})
     session._handle_event("tool", {"call_id": "t1", "label": "Searching files", "status": "done"})
 
@@ -147,6 +156,7 @@ def test_handle_event_tool_shows_and_updates_one_step(session: ChatSession, view
 
 def test_handle_event_sources_adds_source_cards(session: ChatSession, view: ChatView) -> None:
     sources = [{"file_name": "cv.pdf", "file_path": "C:/Docs/cv.pdf", "score": 0.9}]
+    session.send("q")
 
     session._handle_event("sources", {"sources": sources})
 
@@ -155,40 +165,46 @@ def test_handle_event_sources_adds_source_cards(session: ChatSession, view: Chat
 
 
 def test_handle_event_error_shows_the_message(session: ChatSession, view: ChatView) -> None:
+    session.send("q")
     session._handle_event("error", {"message": "Model offline"})
 
     assert _errors(view) == ["Model offline"]
 
 
 def test_handle_event_ignores_unknown_events(session: ChatSession, view: ChatView) -> None:
+    session.send("q")
     session._handle_event("done", {"used_llm": True, "elapsed_ms": 10})
 
-    assert view._current is None
+    assert view.current_reply.is_empty()
 
 
 def _confirm(session: ChatSession, view: ChatView) -> ConfirmCard:
     session._handle_event("started", _started("c7"))
     session._handle_event("confirm", {"call_id": "t9", "tool": "open_app", "description": "Open Notepad"})
+    # The turn pauses: the engine ends the stream, then the user answers.
+    session._finish()
     return view.findChild(ConfirmCard)
 
 
 def test_handle_event_confirm_shows_a_card_and_closes_the_reply(session: ChatSession, view: ChatView) -> None:
+    session.send("q")
     card = _confirm(session, view)
 
     assert card is not None
-    assert view._current is None
+    assert view.column._current is None
 
 
 def test_handle_event_confirm_leaves_no_empty_reply_behind(session: ChatSession, view: ChatView) -> None:
     _confirm(session, view)
 
-    assert view._content.findChildren(AssistantMessage) == []
+    assert view.column.findChildren(AssistantMessage) == []
 
 
 @pytest.mark.parametrize(("approved", "always"), [(True, False), (True, True), (False, False)])
 def test_confirmation_answer_resumes_the_turn(
     session: ChatSession, view: ChatView, stream: Mock, approved: bool, always: bool
 ) -> None:
+    session.send("q")
     card = _confirm(session, view)
 
     card.decided.emit(approved, always)
@@ -199,6 +215,7 @@ def test_confirmation_answer_resumes_the_turn(
 
 
 def test_confirmation_answer_shows_a_thinking_reply(session: ChatSession, view: ChatView) -> None:
+    session.send("q")
     card = _confirm(session, view)
 
     card.decided.emit(True, False)
@@ -207,6 +224,7 @@ def test_confirmation_answer_shows_a_thinking_reply(session: ChatSession, view: 
 
 
 def test_confirmation_answer_locks_the_input(session: ChatSession, view: ChatView, chat_input: ChatInput) -> None:
+    session.send("q")
     card = _confirm(session, view)
     session._finish()
 
@@ -223,7 +241,7 @@ def test_finish_unlocks_the_input_and_closes_the_reply(
 
     session._finish()
 
-    assert (_is_busy(chat_input), view._current) == (False, None)
+    assert (_is_busy(chat_input), view.column._current) == (False, None)
 
 
 def test_finish_drops_a_reply_that_never_got_content(session: ChatSession, view: ChatView) -> None:
@@ -233,7 +251,7 @@ def test_finish_drops_a_reply_that_never_got_content(session: ChatSession, view:
 
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
 
-    assert view._content.findChildren(AssistantMessage) == []
+    assert view.column.findChildren(AssistantMessage) == []
 
 
 def test_fail_keeps_the_error_on_a_reply_with_no_text(
@@ -244,7 +262,7 @@ def test_fail_keeps_the_error_on_a_reply_with_no_text(
 
     session._fail("Couldn't reach Nimbus's engine.")
 
-    assert view._layout.indexOf(reply) >= 0
+    assert view.column._layout.indexOf(reply) >= 0
     assert [label.text() for label in reply.findChildren(QLabel) if label.objectName() == "ErrorLine"] == [
         "Couldn't reach Nimbus's engine."
     ]
@@ -258,44 +276,340 @@ def test_fail_unlocks_the_input(session: ChatSession, chat_input: ChatInput) -> 
     assert not _is_busy(chat_input)
 
 
-def test_new_chat_cancels_and_resets(session: ChatSession, view: ChatView, stream: Mock) -> None:
+def test_new_chat_resets_the_screen_but_keeps_the_reply_running(
+    session: ChatSession, view: ChatView, stream: Mock, chat_input: ChatInput
+) -> None:
     session.send("hi")
     session._handle_event("started", _started("c1"))
 
     session.new_chat()
 
-    stream.cancel.assert_called_once()
-    assert view.currentIndex() == 0
+    stream.cancel.assert_not_called()
+    assert (view.currentIndex(), _is_busy(chat_input)) == (0, True)
+
+
+def test_new_chat_blocks_sending_until_the_running_reply_finishes(session: ChatSession, stream: Mock) -> None:
+    session.send("hi")
+    session._handle_event("started", _started("c1"))
+    session.new_chat()
+
     session.send("fresh")
-    stream.send.assert_called_with("fresh", None)
+
+    stream.send.assert_called_once_with("hi", None, None)
+
+
+def test_new_chat_after_the_reply_finishes_starts_a_fresh_conversation(session: ChatSession, stream: Mock) -> None:
+    session.send("hi")
+    session._handle_event("started", _started("c1"))
+    session.new_chat()
+    session._finish()
+
+    session.send("fresh")
+
+    stream.send.assert_called_with("fresh", None, None)
+
+
+def test_set_aside_reply_keeps_streaming_and_comes_back(session: ChatSession, view: ChatView, api: Mock) -> None:
+    session.send("hi")
+    session._handle_event("started", _started("c1"))
+    running = view.column
+    session.new_chat()
+
+    session._handle_event("token", {"text": "Still going"})
+    session.open_conversation("c1")
+
+    assert (view.column is running, running.current_reply._markdown) == (True, "Still going")
+    api.conversation_view.assert_not_called()
+
+
+def test_finished_set_aside_reply_reloads_from_history(session: ChatSession, view: ChatView, api: Mock) -> None:
+    api.conversation_view.return_value = ConversationView(turns=[])
+    session.send("hi")
+    session._handle_event("started", _started("c1"))
+    session.new_chat()
+    session._finish()
+
+    session.open_conversation("c1")
+
+    api.conversation_view.assert_called_once_with("c1")
 
 
 def test_open_conversation_loads_and_continues_it(
     session: ChatSession, view: ChatView, api: Mock, stream: Mock
 ) -> None:
-    api.conversation.return_value = [ChatMessage(role="user", content="hi")]
+    api.conversation_view.return_value = ConversationView(turns=[HistoryTurn(role="user", text="hi")])
 
     session.open_conversation("c5")
     session.send("more")
 
-    api.conversation.assert_called_once_with("c5")
-    stream.send.assert_called_once_with("more", "c5")
+    api.conversation_view.assert_called_once_with("c5")
+    stream.send.assert_called_once_with("more", "c5", None)
+
+
+def test_a_late_history_load_does_not_replace_the_chat_opened_after_it(
+    session: ChatSession, mocker: MockerFixture, view: ChatView
+) -> None:
+    pending: list[Any] = []
+    mocker.patch("ui.chat.chat_session.run_in_background", side_effect=lambda _fn, ok, _err=None: pending.append(ok))
+
+    session.open_conversation("old")
+    session.open_conversation("new")
+    pending[1](ConversationView(turns=[HistoryTurn(role="user", text="the new one")]))
+    pending[0](ConversationView(turns=[HistoryTurn(role="user", text="the old one")]))
+
+    shown = [label.text() for label in view.findChildren(QLabel) if label.objectName() == "UserText"]
+    assert (session._conversation_id, shown) == ("new", ["the new one"])
+
+
+def test_a_message_sent_while_history_loads_joins_that_chat(
+    session: ChatSession, mocker: MockerFixture, stream: Mock
+) -> None:
+    mocker.patch("ui.chat.chat_session.run_in_background", lambda *_args, **_kwargs: None)
+
+    session.open_conversation("c5")
+    session.send("more")
+
+    stream.send.assert_called_once_with("more", "c5", None)
 
 
 def test_open_conversation_shows_a_load_error(session: ChatSession, view: ChatView, api: Mock) -> None:
-    api.conversation.side_effect = NimbusError("Chat not found")
+    api.conversation_view.side_effect = NimbusError("Chat not found")
 
     session.open_conversation("missing")
 
     assert _errors(view) == ["Chat not found"]
 
 
-def test_cancel_stops_the_stream_and_unlocks_the_input(
+def test_stop_cancels_the_stream_and_unlocks_the_input(
     session: ChatSession, stream: Mock, chat_input: ChatInput
 ) -> None:
     session.send("hi")
 
-    session.cancel()
+    session.stop()
 
     stream.cancel.assert_called_once()
     assert not _is_busy(chat_input)
+
+
+def test_stop_keeps_the_partial_answer_and_notes_it(session: ChatSession, view: ChatView) -> None:
+    session.send("hi")
+    session._handle_event("token", {"text": "Half an ans"})
+    reply = view.current_reply
+
+    session.stop()
+
+    stopped = [label.text() for label in reply.findChildren(QLabel) if label.objectName() == "StoppedLine"]
+    assert (reply.has_text(), stopped) == (True, [STOPPED_TEXT])
+
+
+def test_stop_does_nothing_when_no_reply_is_running(session: ChatSession, stream: Mock) -> None:
+    session.stop()
+
+    stream.cancel.assert_not_called()
+
+
+def test_stop_button_in_the_input_stops_the_reply(session: ChatSession, stream: Mock, chat_input: ChatInput) -> None:
+    session.connect_signals()
+    session.send("hi")
+
+    chat_input.stop_requested.emit()
+
+    stream.cancel.assert_called_once()
+
+
+def test_new_chat_while_running_explains_why_sending_is_blocked(session: ChatSession, chat_input: ChatInput) -> None:
+    session.send("hi")
+
+    session.new_chat()
+
+    assert chat_input._field.placeholderText() == ELSEWHERE_PLACEHOLDER
+
+
+def test_finish_restores_the_normal_placeholder(session: ChatSession, chat_input: ChatInput) -> None:
+    session.send("hi")
+    session.new_chat()
+
+    session._finish()
+
+    assert chat_input._field.placeholderText() == PLACEHOLDER_TEXT
+
+
+def test_sending_a_new_message_skips_an_open_card(session: ChatSession, view: ChatView, stream: Mock) -> None:
+    session.send("q")
+    card = _confirm(session, view)
+    session.send("another")
+
+    card.decided.emit(True, False)
+
+    stream.answer_confirmation.assert_not_called()
+    assert card.is_skipped() and not card.is_open()
+
+
+def test_confirmation_answer_waits_while_this_chat_is_answering(
+    session: ChatSession, view: ChatView, stream: Mock
+) -> None:
+    session.send("q")
+    card = _confirm(session, view)
+    session._start_running("c7")
+
+    card.decided.emit(True, False)
+
+    stream.answer_confirmation.assert_not_called()
+    assert card.is_open()
+    assert view.column.findChild(QLabel, "ErrorLine").text() == BUSY_HERE_MESSAGE
+
+
+def test_switching_away_keeps_a_chat_whose_card_waits(session: ChatSession, view: ChatView, api: Mock) -> None:
+    session.send("q")
+    card = _confirm(session, view)
+    session._conversation_id = "c7"
+
+    session.new_chat()
+    session.open_conversation("c7")
+
+    assert view.findChild(ConfirmCard) is card and card.is_open()
+    api.conversation_view.assert_not_called()
+
+
+def test_reopening_a_chat_shows_the_card_it_still_waits_on(
+    session: ChatSession, view: ChatView, api: Mock, stream: Mock
+) -> None:
+    pending = ConfirmationNeeded(call_id="t1", tool="run_command", description="Run a PowerShell command")
+    api.conversation_view.return_value = ConversationView(turns=[HistoryTurn(role="user", text="q")], pending=pending)
+
+    session.open_conversation("c9")
+    view.findChild(ConfirmCard).decided.emit(True, False)
+
+    stream.answer_confirmation.assert_called_once_with("c9", {"call_id": "t1", "approved": True, "always_allow": False})
+
+
+def test_send_takes_the_attachment_along_once(session: ChatSession, stream: Mock) -> None:
+    attachment = Attachment(name="Copied text", text="Bonjour tout le monde")
+    session.attach(attachment)
+
+    session.send("Translate this")
+    session._finish()
+    session.send("Thanks")
+
+    assert [c.args[2] for c in stream.send.call_args_list] == [attachment, None]
+
+
+def test_send_tells_the_bar_the_attachment_was_used(session: ChatSession) -> None:
+    changes: list[object] = []
+    session.attachment_changed.connect(changes.append)
+    session.attach(Attachment(name="Copied text", text="Bonjour"))
+
+    session.send("Translate this")
+
+    assert changes[-1] is None
+
+
+def test_a_failed_history_load_does_not_keep_sending_into_that_chat(
+    session: ChatSession, api: Mock, stream: Mock
+) -> None:
+    api.conversation_view.side_effect = NimbusError("Chat not found")
+    session.open_conversation("gone")
+
+    session.send("hello")
+
+    stream.send.assert_called_once_with("hello", None, None)
+
+
+def test_opening_the_running_chat_while_it_is_on_screen_keeps_the_live_reply(
+    session: ChatSession, view: ChatView, api: Mock
+) -> None:
+    session.send("hi")
+    session._handle_event("started", _started("c1"))
+    live = view.column
+
+    session.open_conversation("c1")
+
+    assert view.column is live
+    api.conversation_view.assert_not_called()
+
+
+def test_history_that_loads_after_a_message_was_sent_goes_above_it(
+    session: ChatSession, mocker: MockerFixture, view: ChatView
+) -> None:
+    pending: list[Any] = []
+    mocker.patch("ui.chat.chat_session.run_in_background", side_effect=lambda _fn, ok, _err=None: pending.append(ok))
+    session.open_conversation("c5")
+    session.send("newer question")
+
+    pending[0](ConversationView(turns=[HistoryTurn(role="user", text="older question")]))
+
+    layout = view.column._layout
+    widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
+    texts = [w.findChild(QLabel, "UserText").text() for w in widgets if isinstance(w, UserBubble)]
+    assert texts == ["older question", "newer question"]
+
+
+def test_a_message_sent_while_history_loads_does_not_revive_the_skipped_card(
+    session: ChatSession, mocker: MockerFixture, view: ChatView
+) -> None:
+    waiting: list[Any] = []
+    mocker.patch("ui.chat.chat_session.run_in_background", side_effect=lambda _fn, ok, _err=None: waiting.append(ok))
+    session.open_conversation("c5")
+    session.send("newer question")
+    pending = ConfirmationNeeded(call_id="t1", tool="run_command", description="Run a PowerShell command")
+
+    waiting[0](ConversationView(turns=[HistoryTurn(role="user", text="older question")], pending=pending))
+
+    assert view.findChild(ConfirmCard) is None
+
+
+def _card_chat_view(conversation_id: str) -> ConversationView:
+    pending = ConfirmationNeeded(call_id="t1", tool="run_command", description="Run a PowerShell command")
+    return ConversationView(turns=[HistoryTurn(role="user", text=f"q in {conversation_id}")], pending=pending)
+
+
+def test_a_running_reply_survives_leaving_a_chat_with_a_waiting_card(
+    session: ChatSession, view: ChatView, api: Mock
+) -> None:
+    session.send("long question")
+    session._handle_event("started", _started("cA"))
+    running = session._running
+    api.conversation_view.side_effect = lambda conversation_id: _card_chat_view(conversation_id)
+
+    session.open_conversation("cB")
+    session.open_conversation("cC")
+    session._handle_event("token", {"text": "still streaming"})
+
+    assert running is session._running and running.current_reply._markdown == "still streaming"
+    session.open_conversation("cA")
+    assert view.column is running
+
+
+def test_reopening_a_waiting_chat_keeps_the_reply_running_on_screen(
+    session: ChatSession, view: ChatView, chat_input: ChatInput
+) -> None:
+    session.send("q")
+    card = _confirm(session, view)
+    session.new_chat()
+    session.send("new question")
+    session._handle_event("started", _started("cN"))
+    running = session._running
+
+    session.open_conversation("c7")
+    session._handle_event("token", {"text": "answer for N"})
+
+    assert view.findChild(ConfirmCard) is card and card.is_open()
+    assert running.current_reply._markdown == "answer for N"
+    assert chat_input._field.placeholderText() == ELSEWHERE_PLACEHOLDER
+    session.open_conversation("cN")
+    assert view.column is running
+
+
+def test_a_finished_set_aside_reply_with_a_card_stays_in_memory(
+    session: ChatSession, view: ChatView, api: Mock
+) -> None:
+    session.send("q")
+    session._handle_event("started", _started("cA"))
+    session.new_chat()
+    session._handle_event("confirm", {"call_id": "t2", "tool": "open_app", "description": "Open Notepad"})
+    session._finish()
+
+    session.open_conversation("cA")
+
+    assert view.findChild(ConfirmCard).is_open()
+    api.conversation_view.assert_not_called()

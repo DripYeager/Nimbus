@@ -1,6 +1,6 @@
 """
 Defines the indexing, search and app-catalog data contracts that cross module boundaries.
-Does not contain business logic — validation only. Chat and agent shapes live in chat.py.
+Does not contain business logic, validation only. Chat and agent shapes live in chat.py.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 @dataclass
@@ -23,8 +23,16 @@ class ParsedDocument:
 
 
 @dataclass
+class DocumentPage:
+    """One page of a document's text. number is 1-based, or None for formats without pages."""
+
+    number: int | None
+    text: str
+
+
+@dataclass
 class FileMetadata:
-    """A file's size and timestamps, read straight from the filesystem — no index lookup involved."""
+    """A file's size and timestamps, read straight from the filesystem, no index lookup involved."""
 
     file_path: str
     file_name: str
@@ -35,7 +43,7 @@ class FileMetadata:
 
 @dataclass(frozen=True)
 class ScannedFile:
-    """One file seen on disk during a source scan — just enough to tell if it changed."""
+    """One file seen on disk during a source scan, just enough to tell if it changed."""
 
     path: Path
     size_bytes: int
@@ -52,11 +60,12 @@ class FileCategory(StrEnum):
     TEXT = "text"
     CODE = "code"
     EMAIL = "email"
+    IMAGES = "images"
 
 
 class IndexSource(BaseModel):
     """A folder the user chose to index. include_contents=False keeps it searchable by file
-    name only, which is instant and never reads a file's bytes."""
+    name only; which is instant and never reads a file's bytes."""
 
     path: Path
     include_contents: bool = True
@@ -66,6 +75,19 @@ class IndexSource(BaseModel):
     def _expand_home(cls, value: str | Path) -> Path:
         """Lets saved settings and .env use ~."""
         return Path(value).expanduser()
+
+
+class McpServerConfig(BaseModel):
+    """Another program that offers tools over MCP. Nimbus starts it (command plus args) while
+    Nimbus runs, and its tools join Nimbus's own, each call asking the user first."""
+
+    name: str
+    command: str
+    args: list[str] = Field(default_factory=list)
+    # Extra environment variables some servers need (an access token, say). Only a small safe
+    # set of Nimbus's own variables is passed on besides these.
+    env: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = True
 
 
 class CatalogStatus(StrEnum):
@@ -101,6 +123,8 @@ class SourceRef(BaseModel):
     file_name: str
     file_path: str
     score: float
+    # The PDF page the answer came from, when known; source cards open the file there.
+    page: int | None = None
 
 
 class AppEntry(BaseModel):
@@ -175,6 +199,7 @@ class IndexedChunk(BaseModel):
     chunk_index: int
     chunk_text: str
     vector: list[float]
+    page: int | None = None
     created_at: datetime
     modified_at: datetime
     indexed_at: datetime
@@ -187,6 +212,7 @@ class SearchResult(BaseModel):
     file_name: str
     score: float
     metadata: dict[str, Any]
+    page: int | None = None
 
 
 class CatalogMatch(BaseModel):

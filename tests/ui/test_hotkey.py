@@ -18,7 +18,7 @@ CTRL, ALT, SHIFT, WIN = 0x0002, 0x0001, 0x0004, 0x0008
 
 
 def _wait_for(condition: Callable[[], bool], timeout: float = 2.0) -> bool:
-    """Pumps Qt events until condition holds — summoned crosses threads as a queued signal."""
+    """Pumps Qt events until condition holds, summoned crosses threads as a queued signal."""
     deadline = time.monotonic() + timeout
     while not condition() and time.monotonic() < deadline:
         QApplication.processEvents()

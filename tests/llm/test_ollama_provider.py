@@ -133,3 +133,21 @@ def test_list_models_raises_provider_error_when_the_server_is_unreachable(provid
     provider._client.list.side_effect = ConnectionError("connection refused")
     with pytest.raises(ProviderError):
         provider.list_models()
+
+
+def test_stream_chat_asks_for_a_context_window_big_enough_for_a_document() -> None:
+    request = OllamaProvider("http://localhost:11434", "qwen2.5:7b", context_tokens=16384)._chat_request("sys", [], [])
+
+    assert request["options"] == {"num_ctx": 16384}
+
+
+def test_chat_request_switches_hidden_thinking_off_by_default() -> None:
+    request = OllamaProvider("http://localhost:11434", "qwen3.5:4b")._chat_request("sys", [], [])
+
+    assert request["think"] is False
+
+
+def test_chat_request_leaves_thinking_to_the_model_when_enabled() -> None:
+    request = OllamaProvider("http://localhost:11434", "qwen3.5:4b", thinking=True)._chat_request("sys", [], [])
+
+    assert "think" not in request

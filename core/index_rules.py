@@ -1,7 +1,7 @@
 """
 Decides which files Nimbus may look at: which folders are skipped entirely, which files are
 cataloged by name, and which also get their contents read and embedded. Pure decisions from
-settings — does not walk directories or read files.
+settings, does not walk directories or read files.
 """
 
 from __future__ import annotations
@@ -25,6 +25,8 @@ CATEGORY_EXTENSIONS: dict[FileCategory, frozenset[str]] = {
         {".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".cs", ".cpp", ".c", ".h", ".go", ".rs", ".sql", ".sh", ".ps1"}
     ),
     FileCategory.EMAIL: frozenset({".msg", ".eml"}),
+    # Screenshots, scans and photos: read with Windows OCR, so their text becomes searchable.
+    FileCategory.IMAGES: frozenset({".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}),
 }
 
 # Folders that are never useful to search and can hold hundreds of thousands of files.
@@ -84,7 +86,7 @@ class IndexRules:
         return name in DEFAULT_EXCLUDED_DIRS or _matches_any(name, self.exclude_patterns)
 
     def is_excluded_file(self, path: Path) -> bool:
-        """True for a file that shouldn't even be cataloged by name — either its own name is
+        """True for a file that shouldn't even be cataloged by name, either its own name is
         excluded, or one of the folders between its source root and itself is."""
         name = path.name.lower()
         if _matches_any(name, DEFAULT_EXCLUDED_FILES) or _matches_any(name, self.exclude_patterns):
@@ -118,7 +120,7 @@ def _matches_any(name: str, patterns: tuple[str, ...] | frozenset[str]) -> bool:
 
 
 def _is_within(path: Path, root: Path) -> bool:
-    """Case-insensitive containment check — Windows paths don't care about case."""
+    """Case-insensitive containment check, Windows paths don't care about case."""
     try:
         Path(str(path).lower()).relative_to(str(root).lower())
     except ValueError:

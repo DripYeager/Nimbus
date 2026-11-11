@@ -1,6 +1,6 @@
 """
 Persists changes made in the Settings window to the per-user settings JSON file, validating the
-merged result before anything is written. Does not store API keys — those go to the OS
+merged result before anything is written. Does not store API keys, those go to the OS
 credential store via core/secret_store.py.
 """
 

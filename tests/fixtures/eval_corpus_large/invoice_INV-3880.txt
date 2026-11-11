@@ -1,0 +1,1 @@
+Invoice INV-3880 from Proseware Cloud. Bill to: Northwind Ltd. Item: 1 x object storage at 640 USD each. Total due 640.00 USD by 15 January. Pay by bank transfer, quoting INV-3880.

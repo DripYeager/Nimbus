@@ -51,6 +51,13 @@ class ConversationStore:
         except (OSError, sqlite3.Error) as e:
             raise NimbusError(f"Couldn't open chat history at {self._db_path}: {e}") from e
 
+    def close(self) -> None:
+        """Closes the database on shutdown; safe to call twice."""
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
+
     def create(self, first_message: str) -> str:
         """Starts a conversation titled after its first message; returns its id."""
         conversation_id = uuid.uuid4().hex
@@ -105,7 +112,7 @@ class ConversationStore:
 
     def _connection(self) -> sqlite3.Connection:
         if self._conn is None:
-            raise NimbusError("Chat history isn't open yet — call connect() first.")
+            raise NimbusError("Chat history isn't open yet. Call connect() first.")
         return self._conn
 
 
