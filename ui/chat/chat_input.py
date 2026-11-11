@@ -26,8 +26,8 @@ STOP_ICON_SIZE = 14
 SEND_TIP = "Send (Enter)"
 STOP_TIP = "Stop the reply"
 MIC_ICON_SIZE = 18
-MIC_TIP = "Speak instead of typing (Ctrl+M). Uses Windows speech recognition, which sends the audio to Microsoft."
-LISTENING_TIP = "Listening… stop talking to finish"
+MIC_TIP = "Speak instead of typing (Ctrl+M). Transcribed on this PC; the audio never leaves it."
+LISTENING_TIP = "Listening… pause to finish, or click to stop"
 HINT_MS = 8000
 ELSEWHERE_PLACEHOLDER = "Nimbus is still answering in another chat. You can send once it's done."
 
@@ -111,6 +111,10 @@ class ChatInput(AuraFrame):
         """A short message in the empty field (why voice input failed, say) until typing starts."""
         self._field.setPlaceholderText(text)
         self._hint_reset.start()
+
+    def clear_hint(self) -> None:
+        self._hint_reset.stop()
+        self._field.setPlaceholderText(PLACEHOLDER_TEXT)
 
     def set_text(self, text: str) -> None:
         self._field.setPlainText(text)

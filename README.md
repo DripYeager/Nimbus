@@ -40,7 +40,7 @@ Press **Ctrl+Space** in any app and Nimbus glides up, ready for a request:
 | Right-click a file in Explorer, *Ask Nimbus about this* | Opens with the file attached and one-click questions ready |
 | Copy some text, then summon Nimbus | Offers *Use what I copied*, so you can ask about text from any app |
 | Click the scan button and drag over part of the screen | Reads it with Windows OCR and answers about it ("what does this error mean?") |
-| Click the microphone (or press Ctrl+M) and speak | Types what you said into the message box, ready to send |
+| Click the microphone (or press Ctrl+M) and speak | Transcribes it on your PC with Whisper and puts the words in the message box, ready to send |
 
 Anything that **launches or writes** shows an approval card first: *Allow*, *Always allow*, or *Don't*.
 
@@ -85,17 +85,27 @@ direct questions and paraphrases that avoid the document's own words. Top-1 accu
 
 | Strategy | Small, direct | Small, paraphrased | 100 docs, direct | 100 docs, paraphrased | ms / query |
 |---|---|---|---|---|---|
-| Vector only | 0.92 | 1.00 | 0.86 | 0.74 | 18 |
-| Hybrid, equal weights | 1.00 | 0.88 | 1.00 | 0.40 | 19 |
-| **Hybrid, query-aware** | **1.00** | **1.00** | **1.00** | **0.73** | 19 |
-| Query-aware + cross-encoder rerank | 1.00 | 1.00 | 1.00 | 0.67 | 250 |
+| Vector only | 0.96 | 1.00 | 0.82 | 0.80 | 20 |
+| Hybrid, equal weights | 1.00 | 0.88 | 1.00 | 0.45 | 21 |
+| **Hybrid, query-aware** | **1.00** | **1.00** | **1.00** | **0.78** | 21 |
+| Query-aware + cross-encoder rerank | 1.00 | 1.00 | 1.00 | 0.74 | 270 |
 
 The 100-document set is what exposed the problem: with equal weights, keyword noise dragged
-paraphrased questions down to 0.40. A cross-encoder reranker (Jina's 8K-context model, ONNX)
-is built in but **off by default**: on top of query-aware fusion it added no accuracy and cost
-about a quarter of a second per question. It can be switched on with `rerank_enabled`.
+paraphrased questions down to 0.45. Only query-aware fusion is perfect on direct questions
+while staying close to the best on paraphrases. A cross-encoder reranker (Jina's 8K-context
+model, ONNX) is built in but **off by default**: on top of query-aware fusion it added no
+accuracy and cost about a quarter of a second per question (`rerank_enabled` turns it on).
 
-**One SQLite file for search.** Chunk text, 384-dim embeddings ([sqlite-vec](https://github.com/asg017/sqlite-vec))
+The embedding model was picked the same way, query-aware hybrid, 100 docs, paraphrased:
+
+| Embedding model | Download | Top-1 | MRR | Other three sets | Indexing |
+|---|---|---|---|---|---|
+| bge-small-en-v1.5 (previous) | 0.07 GB | 0.73 | 0.80 | all 1.00 | 33 files/s |
+| **gte-base** | 0.44 GB | **0.78** | **0.84** | **all 1.00** | 19 files/s |
+| bge-large-en-v1.5 | 1.2 GB | 0.76 | 0.83 | one drops to 0.96 | 6 files/s |
+| mxbai-embed-large-v1 | 0.64 GB | 0.81 | 0.87 | one drops to 0.92 | 6 files/s |
+
+**One SQLite file for search.** Chunk text, 768-dim embeddings ([sqlite-vec](https://github.com/asg017/sqlite-vec))
 and an FTS5 full-text index share one database with WAL mode, so searches run while indexing
 writes. Compared with the LanceDB store it replaced, at 20,000 chunks:
 
@@ -117,7 +127,7 @@ time and status. Rescans skip unchanged files without reading them, content hash
 re-embedding after a mere touch, and a schema/model version check triggers a clean rebuild
 instead of mixing incompatible vectors.
 
-**Lean document pipeline.** Embeddings run on ONNX (`fastembed`, `bge-small-en-v1.5`). PDFs are
+**Lean document pipeline.** Embeddings run on ONNX (`fastembed`, `gte-base`, picked on the benchmark below over five other models). PDFs are
 read from their text layer with pdfium, and scanned PDFs go through the OCR engine built into
 Windows, which reads a page in well under 100 ms with nothing extra to download. Office and
 Outlook files go through MarkItDown with only those converters installed.
@@ -192,9 +202,9 @@ python scripts/build_release.py      # creates dist/Nimbus/Nimbus.exe and dist/N
 - The local API only answers requests that carry a secret made fresh at every start (shared in
   memory between the window and the engine, never written to disk) and that are addressed to
   `127.0.0.1` or `localhost`. Other programs on the PC and DNS-rebinding web pages are refused.
-- Voice input uses Windows' own speech recognition, which sends the audio to Microsoft's speech
-  service and needs *Online speech recognition* turned on. It only listens after you click the
-  microphone.
+- Voice input is transcribed on your PC by a local Whisper model (faster-whisper, about 150 MB,
+  downloaded on first use). The audio never leaves the machine and is never saved; the microphone
+  is only opened after you click it.
 - Logs record paths, counts and timings, never file contents, prompts or API keys.
 
 ## Project structure

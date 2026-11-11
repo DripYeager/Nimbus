@@ -75,7 +75,7 @@ class ChatWindow(QWidget):
         self._attachments = AttachmentBar()
         self._flow = AttachmentFlow(self._attachments, self._session)
         self._capture: RegionCapture | None = None
-        self._voice = VoiceInput(self._input, self)
+        self._voice = VoiceInput(self._input)
 
     def setup(self) -> None:
         """Builds the window and wires every signal."""

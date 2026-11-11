@@ -45,3 +45,13 @@ def _no_reranker_download(monkeypatch: pytest.MonkeyPatch) -> None:
         raise RuntimeError("Tests don't download models.")
 
     monkeypatch.setattr("core.reranker.TextCrossEncoder", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _no_whisper_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never fetch the speech model; transcriber tests patch the model class themselves."""
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("Tests don't download models.")
+
+    monkeypatch.setattr("core.transcriber.WhisperModel", refuse)

@@ -28,7 +28,7 @@ def _wanted(module: str) -> bool:
 
 # These ship native libraries (sqlite-vec's vec0.dll, pdfium, the WinRT projections) or load
 # plugins dynamically, which static analysis misses.
-for package in ("sqlite_vec", "fastembed", "pypdfium2", "pypdfium2_raw", "winrt"):
+for package in ("sqlite_vec", "fastembed", "pypdfium2", "pypdfium2_raw", "winrt", "ctranslate2", "faster_whisper"):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
     binaries += package_binaries

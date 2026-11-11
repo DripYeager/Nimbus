@@ -62,19 +62,23 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     compatible_api_key: str | None = None
 
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    # gte-base beat bge-small (0.73 to 0.78 top-1 on paraphrased questions over 100 look-alike
+    # documents) with no losses elsewhere; changing it rebuilds the index once.
+    embedding_model: str = "thenlper/gte-base"
     embedding_threads: int = 2
     # A cross-encoder that re-scores the top search candidates (downloads 150 MB once). Off by
     # default: with query-aware hybrid search it added no accuracy on the benchmark and cost
     # about 250 ms per question (see the README's retrieval notes).
     rerank_enabled: bool = False
     rerank_model: str = "jinaai/jina-reranker-v1-turbo-en"
+    # Local speech-to-text for the microphone button; downloads once (about 150 MB).
+    whisper_model: str = "base.en"
 
     sources: list[IndexSource] = Field(default_factory=_default_sources)
     file_categories: list[FileCategory] = Field(default_factory=lambda: list(FileCategory))
     max_file_size_mb: int = 50
     exclude_patterns: list[str] = Field(default_factory=list)
-    # bge-small reads at most 512 tokens, so a chunk has to stay well under that many words
+    # the embedding model reads at most 512 tokens, so a chunk has to stay well under that many words
     max_chunk_size: int = 250
     chunk_overlap: int = 40
     # a short pause between files keeps a first-run index from pinning the CPU

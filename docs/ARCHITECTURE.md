@@ -63,8 +63,8 @@ sources (Settings) ──► directory_scanner (os.scandir, prunes excluded dirs
   photos, archives and installers. Powers instant fuzzy name search and change detection.
   A rescan of an unchanged tree reads no file contents at all.
 - **Content index** (`core/vector_store.py`): one SQLite file holding the chunk rows, their
-  384-dim embeddings in a [sqlite-vec](https://github.com/asg017/sqlite-vec) table
-  (`BAAI/bge-small-en-v1.5` via ONNX/fastembed, no torch) and an FTS5 full-text table for
+  768-dim embeddings in a [sqlite-vec](https://github.com/asg017/sqlite-vec) table
+  (`thenlper/gte-base` via ONNX/fastembed, no torch) and an FTS5 full-text table for
   BM25 keyword search. A writer and a reader connection in WAL mode let searches run while
   the index worker writes, and the reader memory-maps the file so vector scans stay in RAM.
 - **Rules** (`core/index_rules.py`): per-folder "names only" vs "names + contents", file-type
@@ -174,8 +174,9 @@ Values from a 1.x `.env` are migrated automatically (`config/legacy_settings.py`
   existing one.
 - Launching apps, opening files/URLs, saving notes and creating files require an explicit
   click unless the user pre-approves that tool in Settings.
-- Voice input (`core/speech.py`) uses Windows' online dictation, so audio goes to Microsoft's
-  speech service; it runs only after a click on the microphone.
+- Voice input records with Qt Multimedia (`ui/voice_recorder.py`) and transcribes with a local
+  Whisper model (`core/transcriber.py`); audio stays in memory, is never written to disk and
+  never leaves the PC. The microphone opens only after a click.
 - Logs record paths, counts and durations, never file contents, prompts or keys.
 
 ## 9. Testing
